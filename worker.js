@@ -423,14 +423,10 @@ function emailWrap(headerBg, title, bodyRows) {
       <td bgcolor="${headerBg}" style="background-color:${headerBg};padding:0">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
           <tr>
-            <td bgcolor="#ffffff" width="88" align="center" valign="middle"
-                style="background-color:#ffffff;width:88px;padding:0;font-size:0;line-height:0">
-              <table cellpadding="0" cellspacing="0" border="0" align="center">
-                <tr><td style="padding:8px;font-size:0;line-height:0">
-                  <img src="${CTI_LOGO_URL}" alt="CTI Group" width="60" border="0"
-                       style="display:block;width:60px;max-width:60px;height:auto;border:0;outline:0" />
-                </td></tr>
-              </table>
+            <td bgcolor="#ffffff" width="90" align="center" valign="middle"
+                style="background-color:#ffffff;width:90px;padding:14px 15px;font-size:0;line-height:0">
+              <img src="${CTI_LOGO_URL}" alt="CTI Group" width="60" border="0"
+                   style="display:block;width:60px;max-width:60px;height:auto;border:0;outline:0" />
             </td>
             <td valign="middle" style="padding:18px 24px">
               <p style="margin:0;padding:0;color:#ffffff;font-size:22px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;line-height:28px">${title}</p>
