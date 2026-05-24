@@ -160,6 +160,9 @@ async function route(request) {
   if (seg[0] === 'booking' && seg[1] === 'link' && seg[3] === 'send-invite' && m === 'POST') {
     return sendBookingInviteHandler(seg[2], request);
   }
+  if (seg[0] === 'booking' && seg[1] === 'invite' && seg.length === 3 && m === 'GET') {
+    return getBookingInviteHandler(seg[2]);
+  }
   if (seg[0] === 'booking' && seg[1] === 'booking' && seg.length === 3 && m === 'DELETE') {
     return cancelBookingHandler(seg[2], request);
   }
@@ -1463,8 +1466,39 @@ async function sendBookingInviteHandler(token, request) {
   if (!candidateName || !candidateEmail || !bookUrl) {
     return jsonRes({ error: 'candidateName, candidateEmail and bookUrl are required' }, 400);
   }
-  await sendBookingInviteEmail(candidateName.trim(), candidateEmail.trim(), link, bookUrl);
+
+  // Generate a personalized invite token so the booking page can pre-fill candidate info
+  const inviteToken = uid();
+  await INTERVIEW_DATA.put(
+    `booking:invite:${inviteToken}`,
+    JSON.stringify({
+      candidateName:  candidateName.trim(),
+      candidateEmail: candidateEmail.trim(),
+      linkToken:      token,
+      used:           false,
+      createdAt:      Date.now(),
+    }),
+    { expirationTtl: 60 * 60 * 24 * 30 } // 30-day expiry
+  );
+
+  // Append invite token to booking URL so the page knows who is booking
+  const personalizedUrl = `${bookUrl}&inv=${inviteToken}`;
+  await sendBookingInviteEmail(candidateName.trim(), candidateEmail.trim(), link, personalizedUrl);
   return jsonRes({ ok: true });
+}
+
+async function getBookingInviteHandler(inviteToken) {
+  if (!inviteToken) return jsonRes({ error: 'Missing invite token' }, 400);
+  const raw = await INTERVIEW_DATA.get(`booking:invite:${inviteToken}`);
+  if (!raw) return jsonRes({ error: 'Invite link is invalid or has expired' }, 404);
+  const invite = JSON.parse(raw);
+  if (invite.used) return jsonRes({ error: 'This invite link has already been used' }, 410);
+  // Return candidate info — frontend uses this to pre-fill & lock the form
+  return jsonRes({
+    candidateName:  invite.candidateName,
+    candidateEmail: invite.candidateEmail,
+    linkToken:      invite.linkToken,
+  });
 }
 
 async function sendBookingInviteEmail(candidateName, candidateEmail, link, bookUrl) {
@@ -1697,8 +1731,24 @@ async function createBookingHandler(token, request) {
   if (!link) return jsonRes({ error: 'Booking link not found' }, 404);
   if (!link.active) return jsonRes({ error: 'This booking link is no longer active' }, 410);
 
-  const { candidateName, candidateEmail, slotStart, candidateTz } = await request.json();
-  if (!candidateName || !candidateEmail || !slotStart) {
+  const { candidateName, candidateEmail, slotStart, candidateTz, inviteToken } = await request.json();
+
+  // ── Flow A: System Invite — validate token and pull candidate info ──
+  let resolvedName  = candidateName?.trim();
+  let resolvedEmail = candidateEmail?.trim();
+  if (inviteToken) {
+    const raw = await INTERVIEW_DATA.get(`booking:invite:${inviteToken}`);
+    if (!raw) return jsonRes({ error: 'Invite link is invalid or has expired.' }, 410);
+    const invite = JSON.parse(raw);
+    if (invite.used) return jsonRes({ error: 'This invite link has already been used.' }, 410);
+    if (invite.linkToken !== token) return jsonRes({ error: 'Invite token does not match this booking link.' }, 400);
+    // Trust the server-stored name/email — ignore any client-submitted values
+    resolvedName  = invite.candidateName;
+    resolvedEmail = invite.candidateEmail;
+  }
+
+  // ── Flow B: Public link — require candidate to supply their own info ──
+  if (!resolvedName || !resolvedEmail || !slotStart) {
     return jsonRes({ error: 'candidateName, candidateEmail and slotStart are required' }, 400);
   }
 
@@ -1715,17 +1765,28 @@ async function createBookingHandler(token, request) {
   const bookingId = uid();
   await INTERVIEW_DATA.put(lockKey, bookingId, { expirationTtl: 3600 }); // 1-hour TTL
 
+  // Mark invite token as used (prevents double-booking via same invite link)
+  if (inviteToken) {
+    const raw = await INTERVIEW_DATA.get(`booking:invite:${inviteToken}`);
+    if (raw) {
+      const invite = JSON.parse(raw);
+      invite.used = true;
+      await INTERVIEW_DATA.put(`booking:invite:${inviteToken}`, JSON.stringify(invite), { expirationTtl: 60 * 60 * 24 * 30 });
+    }
+  }
+
   // Create booking record
   const booking = {
     id:             bookingId,
     linkToken:      token,
-    candidateName:  candidateName.trim(),
-    candidateEmail: candidateEmail.trim(),
+    candidateName:  resolvedName,
+    candidateEmail: resolvedEmail,
     slotStart,
     slotEnd,
     candidateTz:    candidateTz || 'UTC',
     status:         'confirmed',
     createdAt:      Date.now(),
+    inviteToken:    inviteToken || null,
     calendarEventId:  null,
     calendarEventUrl: null,
   };
