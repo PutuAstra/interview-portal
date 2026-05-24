@@ -1644,7 +1644,7 @@ async function getBookingInviteHandler(inviteToken) {
   const raw = await INTERVIEW_DATA.get(`booking:invite:${inviteToken}`);
   if (!raw) return jsonRes({ error: 'Invite link is invalid or has expired' }, 404);
   const invite = JSON.parse(raw);
-  if (invite.used) return jsonRes({ error: 'This invite link has already been used' }, 410);
+  if (invite.used) return jsonRes({ error: 'This invite link has already been used', reason: 'ALREADY_BOOKED' }, 410);
   // Return candidate info — frontend uses this to pre-fill & lock the form
   return jsonRes({
     candidateName:  invite.candidateName,

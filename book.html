@@ -204,23 +204,73 @@ let _linkInfo      = null;
 let _inviteInfo    = null;  // { candidateName, candidateEmail } if Flow A
 
 // ── Init ──────────────────────────────────────────────────────
-
+// Layer 1: normal page load + forward/back history navigation
 window.addEventListener('DOMContentLoaded', () => {
   if (!token) return renderError('Invalid booking link. No token provided.');
+
+  // If this page was reached via history.back() from a completion state,
+  // history.state will carry the lock marker set in renderConfirmation().
+  const st = history.state;
+  if (st?.bookingDone) {
+    // Re-render the confirmation card from stored state — no server call needed
+    return renderConfirmation(st.name, st.email, { start: st.slotStart, end: st.slotEnd }, {}, true);
+  }
+  if (st?.bookingLocked) {
+    return renderAlreadyBooked(true);
+  }
+
   loadSlots();
 });
+
+// Layer 2: bfcache restore — DOMContentLoaded does NOT fire for back-button
+// restores from the browser's page cache (bfcache). pageshow always fires.
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted) return; // not a bfcache restore — DOMContentLoaded handled it
+  if (inviteToken) verifyAndLockIfUsed();
+});
+
+// Layer 3: in-page popstate (history.go(), single-page navigation)
+window.addEventListener('popstate', () => {
+  if (inviteToken) verifyAndLockIfUsed();
+});
+
+// Re-verify token state server-side (always bypasses cache).
+// Called on every bfcache/popstate event.
+async function verifyAndLockIfUsed() {
+  try {
+    await apiFetch('GET', `/api/booking/invite/${inviteToken}`, null, { noCache: true });
+    // Token still valid — page content is already correct
+  } catch (e) {
+    if (e.status === 410 || e.reason === 'ALREADY_BOOKED') return renderAlreadyBooked(true);
+    if (e.status === 404) return renderAlreadyBooked(false);
+    // Network errors — don't disrupt the page
+  }
+}
+
+// ── Load slots (primary init path) ───────────────────────────
 
 async function loadSlots() {
   const root = document.getElementById('root');
   root.innerHTML = '<div class="spinner"></div>';
   try {
-    // Resolve invite info (Flow A) and slot data in parallel
-    const [data, invite] = await Promise.all([
-      apiFetch('GET', `/api/booking/slots/${token}`),
-      inviteToken ? apiFetch('GET', `/api/booking/invite/${inviteToken}`).catch(() => null) : Promise.resolve(null),
-    ]);
+    // Flow A: verify invite token with full cache-bypass BEFORE loading slots.
+    // A .catch(() => null) here would re-open the exploit — errors must be handled.
+    let invite = null;
+    if (inviteToken) {
+      try {
+        invite = await apiFetch('GET', `/api/booking/invite/${inviteToken}`, null, { noCache: true });
+      } catch (e) {
+        // 410 = token used (back-button exploit attempt, shared link, replay)
+        // 404 = token expired or never existed
+        // Either way: hard-lock — never fall back to public Flow B form
+        if (e.status === 410 || e.reason === 'ALREADY_BOOKED') return renderAlreadyBooked(true);
+        return renderAlreadyBooked(false);  // 404 / unknown — treat as expired
+      }
+    }
+
+    const data  = await apiFetch('GET', `/api/booking/slots/${token}`, null, { noCache: true });
     _linkInfo   = data;
-    _inviteInfo = invite;   // null = Flow B (public link)
+    _inviteInfo = invite;  // null = Flow B (public link)
     renderSlotPicker(data);
   } catch (e) {
     renderError(e.message);
@@ -386,7 +436,17 @@ async function submitBooking() {
   }
 }
 
-function renderConfirmation(name, email, slot, result) {
+function renderConfirmation(name, email, slot, result, fromHistory = false) {
+  // Stamp history state so any future back-button navigation to this URL
+  // is immediately detected and re-renders the confirmation — never the form.
+  if (!fromHistory && window.history?.replaceState) {
+    window.history.replaceState(
+      { bookingDone: true, name, email, slotStart: slot.start, slotEnd: slot.end },
+      '',
+      window.location.href
+    );
+  }
+
   const root = document.getElementById('root');
   const d = new Date(slot.start);
   const dateStr = d.toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric', year:'numeric' });
@@ -411,6 +471,32 @@ function renderConfirmation(name, email, slot, result) {
   `;
 }
 
+// ── Already-booked / expired lock screen ─────────────────────
+// This is the terminal state. No form, no slot picker — ever.
+
+function renderAlreadyBooked(isUsed = true) {
+  // Stamp history state so back-button re-entry also hits this lock screen
+  if (window.history?.replaceState) {
+    window.history.replaceState({ bookingLocked: true }, '', window.location.href);
+  }
+  document.getElementById('root').innerHTML = `
+    <div class="card">
+      <div class="confirm-box">
+        <div class="confirm-icon">${isUsed ? '✅' : '🔒'}</div>
+        <div class="confirm-title">${isUsed ? 'Interview Already Booked' : 'Link Unavailable'}</div>
+        <div class="confirm-sub" style="margin-top:16px">
+          ${isUsed
+            ? 'Your interview has already been confirmed. Please check your email for the meeting details and Teams link.'
+            : 'This booking link has expired or is no longer valid.'}
+        </div>
+        <div class="confirm-sub" style="margin-top:12px">
+          Need to make a change? Contact <strong style="color:var(--text)">CTI Group</strong> directly.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ── Error ─────────────────────────────────────────────────────
 
 function renderError(msg) {
@@ -425,16 +511,25 @@ function renderError(msg) {
 
 // ── API ───────────────────────────────────────────────────────
 
-async function apiFetch(method, path, body) {
+async function apiFetch(method, path, body, { noCache = false } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (noCache) {
+    // Force the browser and any CDN/proxy to skip cached responses.
+    // Critical for invite-token verification — must always hit the origin.
+    headers['Cache-Control'] = 'no-store, no-cache, must-revalidate';
+    headers['Pragma']        = 'no-cache';
+  }
   const res = await fetch(WORKER_URL + path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    cache: noCache ? 'no-store' : 'default',
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({ error: 'Server error' }));
   if (!res.ok) {
-    const err = new Error(data.error || 'Request failed');
-    err.status = res.status;
+    const err    = new Error(data.error || 'Request failed');
+    err.status   = res.status;
+    err.reason   = data.reason;  // e.g. 'ALREADY_BOOKED' from the worker
     throw err;
   }
   return data;
