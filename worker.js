@@ -80,6 +80,9 @@ async function route(request) {
   }
 
   // Two-way sessions
+  if (seg[0] === 'tw-sessions' && seg[1] === 'unified' && seg.length === 2 && m === 'GET') {
+    return listUnifiedTWSessions(request);
+  }
   if (seg[0] === 'tw-sessions' && seg.length === 1) {
     if (m === 'GET')  return listTWSessions(request);
     if (m === 'POST') return createTWSession(request);
@@ -165,6 +168,9 @@ async function route(request) {
   }
   if (seg[0] === 'booking' && seg[1] === 'booking' && seg.length === 3 && m === 'DELETE') {
     return cancelBookingHandler(seg[2], request);
+  }
+  if (seg[0] === 'booking' && seg[1] === 'booking' && seg.length === 3 && m === 'PUT') {
+    return updateBookingStatusHandler(seg[2], request);
   }
   // Public routes (no admin key required)
   if (seg[0] === 'booking' && seg[1] === 'slots' && seg.length === 3 && m === 'GET') {
@@ -666,6 +672,88 @@ async function listTWSessions(request) {
   const ids = (await kvGet('tw-session:list')) || [];
   const items = await Promise.all(ids.map(id => kvGet(`tw-session:${id}`)));
   return jsonRes(items.filter(Boolean));
+}
+
+// ── Unified Two-Way list (Direct Invite + Self-Booked merged) ─
+
+async function listUnifiedTWSessions(request) {
+  requireAdmin(request);
+
+  // 1. Direct Invite sessions (tw-session:*)
+  const twIds   = (await kvGet('tw-session:list')) || [];
+  const twItems = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)))).filter(Boolean);
+  const directItems = twItems.map(s => ({
+    id:                   s.id,
+    scheduling_source:    'DIRECT_INVITE',
+    candidateName:        s.candidateName,
+    candidateEmail:       s.candidateEmail       || '',
+    position:             s.position             || '',
+    scheduledAt:          s.scheduledAt          || null,
+    duration:             s.duration             || 30,
+    meetingLink:          s.meetingLink          || null,
+    teamsGenerated:       s.teamsGenerated       || false,
+    status:               s.status               || 'scheduled',
+    createdAt:            s.createdAt            || 0,
+    notes:                s.notes                || '',
+    recordingDriveItemId: s.recordingDriveItemId || null,
+    recordingFileName:    s.recordingFileName    || null,
+    recordingWebUrl:      s.recordingWebUrl      || null,
+    linkToken:            null,
+    linkTitle:            null,
+  }));
+
+  // 2. Candidate Booking sessions (booking:booking:*)
+  const linkTokens = (await kvGet('booking:link:list')) || [];
+  const links      = await Promise.all(linkTokens.map(t => kvGet(`booking:link:${t}`)));
+
+  const bookingArrays = await Promise.all(
+    linkTokens.map(async (t, i) => {
+      const link = links[i];
+      if (!link) return [];
+      const ids      = (await kvGet(`booking:link:${t}:bookings`)) || [];
+      const bookings = (await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)))).filter(Boolean);
+      return bookings.map(b => ({
+        id:                   b.id,
+        scheduling_source:    'CANDIDATE_BOOKING',
+        candidateName:        b.candidateName,
+        candidateEmail:       b.candidateEmail   || '',
+        position:             link.position || link.title || '',
+        scheduledAt:          b.slotStart         || null,
+        duration:             link.duration       || 30,
+        meetingLink:          b.meetingLink       || null,
+        teamsGenerated:       !!b.meetingLink,
+        // normalise: booking uses 'confirmed', unified uses 'scheduled'
+        status:               b.status === 'confirmed' ? 'scheduled' : (b.status || 'scheduled'),
+        createdAt:            b.createdAt         || 0,
+        notes:                '',
+        recordingDriveItemId: null,
+        recordingFileName:    null,
+        recordingWebUrl:      null,
+        linkToken:            b.linkToken,
+        linkTitle:            link.title          || '',
+        calendarEventId:      b.calendarEventId   || null,
+      }));
+    })
+  );
+
+  const unified = [...directItems, ...bookingArrays.flat()]
+    .sort((a, b) => (b.scheduledAt || 0) - (a.scheduledAt || 0));
+
+  return jsonRes(unified);
+}
+
+// ── Update self-booked session status (e.g. mark completed) ──
+
+async function updateBookingStatusHandler(bookingId, request) {
+  requireAdmin(request);
+  const booking = await kvGet(`booking:booking:${bookingId}`);
+  if (!booking) return jsonRes({ error: 'Not found' }, 404);
+  const { status } = await request.json();
+  const allowed = ['completed', 'cancelled', 'confirmed'];
+  if (!allowed.includes(status)) return jsonRes({ error: 'Invalid status' }, 400);
+  booking.status = status;
+  await kvPut(`booking:booking:${bookingId}`, booking);
+  return jsonRes(booking);
 }
 
 async function updateTWSession(id, request) {

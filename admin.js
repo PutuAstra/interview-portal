@@ -15,6 +15,7 @@ let _allSessions = [];
 let _sessionFilter = 'all';
 let _allTWSessions = [];
 let _twFilter = 'all';
+let _twSourceFilter = 'all'; // 'all' | 'DIRECT_INVITE' | 'CANDIDATE_BOOKING'
 let _twSort = 'asc';
 let _bulkRows = [];
 let _bulkHeaders = [];
@@ -323,23 +324,42 @@ async function renderTWListPage() {
   main.innerHTML = `
     <div class="flex justify-between items-center mb-16">
       <h2>Two-Way Interview Sessions</h2>
-      <button class="btn btn-primary" onclick="gotoPage('tw-schedule')">+ Schedule</button>
+      <button class="btn btn-primary" onclick="gotoPage('tw-schedule')">+ Schedule Direct Invite</button>
     </div>
-    <div class="flex gap-8 mb-16 items-center">
+
+    <!-- Row 1: Search + Status filters -->
+    <div class="flex gap-8 mb-10 items-center" style="flex-wrap:wrap">
       <input type="text" id="tw-search" placeholder="Search candidates…"
         oninput="filterAndRenderTWSessions()"
         style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;width:220px" />
       <div class="flex gap-8">
-        <button class="filter-chip active" id="tw-fc-all"       onclick="setTWFilter('all')">All</button>
+        <button class="filter-chip active" id="tw-fc-all"        onclick="setTWFilter('all')">All Status</button>
         <button class="filter-chip"        id="tw-fc-scheduled"  onclick="setTWFilter('scheduled')">Scheduled</button>
         <button class="filter-chip"        id="tw-fc-completed"  onclick="setTWFilter('completed')">Completed</button>
         <button class="filter-chip"        id="tw-fc-cancelled"  onclick="setTWFilter('cancelled')">Cancelled</button>
       </div>
     </div>
+
+    <!-- Row 2: Source filter -->
+    <div class="flex gap-8 mb-16 items-center">
+      <span style="font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap">Source:</span>
+      <div class="flex gap-8">
+        <button class="filter-chip active" id="tw-src-all"    onclick="setTWSourceFilter('all')">All</button>
+        <button class="filter-chip"        id="tw-src-direct" onclick="setTWSourceFilter('DIRECT_INVITE')"
+          style="display:inline-flex;align-items:center;gap:4px">
+          <span style="font-size:11px">✉</span> Direct Invite
+        </button>
+        <button class="filter-chip"        id="tw-src-booked" onclick="setTWSourceFilter('CANDIDATE_BOOKING')"
+          style="display:inline-flex;align-items:center;gap:4px">
+          <span style="font-size:11px">🗓</span> Self-Booked
+        </button>
+      </div>
+    </div>
+
     <div class="tw-table-header">
       <span>Candidate</span>
       <span>Position</span>
-      <span style="cursor:pointer;user-select:none" onclick="toggleTWSort()">Scheduled <span id="tw-sort-indicator">↑</span></span>
+      <span style="cursor:pointer;user-select:none" onclick="toggleTWSort()">Scheduled <span id="tw-sort-indicator">↓</span></span>
       <span style="text-align:center">Status</span>
       <span style="text-align:right">Actions</span>
     </div>
@@ -353,9 +373,10 @@ async function loadTWSessions() {
   if (!el) return;
   el.innerHTML = '<div class="empty-state">Loading…</div>';
   try {
-    const sessions = await apiJSON('GET', '/api/tw-sessions');
-    _allTWSessions = sessions;
-    _twFilter = 'all';
+    const sessions    = await apiJSON('GET', '/api/tw-sessions/unified');
+    _allTWSessions    = sessions;
+    _twFilter         = 'all';
+    _twSourceFilter   = 'all';
     setTWFilter('all');
   } catch (e) {
     el.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
@@ -378,10 +399,21 @@ function setTWFilter(filter) {
   filterAndRenderTWSessions();
 }
 
+function setTWSourceFilter(source) {
+  _twSourceFilter = source;
+  const idMap = { all: 'tw-src-all', DIRECT_INVITE: 'tw-src-direct', CANDIDATE_BOOKING: 'tw-src-booked' };
+  Object.entries(idMap).forEach(([key, id]) => {
+    const chip = document.getElementById(id);
+    if (chip) chip.classList.toggle('active', key === source);
+  });
+  filterAndRenderTWSessions();
+}
+
 function filterAndRenderTWSessions() {
   const query = (document.getElementById('tw-search')?.value || '').trim().toLowerCase();
   let list = _allTWSessions.filter(s => {
     if (_twFilter !== 'all' && s.status !== _twFilter) return false;
+    if (_twSourceFilter !== 'all' && s.scheduling_source !== _twSourceFilter) return false;
     if (query && !s.candidateName.toLowerCase().includes(query) &&
         !(s.candidateEmail || '').toLowerCase().includes(query) &&
         !(s.position || '').toLowerCase().includes(query)) return false;
@@ -406,39 +438,60 @@ function renderTWSessionRow(s) {
   const dt = s.scheduledAt ? new Date(s.scheduledAt) : null;
   const dateStr = dt ? dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
   const timeStr = dt ? dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
+  const safeName = esc(s.candidateName).replace(/'/g, "\\'");
 
+  // Status badge
   const statusBadge = {
     scheduled: `<span class="badge badge-pending">Scheduled</span>`,
     completed:  `<span class="badge badge-completed">Completed</span>`,
     cancelled:  `<span class="badge" style="background:rgba(148,163,184,0.15);color:var(--muted)">Cancelled</span>`,
   }[s.status] || `<span class="badge badge-pending">${esc(s.status)}</span>`;
 
+  // Source badge
+  const sourceBadge = s.scheduling_source === 'DIRECT_INVITE'
+    ? `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(59,130,246,0.1);color:#3b82f6;border:1px solid rgba(59,130,246,0.2);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap;margin-top:3px">✉ Direct Invite</span>`
+    : `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,0.1);color:#16a34a;border:1px solid rgba(22,163,74,0.2);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap;margin-top:3px">🗓 Self-Booked</span>`;
+
+  // Actions — split by scheduling_source
   let actions = '';
-  if (s.status === 'scheduled') {
-    actions = `
-      ${s.meetingLink ? `<a href="${esc(s.meetingLink)}" target="_blank" class="btn btn-ghost" style="padding:4px 8px;font-size:12px">${s.teamsGenerated ? '🟦' : '🔗'} Join</a>` : ''}
-      <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="markTWCompleted('${s.id}')">✓ Done</button>
-      <button class="btn btn-danger"  style="padding:4px 10px;font-size:12px" onclick="cancelTWSession('${s.id}', '${esc(s.candidateName)}')">Cancel</button>
-    `;
-  } else if (s.status === 'completed') {
-    const recBtn = s.recordingDriveItemId
-      ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px;color:var(--accent);border-color:var(--accent)" onclick="openTWRecording('${s.id}')">▶ Recording</button>`
-      : `<button class="btn btn-ghost"   style="padding:4px 10px;font-size:12px" title="Search OneDrive Recordings folder" onclick="fetchAndRefreshTWRecording('${s.id}')">⟳ Fetch Recording</button>`;
-    actions = `
-      ${recBtn}
-      <button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Delete session" onclick="deleteTWSession('${s.id}', '${esc(s.candidateName)}')">🗑</button>
-    `;
+  if (s.scheduling_source === 'DIRECT_INVITE') {
+    if (s.status === 'scheduled') {
+      actions = `
+        ${s.meetingLink ? `<a href="${esc(s.meetingLink)}" target="_blank" class="btn btn-ghost" style="padding:4px 8px;font-size:12px">${s.teamsGenerated ? '🟦' : '🔗'} Join</a>` : ''}
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="markTWCompleted('${s.id}')">✓ Done</button>
+        <button class="btn btn-danger"  style="padding:4px 10px;font-size:12px" onclick="cancelTWSession('${s.id}','${safeName}')">Cancel</button>
+      `;
+    } else if (s.status === 'completed') {
+      const recBtn = s.recordingDriveItemId
+        ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px;color:var(--accent);border-color:var(--accent)" onclick="openTWRecording('${s.id}')">▶ Recording</button>`
+        : `<button class="btn btn-ghost"   style="padding:4px 10px;font-size:12px" title="Search OneDrive Recordings folder" onclick="fetchAndRefreshTWRecording('${s.id}')">⟳ Fetch</button>`;
+      actions = `${recBtn}<button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" onclick="deleteTWSession('${s.id}','${safeName}')">🗑</button>`;
+    } else {
+      actions = `<button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" onclick="deleteTWSession('${s.id}','${safeName}')">🗑</button>`;
+    }
   } else {
-    actions = `<button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Delete session" onclick="deleteTWSession('${s.id}', '${esc(s.candidateName)}')">🗑</button>`;
+    // CANDIDATE_BOOKING
+    if (s.status === 'scheduled') {
+      actions = `
+        ${s.meetingLink ? `<a href="${esc(s.meetingLink)}" target="_blank" class="btn btn-ghost" style="padding:4px 8px;font-size:12px">🟦 Join</a>` : ''}
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="markSelfBookedCompleted('${s.id}')">✓ Done</button>
+        <button class="btn btn-danger"  style="padding:4px 10px;font-size:12px" onclick="cancelSelfBookedSession('${s.id}','${safeName}')">Cancel</button>
+      `;
+    } else {
+      actions = `<span class="text-muted" style="font-size:12px">—</span>`;
+    }
   }
+
+  const positionLabel = s.position || (s.linkTitle ? `via ${esc(s.linkTitle)}` : '—');
 
   return `
     <div class="tw-session-row">
       <div style="min-width:0">
         <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
         <div class="text-muted" style="font-size:11px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.teamsGenerated ? ' &nbsp;·&nbsp; <span style="color:#6264a7">Teams</span>' : ''}</div>
+        ${sourceBadge}
       </div>
-      <div style="font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.position || '—')}</div>
+      <div style="font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${positionLabel}</div>
       <div>
         <div style="font-size:13px">${dateStr}</div>
         <div class="text-muted" style="font-size:11px">${timeStr}${s.duration ? ' · ' + s.duration + ' min' : ''}</div>
@@ -511,6 +564,25 @@ async function deleteTWSession(id, name) {
   try {
     await apiJSON('DELETE', `/api/tw-session/${id}`);
     toast('Session deleted', 'success');
+    await loadTWSessions();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// Self-Booked session actions
+async function markSelfBookedCompleted(id) {
+  if (!confirm('Mark this booking as completed?')) return;
+  try {
+    await apiJSON('PUT', `/api/booking/booking/${id}`, { status: 'completed' });
+    toast('Marked as completed', 'success');
+    await loadTWSessions();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function cancelSelfBookedSession(id, name) {
+  if (!confirm(`Cancel ${name}'s booking?\nThis will remove the Teams meeting and send a cancellation email.`)) return;
+  try {
+    await apiJSON('DELETE', `/api/booking/booking/${id}`);
+    toast('Booking cancelled & candidate notified', 'success');
     await loadTWSessions();
   } catch (e) { toast(e.message, 'error'); }
 }
