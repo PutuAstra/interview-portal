@@ -417,35 +417,42 @@ function emailWrap(headerBg, title, bodyRows) {
 <tr><td align="center" style="padding:20px 0">
   <!--[if mso]><table width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
   <table cellpadding="0" cellspacing="0" border="0" width="600" bgcolor="#ffffff"
-         style="background-color:#ffffff;border:1px solid #e5e7eb;border-collapse:collapse;width:600px;max-width:600px;table-layout:fixed">
-    <!-- HEADER: two sibling TDs — no outer wrapper — each owns its own bgcolor -->
+         style="background-color:#ffffff;border:1px solid #e5e7eb;border-collapse:collapse;max-width:600px;width:100%">
+    <!-- HEADER: outer TD owns the banner color; inner table is fixed-layout to lock logo to 90px -->
     <tr>
-      <td bgcolor="#ffffff" width="90" align="center" valign="middle"
-          style="background-color:#ffffff;width:90px;max-width:90px;padding:14px 15px">
-        <img src="${CTI_LOGO_URL}" alt="CTI Group" width="60" border="0"
-             style="display:block;width:60px;max-width:60px;height:auto;border:0;outline:0" />
-      </td>
-      <td bgcolor="${headerBg}" valign="middle"
-          style="background-color:${headerBg};padding:18px 24px">
-        <p style="margin:0;padding:0;color:#ffffff;font-size:22px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;line-height:28px">${title}</p>
-        <p style="margin:4px 0 0 0;padding:0;color:#ffffff;font-size:13px;font-family:Arial,Helvetica,sans-serif;line-height:18px">CTI Group Worldwide Services, Inc.</p>
+      <td bgcolor="${headerBg}" style="background-color:${headerBg};padding:0;font-size:0;line-height:0">
+        <table cellpadding="0" cellspacing="0" border="0" width="600"
+               style="width:600px;border-collapse:collapse;table-layout:fixed">
+          <tr>
+            <td bgcolor="#ffffff" width="90" align="center" valign="middle"
+                style="background-color:#ffffff;width:90px;padding:14px 15px">
+              <img src="${CTI_LOGO_URL}" alt="CTI Group" width="60" border="0"
+                   style="display:block;width:60px;max-width:60px;height:auto;border:0;outline:0" />
+            </td>
+            <td bgcolor="${headerBg}" valign="middle"
+                style="background-color:${headerBg};padding:18px 24px">
+              <p style="margin:0;padding:0;color:#ffffff;font-size:22px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;line-height:28px">${title}</p>
+              <p style="margin:4px 0 0 0;padding:0;color:#ffffff;font-size:13px;font-family:Arial,Helvetica,sans-serif;line-height:18px">CTI Group Worldwide Services, Inc.</p>
+            </td>
+          </tr>
+        </table>
       </td>
     </tr>
     <!-- BODY -->
     <tr>
-      <td colspan="2" style="padding:32px 32px 24px 32px">
+      <td style="padding:32px 32px 24px 32px">
         ${bodyRows}
       </td>
     </tr>
     <!-- DIVIDER -->
-    <tr><td colspan="2" style="padding:0 32px">
+    <tr><td style="padding:0 32px">
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr><td style="border-top:1px solid #e5e7eb;font-size:0;line-height:0">&nbsp;</td></tr>
       </table>
     </td></tr>
     <!-- FOOTER -->
     <tr>
-      <td colspan="2" bgcolor="#f9fafb" style="background-color:#f9fafb;padding:16px 32px">
+      <td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:16px 32px">
         <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;font-family:Arial,Helvetica,sans-serif;line-height:18px">
           CTI Group Worldwide Services, Inc. &nbsp;&middot;&nbsp; ClaudeHire Portal<br />
           This is an automated message &mdash; please do not reply to this email.
