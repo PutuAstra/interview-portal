@@ -259,12 +259,19 @@ async function loadSlots() {
     if (inviteToken) {
       try {
         invite = await apiFetch('GET', `/api/booking/invite/${inviteToken}`, null, { noCache: true });
+        // 200 → token is valid & unused → proceed to slot picker (Flow A)
       } catch (e) {
-        // 410 = token used (back-button exploit attempt, shared link, replay)
-        // 404 = token expired or never existed
-        // Either way: hard-lock — never fall back to public Flow B form
-        if (e.status === 410 || e.reason === 'ALREADY_BOOKED') return renderAlreadyBooked(true);
-        return renderAlreadyBooked(false);  // 404 / unknown — treat as expired
+        if (e.status === 410 || e.reason === 'ALREADY_BOOKED') {
+          // Token explicitly confirmed as already used by the server → hard-lock
+          return renderAlreadyBooked(true);
+        }
+        if (e.status === 404) {
+          // Token not found in KV → expired TTL or never issued → hard-lock
+          return renderAlreadyBooked(false);
+        }
+        // Network error, 5xx, CORS failure, etc. — do NOT lock the user out.
+        // Show a retryable error so a genuine first-time click isn't permanently blocked.
+        return renderError('Could not verify your invitation link. Please check your connection and try again.');
       }
     }
 
@@ -512,16 +519,14 @@ function renderError(msg) {
 // ── API ───────────────────────────────────────────────────────
 
 async function apiFetch(method, path, body, { noCache = false } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (noCache) {
-    // Force the browser and any CDN/proxy to skip cached responses.
-    // Critical for invite-token verification — must always hit the origin.
-    headers['Cache-Control'] = 'no-store, no-cache, must-revalidate';
-    headers['Pragma']        = 'no-cache';
-  }
+  // NOTE: Do NOT add Cache-Control / Pragma as *request* headers.
+  // They are non-simple CORS headers — the worker's Access-Control-Allow-Headers
+  // doesn't list them, so the browser's preflight would block the request entirely.
+  // The fetch `cache` option is a browser-side mechanism that achieves the same
+  // goal (bypass HTTP cache) without touching request headers or triggering CORS.
   const res = await fetch(WORKER_URL + path, {
     method,
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     cache: noCache ? 'no-store' : 'default',
     body: body ? JSON.stringify(body) : undefined,
   });
