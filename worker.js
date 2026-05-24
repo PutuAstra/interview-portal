@@ -417,11 +417,11 @@ function emailWrap(headerBg, title, bodyRows) {
 <tr><td align="center" style="padding:20px 0">
   <!--[if mso]><table width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
   <table cellpadding="0" cellspacing="0" border="0" width="600" bgcolor="#ffffff"
-         style="background-color:#ffffff;border:1px solid #e5e7eb;border-collapse:collapse;max-width:600px;width:100%">
+         style="background-color:#ffffff;border:1px solid #e5e7eb;border-collapse:collapse;width:600px;max-width:600px;table-layout:fixed">
     <!-- HEADER: two sibling TDs — no outer wrapper — each owns its own bgcolor -->
     <tr>
       <td bgcolor="#ffffff" width="90" align="center" valign="middle"
-          style="background-color:#ffffff;width:90px;padding:14px 15px">
+          style="background-color:#ffffff;width:90px;max-width:90px;padding:14px 15px">
         <img src="${CTI_LOGO_URL}" alt="CTI Group" width="60" border="0"
              style="display:block;width:60px;max-width:60px;height:auto;border:0;outline:0" />
       </td>
