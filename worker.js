@@ -711,7 +711,7 @@ async function listUnifiedTWSessions(request) {
       const link = links[i];
       if (!link) return [];
       const ids      = (await kvGet(`booking:link:${t}:bookings`)) || [];
-      const bookings = (await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)))).filter(Boolean);
+      const bookings = (await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)))).filter(b => b && b.status !== 'cancelled');
       return bookings.map(b => ({
         id:                   b.id,
         scheduling_source:    'CANDIDATE_BOOKING',
