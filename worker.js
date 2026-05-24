@@ -1708,8 +1708,12 @@ async function cancelBookingHandler(bookingId, request) {
   booking.cancelledAt = Date.now();
   await kvPut(`booking:booking:${bookingId}`, booking);
 
-  // Free up the slot-lock key so the slot becomes available again
-  await INTERVIEW_DATA.delete(`booking:slot:${booking.linkToken}:${booking.slotStart}`);
+  // Free up the slot-lock keys (delete both global and legacy per-link format
+  // so cancellations work correctly for bookings made before this deployment)
+  await Promise.all([
+    INTERVIEW_DATA.delete(`booking:slot:global:${booking.slotStart}`),
+    INTERVIEW_DATA.delete(`booking:slot:${booking.linkToken}:${booking.slotStart}`),
+  ]);
 
   // ── Delete Teams calendar event ───────────────────────────────
   if (booking.calendarEventId) {
@@ -1738,9 +1742,13 @@ async function cancelBookingHandler(bookingId, request) {
 
 // ── Slot generation (public) ──────────────────────────────────
 
-// blockedDates: Set of 'YYYY-MM-DD' strings (Step 2 — holiday protection)
-// bookedSlotStarts: Set of UTC timestamps (Step 4 — existing bookings)
-function generateBookingSlots(link, bookedSlotStarts, blockedDates = new Set()) {
+// blockedDates:  Set of 'YYYY-MM-DD' strings  (Step 2 — holiday protection)
+// blockedRanges: Array of { start, end } UTC ms (Step 4 — ALL confirmed bookings
+//                across every link + direct-invite tw-sessions).
+//                Uses overlap arithmetic instead of exact-start matching so that
+//                a 30-min booking correctly blocks a 60-min slot on another link
+//                that shares the same start time.
+function generateBookingSlots(link, blockedRanges, blockedDates = new Set()) {
   const { slotRules = [], duration = 30, daysAhead = 14, tzOffset = 0 } = link;
   const durationMs  = duration * 60 * 1000;
   const tzOffsetMs  = tzOffset * 60 * 1000;
@@ -1760,7 +1768,7 @@ function generateBookingSlots(link, bookedSlotStarts, blockedDates = new Set()) 
 
     // ── Step 2: Holiday hard-block — wipe entire day if it's a holiday ──
     const localDateStr = `${y}-${String(mo + 1).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
-    if (blockedDates.has(localDateStr)) continue; // skip ALL slots this day
+    if (blockedDates.has(localDateStr)) continue;
 
     // ── Step 1: Check recruiter's weekly template ────────────────
     const dayRules = slotRules.filter(r => r.day === weekday);
@@ -1778,8 +1786,11 @@ function generateBookingSlots(link, bookedSlotStarts, blockedDates = new Set()) 
       let t = startUtc;
       while (t + durationMs <= endUtc) {
         if (t > now + bufferMs) {
-          // Step 4: include booked slots with a flag so the UI can grey them out
-          slots.push({ start: t, end: t + durationMs, booked: bookedSlotStarts.has(t) });
+          // Overlap check: slot [t, t+duration] is taken if ANY blocked range
+          // intersects it. Two intervals overlap when: startA < endB && endA > startB
+          const slotEnd  = t + durationMs;
+          const isBooked = blockedRanges.some(r => t < r.end && slotEnd > r.start);
+          slots.push({ start: t, end: slotEnd, booked: isBooked });
         }
         t += durationMs;
       }
@@ -1833,15 +1844,43 @@ async function getBookingSlots(token) {
   // When implemented: query recruiter's Microsoft Graph calendar for
   // Busy/OOF events and add their dates to blockedDates / blockedSlots.
 
-  // ── Step 4: Filter out slots already taken by other candidates ─
-  const bookingIds     = (await kvGet(`booking:link:${token}:bookings`)) || [];
-  const existingBooks  = await Promise.all(bookingIds.map(id => kvGet(`booking:booking:${id}`)));
-  const bookedSlots    = new Set(
-    existingBooks.filter(b => b?.status === 'confirmed').map(b => b.slotStart)
+  // ── Step 4: Build global blocked time ranges ─────────────────
+  // Previously this only checked the current link's own bookings, allowing
+  // candidates to double-book the recruiter via a different link/template.
+  // Now we scan EVERY confirmed booking across ALL links plus all scheduled
+  // direct-invite (tw-session) appointments so the recruiter's calendar is
+  // treated as a single unified availability source.
+
+  // 4a. All booking links → all confirmed candidate bookings
+  const allLinkTokens    = (await kvGet('booking:link:list')) || [];
+  const allBookingIdLists = await Promise.all(
+    allLinkTokens.map(t => kvGet(`booking:link:${t}:bookings`))
   );
+  const allBookingIds  = [...new Set(allBookingIdLists.flatMap(ids => ids || []))];
+  const allBookings    = await Promise.all(allBookingIds.map(id => kvGet(`booking:booking:${id}`)));
+
+  // 4b. Direct-invite (tw-session) scheduled appointments
+  const twIds      = (await kvGet('tw-session:list')) || [];
+  const twSessions = await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)));
+
+  // 4c. Merge into unified blocked ranges [ { start, end } ] in UTC ms
+  const blockedRanges = [
+    ...allBookings
+      .filter(b => b?.status === 'confirmed')
+      .map(b => ({
+        start: b.slotStart,
+        end:   b.slotEnd ?? b.slotStart + (link.duration || 30) * 60 * 1000,
+      })),
+    ...twSessions
+      .filter(s => s?.status === 'scheduled' && s.scheduledAt)
+      .map(s => ({
+        start: s.scheduledAt,
+        end:   s.scheduledAt + (s.duration || 30) * 60 * 1000,
+      })),
+  ];
 
   // Generate slots applying all filters
-  const slots = generateBookingSlots(link, bookedSlots, blockedDates);
+  const slots = generateBookingSlots(link, blockedRanges, blockedDates);
 
   return jsonRes({
     title:      link.title,
@@ -1882,8 +1921,10 @@ async function createBookingHandler(token, request) {
 
   const slotEnd = slotStart + (link.duration || 30) * 60 * 1000;
 
-  // ── Race-condition guard: attempt to claim the slot atomically ────
-  const lockKey = `booking:slot:${token}:${slotStart}`;
+  // ── Race-condition guard: claim the slot atomically across ALL links ─
+  // Key is global (not per-link) so two candidates booking *different* templates
+  // at the same time cannot both win the same calendar slot.
+  const lockKey      = `booking:slot:global:${slotStart}`;
   const existingLock = await kvGet(lockKey);
   if (existingLock) {
     return jsonRes({ error: 'Sorry, that slot was just taken. Please pick another time.' }, 409);
