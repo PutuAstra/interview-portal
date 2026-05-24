@@ -1,0 +1,17 @@
+{
+  "name": "ClaudeHire",
+  "short_name": "ClaudeHire",
+  "description": "CTI Group Worldwide Services - ClaudeHire Admin Portal",
+  "icons": [
+    {
+      "src": "cti-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./admin.html",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#B01A18"
+}

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClaudeHire</title>
+  <link rel="icon" type="image/png" href="cti-logo.png" />
+  <link rel="apple-touch-icon" href="cti-logo.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#B01A18" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=20250522y" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
+  <style>
+    /* Circular crop box for logo */
+    #modal-crop-logo .cropper-view-box,
+    #modal-crop-logo .cropper-face { border-radius: 50%; }
+    #modal-crop-logo .cropper-view-box { outline: 2px solid #fff; outline-color: rgba(255,255,255,0.8); }
+  </style>
+</head>
+<body>
+
+<!-- Login Gate -->
+<div id="login-gate">
+  <div class="login-box card">
+    <div class="login-logo" style="text-align:center;margin-bottom:28px">
+      <img src="cti-logo.png" alt="CTI Group" style="height:80px;width:auto;display:block;margin:0 auto 12px" />
+      <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.3">CTI Group Worldwide Services, Inc.</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px">ClaudeHire Admin Portal</div>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="key-input" placeholder="Enter your password" autocomplete="off" />
+    </div>
+    <div style="text-align:center">
+      <button class="btn btn-primary btn-lg" onclick="doLogin()">Log In</button>
+    </div>
+    <p id="login-err" class="text-sm" style="color:var(--red);margin-top:10px;display:none">Incorrect key. Try again.</p>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app" style="display:none">
+
+  <div class="topbar">
+    <div class="topbar-brand" style="gap:12px">
+      <img src="cti-logo.png" alt="CTI" style="height:40px;width:auto;flex-shrink:0" />
+      <div style="display:flex;flex-direction:column;line-height:1.25">
+        <span style="font-size:13px;font-weight:700">CTI Group Worldwide Services, Inc.</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">ClaudeHire Admin Portal</span>
+      </div>
+    </div>
+    <div class="flex gap-8">
+      <span id="topbar-info" class="text-muted text-sm"></span>
+      <button class="btn btn-ghost" onclick="doLogout()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="admin-body">
+
+    <aside class="admin-sidebar">
+      <button class="sidebar-parent-btn" onclick="toggleSidebarGroup(this)" aria-expanded="true">
+        Interview Session
+        <span class="sidebar-chevron">▾</span>
+      </button>
+      <div class="sidebar-children">
+        <button class="sidebar-item sidebar-child" data-page="ow-list" onclick="gotoPage('ow-list')">One-Way Interview</button>
+        <button class="sidebar-item sidebar-child" data-page="tw-list" onclick="gotoPage('tw-list')">Two-Way Interview</button>
+        <button class="sidebar-item sidebar-child" data-page="booking" onclick="gotoPage('booking')">Booking Interview</button>
+      </div>
+      <button class="sidebar-parent-btn" onclick="toggleSidebarGroup(this)" aria-expanded="true">
+        Interview Scripts
+        <span class="sidebar-chevron">▾</span>
+      </button>
+      <div class="sidebar-children">
+        <button class="sidebar-item sidebar-child" data-page="scripts" onclick="gotoPage('scripts')">Manage Scripts</button>
+      </div>
+      <button class="sidebar-parent-btn" onclick="toggleSidebarGroup(this)" aria-expanded="true">
+        Settings
+        <span class="sidebar-chevron">▾</span>
+      </button>
+      <div class="sidebar-children">
+        <button class="sidebar-item sidebar-child" data-page="holidays" onclick="gotoPage('holidays')">Holiday &amp; Closure</button>
+      </div>
+    </aside>
+
+    <main class="admin-main" id="admin-main">
+      <div class="spinner" style="margin:auto"></div>
+    </main>
+
+  </div>
+
+</div><!-- /app -->
+
+<!-- Modal: Edit Interview -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <h2>Edit Interview</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Interview Title *</label>
+      <input type="text" id="edit-title" placeholder="e.g. J1 Intern Initial Screening" />
+    </div>
+    <div class="form-group">
+      <label>Description (shown to candidate)</label>
+      <textarea id="edit-desc" placeholder="Brief instructions for the candidate..."></textarea>
+    </div>
+    <hr class="divider" />
+    <div class="flex justify-between items-center mb-16">
+      <h3>Questions</h3>
+      <button class="btn btn-outline" onclick="addEditQuestion()">+ Add Question</button>
+    </div>
+    <div id="edit-questions-builder"></div>
+    <div class="mt-24 flex gap-8">
+      <button class="btn btn-primary" onclick="submitEditInterview()">Save Changes</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-edit')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Sessions -->
+<div class="modal-overlay" id="modal-sessions">
+  <div class="modal" style="width:calc(100vw - 160px);max-width:calc(100vw - 160px);height:calc(100vh - 140px);padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-header" style="padding:14px 24px;flex-shrink:0;border-bottom:1px solid var(--border)">
+      <h2 id="modal-interview-title">Interview</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-sessions')">✕</button>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 24px">
+
+    <!-- Invite pane -->
+    <div id="session-pane-invite" style="display:none">
+      <div class="flex justify-between items-center mb-16">
+        <h3>Invite</h3>
+        <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px;gap:2px">
+          <button class="invite-mode-btn active" id="invite-mode-single" onclick="switchInviteMode('single')">Single</button>
+          <button class="invite-mode-btn" id="invite-mode-bulk" onclick="switchInviteMode('bulk')">Bulk Import</button>
+        </div>
+      </div>
+
+      <!-- Single invite -->
+      <div id="invite-single-section">
+        <div class="mb-16 flex gap-8 items-center">
+          <input type="text" id="new-cand-name" placeholder="Candidate name *" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px" />
+          <input type="email" id="new-cand-email" placeholder="Email *" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px" />
+          <button class="btn btn-primary" onclick="generateLink()">Generate Link</button>
+        </div>
+        <div id="generated-link-box" style="display:none">
+          <p class="text-sm text-muted mb-4">Share this link with the candidate:</p>
+          <div class="link-box">
+            <span id="generated-link-text" style="flex:1"></span>
+            <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px;flex-shrink:0" onclick="copyLink()">Copy</button>
+          </div>
+          <div class="mt-8" style="text-align:right">
+            <button id="send-email-btn" class="btn btn-primary" style="display:none">✉ Send Email</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk import -->
+      <div id="invite-bulk-section" style="display:none">
+        <div id="bulk-drop-zone"
+          onclick="document.getElementById('bulk-file-input').click()"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="event.preventDefault();this.classList.remove('drag-over');handleBulkFile(event.dataTransfer.files[0])">
+          <div style="font-size:28px;margin-bottom:8px">📂</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text)">Drop Excel or CSV file here</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">or click to browse &nbsp;·&nbsp; .xlsx, .xls, .csv</div>
+        </div>
+        <input type="file" id="bulk-file-input" accept=".csv,.xlsx,.xls" style="display:none"
+          onchange="handleBulkFile(this.files[0])" />
+        <div id="bulk-preview-section" style="display:none"></div>
+        <div id="bulk-import-progress" style="display:none;margin-top:16px"></div>
+      </div>
+    </div>
+
+    <!-- Candidates pane -->
+    <div id="session-pane-candidates" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:12px;margin-bottom:14px">
+        <h3 id="sessions-heading" style="white-space:nowrap;flex-shrink:0">Candidates</h3>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+          <input type="text" id="search-candidates" placeholder="Search candidates…"
+            oninput="filterAndRenderSessions()"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:12px;width:160px;flex-shrink:0" />
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+          <button class="filter-chip active" id="fc-all"       onclick="setSessionFilter('all')">All</button>
+          <button class="filter-chip"        id="fc-pending"   onclick="setSessionFilter('pending')">Pending</button>
+          <button class="filter-chip"        id="fc-completed" onclick="setSessionFilter('completed')">Completed</button>
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+          <button class="filter-chip active" id="fd-all" onclick="setDecisionFilter('all')">All</button>
+          <button class="filter-chip"        id="fd-fwd" onclick="setDecisionFilter('move_forward')">✓ Forward</button>
+          <button class="filter-chip"        id="fd-rej" onclick="setDecisionFilter('not_moving_forward')">✗ Not Forward</button>
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+          <button class="filter-chip active" id="fs-0" onclick="setStarFilter(0)">Any ★</button>
+          <button class="filter-chip"        id="fs-1" onclick="setStarFilter(1)">★</button>
+          <button class="filter-chip"        id="fs-2" onclick="setStarFilter(2)">★★</button>
+          <button class="filter-chip"        id="fs-3" onclick="setStarFilter(3)">★★★</button>
+          <button class="filter-chip"        id="fs-4" onclick="setStarFilter(4)">★★★★</button>
+          <button class="filter-chip"        id="fs-5" onclick="setStarFilter(5)">★★★★★</button>
+        </div>
+      </div>
+
+      <div class="sessions-table-header">
+        <span style="text-align:center">#</span>
+        <span>Name</span>
+        <span style="cursor:pointer;user-select:none" onclick="toggleSessionSort('review')">Saved Review <span id="sort-review-ind" style="font-size:9px;opacity:0.6">↕</span></span>
+        <span style="cursor:pointer;user-select:none" onclick="toggleSessionSort('date')">Invited Date <span id="sort-date-ind" style="font-size:9px;opacity:0.6">↕</span></span>
+        <span style="cursor:pointer;user-select:none;text-align:center" onclick="toggleSessionSort('status')">Status <span id="sort-status-ind" style="font-size:9px;opacity:0.6">↕</span></span>
+        <span style="text-align:center">Videos</span>
+        <span style="text-align:right">Actions</span>
+      </div>
+      <div id="sessions-list"></div>
+    </div>
+  </div><!-- /scroll wrapper -->
+  </div>
+</div>
+
+<!-- Modal: Review Videos -->
+<div class="modal-overlay" id="modal-review">
+  <div class="modal" style="max-width:calc(100vw - 20px);width:calc(100vw - 20px);height:calc(100vh - 20px);padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-header" style="padding:14px 20px;flex-shrink:0;border-bottom:1px solid var(--border)">
+      <div>
+        <h2 id="review-candidate-name" style="margin:0;font-size:17px">Review</h2>
+        <p id="review-interview-title" class="text-muted text-sm" style="margin:2px 0 0"></p>
+      </div>
+      <button class="btn btn-ghost" onclick="closeModal('modal-review')">✕</button>
+    </div>
+    <div id="review-content" style="flex:1;min-height:0;display:flex"></div>
+  </div>
+</div>
+
+<!-- Modal: Crop Logo -->
+<div class="modal-overlay" id="modal-crop-logo">
+  <div class="modal" style="max-width:540px;padding:0;overflow:hidden">
+    <div class="modal-header" style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <h2>Crop Logo</h2>
+      <button class="btn btn-ghost" onclick="closeCropModal()">✕</button>
+    </div>
+    <div style="background:#111;min-height:300px;max-height:420px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+      <img id="crop-img" style="max-width:100%;display:block">
+    </div>
+    <div style="padding:14px 20px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border)">
+      <button class="btn btn-outline" onclick="closeCropModal()">Cancel</button>
+      <button class="btn btn-primary" id="apply-crop-btn" onclick="applyCrop()">✓ Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Booking Invite -->
+<div class="modal-overlay" id="modal-booking-invite">
+  <div class="modal" style="max-width:660px">
+    <div class="modal-header">
+      <div>
+        <h2 id="bi-modal-title">Invite to Book</h2>
+        <p id="bi-modal-sub" style="font-size:12px;color:var(--muted);margin-top:2px"></p>
+      </div>
+      <button class="btn btn-ghost" onclick="closeModal('modal-booking-invite')">✕</button>
+    </div>
+
+    <!-- Single / Bulk toggle -->
+    <div style="margin-bottom:20px;text-align:right">
+      <div style="display:inline-flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px;gap:2px">
+        <button class="invite-mode-btn active" id="bi-mode-single" onclick="switchBIMode('single')">Single</button>
+        <button class="invite-mode-btn"        id="bi-mode-bulk"   onclick="switchBIMode('bulk')">Bulk Import</button>
+      </div>
+    </div>
+
+    <!-- ── Single ── -->
+    <div id="bi-single-section">
+      <div class="mb-16 flex gap-8 items-center">
+        <input type="text"  id="bi-name"  placeholder="Candidate name *" autocomplete="off"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px"
+          onkeydown="if(event.key==='Enter')sendSingleBookingInvite()" />
+        <input type="email" id="bi-email" placeholder="Email *" autocomplete="off"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px"
+          onkeydown="if(event.key==='Enter')sendSingleBookingInvite()" />
+        <button class="btn btn-primary" id="bi-send-btn" style="white-space:nowrap;flex-shrink:0" onclick="sendSingleBookingInvite()">Send Invite</button>
+      </div>
+      <div id="bi-single-result" style="display:none;margin-bottom:14px"></div>
+    </div>
+
+    <!-- ── Bulk ── -->
+    <div id="bi-bulk-section" style="display:none">
+      <div id="bi-bulk-drop-zone"
+        onclick="document.getElementById('bi-bulk-file').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="event.preventDefault();this.classList.remove('drag-over');handleBIBulkFile(event.dataTransfer.files[0])"
+        style="border:2px dashed var(--border);border-radius:8px;padding:32px 20px;text-align:center;cursor:pointer;transition:border-color 0.15s"
+        onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
+        <div style="font-size:28px;margin-bottom:8px">📂</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">Drop Excel or CSV file here</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">or click to browse &nbsp;·&nbsp; .xlsx, .xls, .csv</div>
+      </div>
+      <input type="file" id="bi-bulk-file" accept=".csv,.xlsx,.xls" style="display:none"
+        onchange="handleBIBulkFile(this.files[0])" />
+      <div id="bi-bulk-preview" style="display:none"></div>
+      <div id="bi-bulk-progress" style="display:none;margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Script Client -->
+<div class="modal-overlay" id="modal-add-client">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h2>Add Client</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-client')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Client Name *</label>
+      <input type="text" id="new-client-name" placeholder="e.g. P&amp;O Cruises" autocomplete="off"
+        onkeydown="if(event.key==='Enter')submitAddClient()" />
+    </div>
+    <div class="form-group">
+      <label>Logo <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:8px">
+        <div id="client-logo-preview"
+          style="width:72px;height:72px;border-radius:50%;background:var(--bg);border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;cursor:pointer"
+          onclick="document.getElementById('client-logo-input').click()">
+          <span style="font-size:26px">🏢</span>
+        </div>
+        <div>
+          <button class="btn btn-outline" style="font-size:12px;padding:5px 14px"
+            onclick="document.getElementById('client-logo-input').click()">Choose Image</button>
+          <p class="text-sm" style="color:var(--muted);margin-top:6px">PNG, JPG, SVG</p>
+          <input type="file" id="client-logo-input" accept="image/*" style="display:none"
+            onchange="previewClientLogo(this)" />
+        </div>
+      </div>
+    </div>
+    <div class="mt-24 flex gap-8">
+      <button class="btn btn-primary" id="add-client-btn" onclick="submitAddClient()">Add Client</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-add-client')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="admin.js?v=20250524n"></script>
+</body>
+</html>

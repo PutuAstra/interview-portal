@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CTI ClaudeHire</title>
+  <link rel="icon" type="image/png" href="cti-logo.png" />
+  <link rel="apple-touch-icon" href="cti-logo.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#B01A18" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=20250522s" />
+</head>
+<body>
+
+<div class="take-container">
+
+  <div class="topbar">
+    <div class="topbar-brand">
+      <img src="cti-logo.png" alt="CTI" style="height:32px;width:auto" />
+      CTI ClaudeHire
+    </div>
+    <span id="topbar-progress" class="text-muted text-sm"></span>
+  </div>
+
+  <div class="take-main" id="take-main">
+    <!-- Content injected by interview.js -->
+    <div class="spinner" style="margin:auto"></div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script src="interview.js?v=20250522ac"></script>
+</body>
+</html>
