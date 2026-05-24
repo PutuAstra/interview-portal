@@ -328,7 +328,7 @@ async function renderTWListPage() {
     </div>
 
     <!-- Row 1: Search + Status filters -->
-    <div class="flex gap-8 mb-10 items-center" style="flex-wrap:wrap">
+    <div class="flex gap-8 mb-16 items-center" style="flex-wrap:wrap">
       <input type="text" id="tw-search" placeholder="Search candidates…"
         oninput="filterAndRenderTWSessions()"
         style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;width:220px" />
