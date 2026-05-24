@@ -387,6 +387,103 @@ async function getSession(token) {
   return jsonRes({ session, interview });
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Email helpers — Outlook-safe table-based HTML
+// ─────────────────────────────────────────────────────────────
+
+function emailButton(url, text, bg = '#B01A18') {
+  return `
+  <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 0 auto">
+    <tr>
+      <td align="center" bgcolor="${bg}" style="background-color:${bg};border-radius:6px">
+        <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${url}" style="height:44px;v-text-anchor:middle;width:220px;" arcsize="8%" stroke="f" fillcolor="${bg}"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${text}</center></v:roundrect><![endif]--><!--[if !mso]><!-->
+        <a href="${url}" target="_blank" style="mso-hide:all;background-color:${bg};border-radius:6px;color:#ffffff;display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;line-height:44px;padding:0 32px;text-align:center;text-decoration:none;-webkit-text-size-adjust:none">${text}</a>
+        <!--<![endif]-->
+      </td>
+    </tr>
+  </table>`;
+}
+
+function emailWrap(headerBg, title, bodyRows) {
+  return `<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" lang="en">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f3f4f6" style="background-color:#f3f4f6">
+<tr><td align="center" style="padding:20px 0">
+  <!--[if mso]><table width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+  <table cellpadding="0" cellspacing="0" border="0" width="600" bgcolor="#ffffff"
+         style="background-color:#ffffff;border:1px solid #e5e7eb;border-collapse:collapse;max-width:600px;width:100%">
+    <!-- HEADER -->
+    <tr>
+      <td bgcolor="${headerBg}" style="background-color:${headerBg};padding:0">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr>
+            <td bgcolor="#ffffff" width="88" align="center" valign="middle"
+                style="background-color:#ffffff;width:88px;padding:0;font-size:0;line-height:0">
+              <table cellpadding="0" cellspacing="0" border="0" align="center">
+                <tr><td style="padding:8px;font-size:0;line-height:0">
+                  <img src="${CTI_LOGO_URL}" alt="CTI Group" width="60" border="0"
+                       style="display:block;width:60px;max-width:60px;height:auto;border:0;outline:0" />
+                </td></tr>
+              </table>
+            </td>
+            <td valign="middle" style="padding:18px 24px">
+              <p style="margin:0;padding:0;color:#ffffff;font-size:22px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;line-height:28px">${title}</p>
+              <p style="margin:4px 0 0 0;padding:0;color:#ffffff;font-size:13px;font-family:Arial,Helvetica,sans-serif;line-height:18px">CTI Group Worldwide Services, Inc.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <!-- BODY -->
+    <tr>
+      <td style="padding:32px 32px 24px 32px">
+        ${bodyRows}
+      </td>
+    </tr>
+    <!-- DIVIDER -->
+    <tr><td style="padding:0 32px">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%">
+        <tr><td style="border-top:1px solid #e5e7eb;font-size:0;line-height:0">&nbsp;</td></tr>
+      </table>
+    </td></tr>
+    <!-- FOOTER -->
+    <tr>
+      <td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:16px 32px">
+        <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;font-family:Arial,Helvetica,sans-serif;line-height:18px">
+          CTI Group Worldwide Services, Inc. &nbsp;&middot;&nbsp; ClaudeHire Portal<br />
+          This is an automated message &mdash; please do not reply to this email.
+        </p>
+      </td>
+    </tr>
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+function emailInfoBox(accentColor, title, subtitle = '') {
+  return `
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:20px">
+    <tr>
+      <td width="4" bgcolor="${accentColor}" style="background-color:${accentColor};width:4px;padding:0;line-height:1px;font-size:1px">&nbsp;</td>
+      <td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:14px 18px">
+        <p style="margin:0;font-size:15px;font-weight:bold;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">${title}</p>
+        ${subtitle ? `<p style="margin:4px 0 0 0;font-size:13px;color:#6b7280;font-family:Arial,Helvetica,sans-serif">${subtitle}</p>` : ''}
+      </td>
+    </tr>
+  </table>`;
+}
+
+// ─────────────────────────────────────────────────────────────
+
 async function sendInterviewEmail(token, request) {
   requireAdmin(request);
   const session = await kvGet(`session:${token}`);
@@ -397,40 +494,19 @@ async function sendInterviewEmail(token, request) {
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <table cellpadding="0" cellspacing="0" style="width:100%;background:#B01A18">
-        <tr>
-          <td style="background:#ffffff;padding:10px;width:100px;height:100px;vertical-align:middle;text-align:center">
-            <img src="${CTI_LOGO_URL}" alt="CTI Group" style="width:80px;height:80px;object-fit:contain;display:block;margin:0 auto" />
-          </td>
-          <td style="padding:20px 28px;vertical-align:middle">
-            <div style="color:#fff;font-size:22px;font-weight:700;font-family:Arial,sans-serif">CTI ClaudeHire</div>
-            <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;font-family:Arial,sans-serif">CTI Group Worldwide Services, Inc.</div>
-          </td>
-        </tr>
-      </table>
-      <div style="padding:32px;background:#ffffff">
-        <p style="font-size:15px;color:#1a1a1a">Dear <strong>${session.candidateName}</strong>,</p>
-        <p style="color:#374151">You have been invited to complete a one-way video interview for the following position:</p>
-        <div style="background:#f9fafb;border-left:4px solid #B01A18;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
-          <strong style="font-size:16px;color:#1a1a1a">${interviewTitle}</strong>
-        </div>
-        <p style="color:#374151">Please click the button below to begin. You can complete the interview at your own pace.</p>
-        <div style="text-align:center;margin:32px 0">
-          <a href="${link}" style="background:#B01A18;color:#ffffff;padding:14px 36px;text-decoration:none;border-radius:6px;font-size:15px;font-weight:700;display:inline-block">
-            Start Interview →
-          </a>
-        </div>
-        <p style="color:#6b7280;font-size:12px">Or copy this link into your browser:</p>
-        <p style="color:#6b7280;font-size:12px;word-break:break-all;background:#f3f4f6;padding:10px;border-radius:4px">${link}</p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />
-        <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0">
-          CTI Group Worldwide Services, Inc. &nbsp;·&nbsp; ClaudeHire Portal<br/>
-          This is an automated message — please do not reply to this email.
-        </p>
-      </div>
-    </div>`;
+  const html = emailWrap('#B01A18', 'CTI ClaudeHire', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been invited to complete a one-way video interview for the following position:</p>
+    ${emailInfoBox('#B01A18', interviewTitle)}
+    <p style="margin:0 0 8px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">Please click the button below to begin. You can complete the interview at your own pace.</p>
+    ${emailButton(link, 'Start Interview')}
+    <p style="margin:20px 0 4px 0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif">Or copy this link into your browser:</p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+      <td bgcolor="#f3f4f6" style="background-color:#f3f4f6;padding:10px;word-break:break-all">
+        <p style="margin:0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif;word-break:break-all">${link}</p>
+      </td>
+    </tr></table>
+  `);
 
   const sender = EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
@@ -626,44 +702,34 @@ async function sendTWEmail(id, request) {
     ? dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : '';
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <table cellpadding="0" cellspacing="0" style="width:100%;background:#B01A18">
-        <tr>
-          <td style="background:#ffffff;padding:10px;width:100px;height:100px;vertical-align:middle;text-align:center">
-            <img src="${CTI_LOGO_URL}" alt="CTI Group" style="width:80px;height:80px;object-fit:contain;display:block;margin:0 auto" />
-          </td>
-          <td style="padding:20px 28px;vertical-align:middle">
-            <div style="color:#fff;font-size:22px;font-weight:700;font-family:Arial,sans-serif">CTI ClaudeHire</div>
-            <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;font-family:Arial,sans-serif">CTI Group Worldwide Services, Inc.</div>
-          </td>
-        </tr>
-      </table>
-      <div style="padding:32px;background:#ffffff">
-        <p style="font-size:15px;color:#1a1a1a">Dear <strong>${session.candidateName}</strong>,</p>
-        <p style="color:#374151">You have been scheduled for a two-way interview for the following position:</p>
-        <div style="background:#f9fafb;border-left:4px solid #B01A18;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
-          <strong style="font-size:16px;color:#1a1a1a">${session.position}</strong>
-        </div>
-        <table style="width:100%;border-collapse:collapse;margin:20px 0">
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:100px;vertical-align:top">Date</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:600">${dateStr}</td></tr>
-          ${timeStr ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top">Time</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:600">${timeStr}</td></tr>` : ''}
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top">Duration</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px">${session.duration} minutes</td></tr>
-          ${session.meetingLink ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top">Meeting</td><td style="padding:8px 0"><a href="${session.meetingLink}" style="color:#B01A18;font-weight:600">Join Meeting Link</a></td></tr>` : ''}
-        </table>
-        ${session.meetingLink ? `
-        <div style="text-align:center;margin:32px 0">
-          <a href="${session.meetingLink}" style="background:#B01A18;color:#ffffff;padding:14px 36px;text-decoration:none;border-radius:6px;font-size:15px;font-weight:700;display:inline-block">
-            Join Interview →
-          </a>
-        </div>` : ''}
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />
-        <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0">
-          CTI Group Worldwide Services, Inc. &nbsp;·&nbsp; ClaudeHire Portal<br/>
-          This is an automated message — please do not reply to this email.
-        </p>
-      </div>
-    </div>`;
+  const html = emailWrap('#B01A18', 'CTI ClaudeHire', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been scheduled for a two-way interview for the following position:</p>
+    ${emailInfoBox('#B01A18', session.position)}
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:20px">
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Date</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">${dateStr}</td>
+      </tr>
+      ${timeStr ? `<tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Time</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">${timeStr}</td>
+      </tr>` : ''}
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Duration</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-family:Arial,Helvetica,sans-serif">${session.duration} minutes</td>
+      </tr>
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Format</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-family:Arial,Helvetica,sans-serif">Microsoft Teams (video)</td>
+      </tr>
+      ${session.meetingLink ? `<tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Meeting</td>
+        <td valign="top" style="padding:8px 0"><a href="${session.meetingLink}" style="color:#B01A18;font-weight:bold;font-family:Arial,Helvetica,sans-serif;font-size:14px;text-decoration:underline">Join Meeting Link</a></td>
+      </tr>` : ''}
+    </table>
+    ${session.meetingLink ? emailButton(session.meetingLink, 'Join Interview') : ''}
+  `);
 
   const sender = EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
@@ -1503,48 +1569,24 @@ async function getBookingInviteHandler(inviteToken) {
 
 async function sendBookingInviteEmail(candidateName, candidateEmail, link, bookUrl) {
   const sender = EMAIL_SENDER || ONEDRIVE_USER;
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <table cellpadding="0" cellspacing="0" style="width:100%;background:#B01A18">
-        <tr>
-          <td style="background:#ffffff;padding:10px;width:100px;height:100px;vertical-align:middle;text-align:center">
-            <img src="${CTI_LOGO_URL}" alt="CTI Group" style="width:80px;height:80px;object-fit:contain;display:block;margin:0 auto" />
-          </td>
-          <td style="padding:20px 28px;vertical-align:middle">
-            <div style="color:#fff;font-size:22px;font-weight:700;font-family:Arial,sans-serif">Interview Invitation</div>
-            <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;font-family:Arial,sans-serif">CTI Group Worldwide Services, Inc.</div>
-          </td>
-        </tr>
-      </table>
-      <div style="padding:32px;background:#ffffff">
-        <p style="font-size:15px;color:#1a1a1a">Dear <strong>${candidateName}</strong>,</p>
-        <p style="color:#374151;line-height:1.6">
-          You have been invited to schedule an interview with <strong>CTI Group Worldwide Services, Inc.</strong>
-          Please use the link below to choose a time that works best for you.
-        </p>
-        <div style="background:#f9fafb;border-left:4px solid #B01A18;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
-          <strong style="font-size:15px;color:#1a1a1a">${link.title}</strong>
-          ${link.clientName ? `<div style="color:#6b7280;font-size:13px;margin-top:4px">${link.clientName}${link.position ? ' · ' + link.position : ''}</div>` : ''}
-        </div>
-        <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:100px">Format</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px">🟦 Microsoft Teams (video)</td></tr>
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Duration</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px">${link.duration || 30} minutes</td></tr>
-        </table>
-        <div style="text-align:center;margin:32px 0">
-          <a href="${bookUrl}" style="background:#B01A18;color:#fff;padding:14px 40px;text-decoration:none;border-radius:6px;font-size:15px;font-weight:700;display:inline-block">
-            Book Your Interview Time →
-          </a>
-        </div>
-        <p style="color:#6b7280;font-size:12px;text-align:center;margin-top:8px">
-          Or copy this link: <a href="${bookUrl}" style="color:#B01A18">${bookUrl}</a>
-        </p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />
-        <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0">
-          CTI Group Worldwide Services, Inc. &nbsp;·&nbsp; ClaudeHire Portal<br/>
-          This is an automated message — please do not reply to this email.
-        </p>
-      </div>
-    </div>`;
+  const html = emailWrap('#B01A18', 'Interview Invitation', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${candidateName}</strong>,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been invited to schedule an interview with <strong>CTI Group Worldwide Services, Inc.</strong> Please use the link below to choose a time that works best for you.</p>
+    ${emailInfoBox('#B01A18', link.title, link.clientName ? (link.clientName + (link.position ? ' &middot; ' + link.position : '')) : '')}
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:20px">
+      <tr>
+        <td width="120" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Format</td>
+        <td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-family:Arial,Helvetica,sans-serif">Microsoft Teams (video)</td>
+      </tr>
+      <tr>
+        <td width="120" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Duration</td>
+        <td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-family:Arial,Helvetica,sans-serif">${link.duration || 30} minutes</td>
+      </tr>
+    </table>
+    ${emailButton(bookUrl, 'Book Your Interview Time')}
+    <p style="margin:16px 0 4px 0;color:#6b7280;font-size:12px;text-align:center;font-family:Arial,Helvetica,sans-serif">Or copy this link:</p>
+    <p style="margin:0;color:#6b7280;font-size:12px;text-align:center;word-break:break-all;font-family:Arial,Helvetica,sans-serif"><a href="${bookUrl}" style="color:#B01A18;text-decoration:underline">${bookUrl}</a></p>
+  `);
 
   const accessToken = await getAccessToken();
   await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
@@ -1990,45 +2032,30 @@ async function sendBookingConfirmationEmail(booking, link) {
   const timeStr = new Date(booking.slotStart).toLocaleTimeString('en-US', { ...dtFmt, hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
   const endStr  = new Date(booking.slotEnd).toLocaleTimeString('en-US',   { ...dtFmt, hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <table cellpadding="0" cellspacing="0" style="width:100%;background:#B01A18">
-        <tr>
-          <td style="background:#ffffff;padding:10px;width:100px;height:100px;vertical-align:middle;text-align:center">
-            <img src="${CTI_LOGO_URL}" alt="CTI Group" style="width:80px;height:80px;object-fit:contain;display:block;margin:0 auto" />
-          </td>
-          <td style="padding:20px 28px;vertical-align:middle">
-            <div style="color:#fff;font-size:22px;font-weight:700;font-family:Arial,sans-serif">Interview Confirmed</div>
-            <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;font-family:Arial,sans-serif">CTI Group Worldwide Services, Inc.</div>
-          </td>
-        </tr>
-      </table>
-      <div style="padding:32px;background:#ffffff">
-        <p style="font-size:15px;color:#1a1a1a">Dear <strong>${booking.candidateName}</strong>,</p>
-        <p style="color:#374151">Your interview has been confirmed. Here are the details:</p>
-        <div style="background:#f9fafb;border-left:4px solid #B01A18;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
-          <strong style="font-size:15px;color:#1a1a1a">${link.title}</strong>
-          ${link.clientName ? `<div style="color:#6b7280;font-size:13px;margin-top:4px">${link.clientName}${link.position ? ' · ' + link.position : ''}</div>` : ''}
-        </div>
-        <table style="width:100%;border-collapse:collapse;margin:20px 0">
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:100px">Date</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:600">${dateStr}</td></tr>
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Time</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:600">${timeStr} – ${endStr}</td></tr>
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Format</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px">🟦 Microsoft Teams (video)</td></tr>
-          ${booking.meetingLink ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Meeting</td><td style="padding:8px 0"><a href="${booking.meetingLink}" style="color:#B01A18;font-weight:600">Join Meeting Link</a></td></tr>` : ''}
-        </table>
-        ${booking.meetingLink ? `
-        <div style="text-align:center;margin:32px 0">
-          <a href="${booking.meetingLink}" style="background:#B01A18;color:#fff;padding:14px 36px;text-decoration:none;border-radius:6px;font-size:15px;font-weight:700;display:inline-block">
-            Join Interview →
-          </a>
-        </div>` : ''}
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />
-        <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0">
-          CTI Group Worldwide Services, Inc. &nbsp;·&nbsp; ClaudeHire Portal<br/>
-          This is an automated message — please do not reply to this email.
-        </p>
-      </div>
-    </div>`;
+  const html = emailWrap('#B01A18', 'Interview Confirmed', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${booking.candidateName}</strong>,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">Your interview has been confirmed. Here are the details:</p>
+    ${emailInfoBox('#B01A18', link.title, link.clientName ? (link.clientName + (link.position ? ' &middot; ' + link.position : '')) : '')}
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:20px">
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Date</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">${dateStr}</td>
+      </tr>
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Time</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">${timeStr} &ndash; ${endStr}</td>
+      </tr>
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Format</td>
+        <td valign="top" style="padding:8px 0;color:#1a1a1a;font-size:14px;font-family:Arial,Helvetica,sans-serif">Microsoft Teams (video)</td>
+      </tr>
+      ${booking.meetingLink ? `<tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Meeting</td>
+        <td valign="top" style="padding:8px 0"><a href="${booking.meetingLink}" style="color:#B01A18;font-weight:bold;font-family:Arial,Helvetica,sans-serif;font-size:14px;text-decoration:underline">Join Meeting Link</a></td>
+      </tr>` : ''}
+    </table>
+    ${booking.meetingLink ? emailButton(booking.meetingLink, 'Join Interview') : ''}
+  `);
 
   const accessToken = await getAccessToken();
   await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
@@ -2054,40 +2081,22 @@ async function sendBookingCancellationEmail(booking, link) {
   const timeStr = new Date(booking.slotStart).toLocaleTimeString('en-US', { ...dtFmt, hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
   const endStr  = new Date(booking.slotEnd).toLocaleTimeString('en-US',   { ...dtFmt, hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <table cellpadding="0" cellspacing="0" style="width:100%;background:#374151">
-        <tr>
-          <td style="background:#ffffff;padding:10px;width:100px;height:100px;vertical-align:middle;text-align:center">
-            <img src="${CTI_LOGO_URL}" alt="CTI Group" style="width:80px;height:80px;object-fit:contain;display:block;margin:0 auto" />
-          </td>
-          <td style="padding:20px 28px;vertical-align:middle">
-            <div style="color:#fff;font-size:22px;font-weight:700;font-family:Arial,sans-serif">Interview Cancelled</div>
-            <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;font-family:Arial,sans-serif">CTI Group Worldwide Services, Inc.</div>
-          </td>
-        </tr>
-      </table>
-      <div style="padding:32px;background:#ffffff">
-        <p style="font-size:15px;color:#1a1a1a">Dear <strong>${booking.candidateName}</strong>,</p>
-        <p style="color:#374151">We regret to inform you that your interview has been <strong>cancelled</strong>. Here are the details of the cancelled session:</p>
-        <div style="background:#f9fafb;border-left:4px solid #9ca3af;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
-          <strong style="font-size:15px;color:#1a1a1a">${link.title || 'Interview'}</strong>
-          ${link.clientName ? `<div style="color:#6b7280;font-size:13px;margin-top:4px">${link.clientName}${link.position ? ' · ' + link.position : ''}</div>` : ''}
-        </div>
-        <table style="width:100%;border-collapse:collapse;margin:20px 0">
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:100px">Date</td><td style="padding:8px 0;color:#1a1a1a;font-size:14px;font-weight:600;text-decoration:line-through;color:#9ca3af">${dateStr}</td></tr>
-          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Time</td><td style="padding:8px 0;font-size:14px;font-weight:600;text-decoration:line-through;color:#9ca3af">${timeStr} – ${endStr}</td></tr>
-        </table>
-        <p style="color:#374151;line-height:1.6">
-          If you have questions or would like to reschedule, please contact us directly and we will arrange a new time for you.
-        </p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />
-        <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0">
-          CTI Group Worldwide Services, Inc. &nbsp;·&nbsp; ClaudeHire Portal<br/>
-          This is an automated message — please do not reply to this email.
-        </p>
-      </div>
-    </div>`;
+  const html = emailWrap('#374151', 'Interview Cancelled', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${booking.candidateName}</strong>,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">We regret to inform you that your interview has been <strong>cancelled</strong>. Here are the details of the cancelled session:</p>
+    ${emailInfoBox('#9ca3af', link.title || 'Interview', link.clientName ? (link.clientName + (link.position ? ' &middot; ' + link.position : '')) : '')}
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:20px">
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Date</td>
+        <td valign="top" style="padding:8px 0;color:#9ca3af;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;text-decoration:line-through">${dateStr}</td>
+      </tr>
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Time</td>
+        <td valign="top" style="padding:8px 0;color:#9ca3af;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;text-decoration:line-through">${timeStr} &ndash; ${endStr}</td>
+      </tr>
+    </table>
+    <p style="margin:0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">If you have questions or would like to reschedule, please contact us directly and we will arrange a new time for you.</p>
+  `);
 
   const accessToken = await getAccessToken();
   await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
