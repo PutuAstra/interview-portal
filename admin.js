@@ -2082,11 +2082,11 @@ const BOOKING_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const BOOKING_DURATIONS = [15, 30, 45, 60, 90];
 const BOOKING_DAYS_AHEAD = [7, 14, 21, 30, 60];
 const BOOKING_MIN_NOTICE = [
-  { value:  2, label: '2 Hours' },
-  { value:  4, label: '4 Hours' },
+  { value:  3, label: '3 Hours' },
+  { value:  6, label: '6 Hours' },
   { value: 12, label: '12 Hours' },
-  { value: 24, label: '24 Hours (1 Day) — Recommended' },
-  { value: 48, label: '48 Hours (2 Days)' },
+  { value: 24, label: '24 Hours' },
+  { value: 48, label: '48 Hours' },
 ];
 
 async function renderBookingPage() {
@@ -2135,8 +2135,8 @@ function renderBookingLinkCard(link) {
   const activeDot = link.active ? '●' : '○';
   const daysLabel = BOOKING_DAYS.filter((_, i) => link.slotRules?.some(r => r.day === i)).join(', ') || '—';
   const tzLabel = formatTzOffset(link.tzOffset || 0);
-  const noticeOpt   = BOOKING_MIN_NOTICE.find(o => o.value === (link.minNoticeHours ?? 2));
-  const noticeLabel = noticeOpt ? noticeOpt.label.replace(' — Recommended', '') : `${link.minNoticeHours ?? 2}h`;
+  const noticeOpt   = BOOKING_MIN_NOTICE.find(o => o.value === (link.minNoticeHours ?? 24));
+  const noticeLabel = noticeOpt ? noticeOpt.label : `${link.minNoticeHours ?? 24}h`;
 
   return `
     <div class="card" style="margin-bottom:10px">
@@ -2329,11 +2329,8 @@ function renderCreateBookingLinkPage() {
               ${BOOKING_DAYS_AHEAD.map(d => `<option value="${d}" ${d===14?'selected':''}>${d} days</option>`).join('')}
             </select>
           </div>
-          <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
-            <label style="display:flex;align-items:center;gap:6px">
-              Minimum Scheduling Notice
-              <span style="font-size:11px;color:var(--muted);font-weight:400">How far in advance candidates must book</span>
-            </label>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Scheduling Notice</label>
             <select id="bl-min-notice">
               ${BOOKING_MIN_NOTICE.map(o => `<option value="${o.value}" ${o.value===24?'selected':''}>${o.label}</option>`).join('')}
             </select>
@@ -3005,11 +3002,8 @@ async function renderEditBookingLinkPage(token) {
               ${BOOKING_DAYS_AHEAD.map(d => `<option value="${d}" ${d === (link.daysAhead || 14) ? 'selected' : ''}>${d} days</option>`).join('')}
             </select>
           </div>
-          <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
-            <label style="display:flex;align-items:center;gap:6px">
-              Minimum Scheduling Notice
-              <span style="font-size:11px;color:var(--muted);font-weight:400">How far in advance candidates must book</span>
-            </label>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Scheduling Notice</label>
             <select id="bl-min-notice">
               ${BOOKING_MIN_NOTICE.map(o => `<option value="${o.value}" ${o.value === (link.minNoticeHours ?? 24) ? 'selected' : ''}>${o.label}</option>`).join('')}
             </select>
