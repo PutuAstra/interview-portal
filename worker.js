@@ -513,7 +513,7 @@ async function sendInterviewEmail(token, request) {
     </tr></table>
   `);
 
-  const sender = EMAIL_SENDER || ONEDRIVE_USER;
+  const sender = EMAIL_SENDER;
   const accessToken = await getAccessToken();
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
     method: 'POST',
@@ -818,7 +818,7 @@ async function sendTWEmail(id, request) {
     ${session.meetingLink ? emailButton(session.meetingLink, 'Join Interview') : ''}
   `);
 
-  const sender = EMAIL_SENDER || ONEDRIVE_USER;
+  const sender = EMAIL_SENDER;
   const accessToken = await getAccessToken();
   const emailRes = await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
     method: 'POST',
@@ -1655,7 +1655,7 @@ async function getBookingInviteHandler(inviteToken) {
 }
 
 async function sendBookingInviteEmail(candidateName, candidateEmail, link, bookUrl) {
-  const sender = EMAIL_SENDER || ONEDRIVE_USER;
+  const sender = EMAIL_SENDER;
   const html = emailWrap('#B01A18', 'Interview Invitation', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${candidateName}</strong>,</p>
     <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been invited to schedule an interview with <strong>CTI Group Worldwide Services, Inc.</strong> Please use the link below to choose a time that works best for you.</p>
@@ -2153,7 +2153,7 @@ async function syncNationalHolidays(request) {
 }
 
 async function sendBookingConfirmationEmail(booking, link) {
-  const sender  = EMAIL_SENDER || ONEDRIVE_USER;
+  const sender  = EMAIL_SENDER;
   const tz      = booking.candidateTz || 'UTC';
   const dtFmt   = { timeZone: tz };
   const dateStr = new Date(booking.slotStart).toLocaleDateString('en-US', { ...dtFmt, weekday:'long', year:'numeric', month:'long', day:'numeric' });
@@ -2202,7 +2202,7 @@ async function sendBookingConfirmationEmail(booking, link) {
 }
 
 async function sendBookingCancellationEmail(booking, link) {
-  const sender  = EMAIL_SENDER || ONEDRIVE_USER;
+  const sender  = EMAIL_SENDER;
   const tz      = booking.candidateTz || 'UTC';
   const dtFmt   = { timeZone: tz };
   const dateStr = new Date(booking.slotStart).toLocaleDateString('en-US', { ...dtFmt, weekday:'long', year:'numeric', month:'long', day:'numeric' });
