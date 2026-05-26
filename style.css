@@ -317,14 +317,19 @@ tr:hover td { background: var(--card-2); }
 
 /* ── Review Outcome decision buttons ────────────────────────── */
 /*
- * Design spec:
- *  Default  — fully borderless, muted gray-blue text, no fill
- *  Hover    — border fades in (transparent → coloured), text brightens,
- *             scale(1.03) lift, soft non-directional outer glow
- *  Selected — solid filled background (clicked state)
+ * Three states — none ever use a solid background fill:
  *
- * Single symmetric ease-in-out 0.2s on all animating properties.
- * will-change promotes transform + box-shadow onto their own GPU layer.
+ *  Default   no border, no fill, muted gray-blue text
+ *  Hover     border fades in, text brightens, scale(1.03) lift, soft glow
+ *  Selected  bright text + soft persistent border + 8% tint — no solid fill.
+ *            A saved decision is signalled by the colour alone, not a box.
+ *
+ * The border-color on each variant is pre-seeded with alpha=0 of the hover
+ * colour (not CSS 'transparent' = rgba(0,0,0,0)) to prevent the black-bleed
+ * anti-aliasing artifact that shows a faint line on dark backgrounds.
+ *
+ * Single symmetric ease-in-out 0.2s. will-change puts transform + box-shadow
+ * on their own GPU compositing layer for zero-jank animation.
  */
 .btn-outcome {
   display: inline-flex;
@@ -334,7 +339,7 @@ tr:hover td { background: var(--card-2); }
   font-weight: 600;
   padding: 7px 16px;
   border-radius: 6px;
-  border: 1px solid transparent;   /* border slot always present — only colour animates */
+  border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
   transform-origin: center;
@@ -348,58 +353,61 @@ tr:hover td { background: var(--card-2); }
 }
 
 /* ── Move Forward ── */
-/* border-color pre-set to green-at-zero-alpha so the transition is a pure
-   alpha fade — avoids the rgba(0,0,0,0) black-bleed artifact on dark bg  */
-.btn-outcome-fwd          { color: var(--muted); border-color: rgba(22, 163, 74, 0); }
+.btn-outcome-fwd {
+  color:        var(--muted);
+  border-color: rgba(22, 163, 74, 0);   /* green at alpha=0 → prevents black-bleed */
+}
 
 .btn-outcome-fwd:hover {
-  color:        #4ade80;                          /* vibrant green */
-  border-color: rgba(22, 163, 74, 0.55);          /* thin green border fades in */
-  background:   rgba(22, 163, 74, 0.05);          /* barely-there tint */
+  color:        #4ade80;
+  border-color: rgba(22, 163, 74, 0.55);
+  background:   rgba(22, 163, 74, 0.05);
   transform:    scale(1.03);
   box-shadow:   0 0 0 3px rgba(22, 163, 74, 0.08),
-                0 0 18px  rgba(22, 163, 74, 0.18); /* soft outer green glow */
+                0 0 18px  rgba(22, 163, 74, 0.18);
 }
 
-/* selected (after click) */
+/* selected: bright text + soft border + 8% tint — zero solid fill */
 .btn-outcome-fwd.selected {
-  color:        #ffffff;
-  background:   #16a34a;
-  border-color: #16a34a;
+  color:        #4ade80;
+  border-color: rgba(22, 163, 74, 0.50);
+  background:   rgba(22, 163, 74, 0.08);
 }
 .btn-outcome-fwd.selected:hover {
-  background:   #15803d;
-  border-color: #15803d;
+  border-color: rgba(22, 163, 74, 0.65);
+  background:   rgba(22, 163, 74, 0.10);
   transform:    scale(1.03);
-  box-shadow:   0 0 0 3px rgba(22, 163, 74, 0.15),
-                0 0 22px  rgba(22, 163, 74, 0.32);
+  box-shadow:   0 0 0 3px rgba(22, 163, 74, 0.12),
+                0 0 22px  rgba(22, 163, 74, 0.28);
 }
 
 /* ── Not Moving Forward ── */
-/* same fix: pre-set to red-at-zero-alpha */
-.btn-outcome-rej          { color: var(--muted); border-color: rgba(220, 38, 38, 0); }
+.btn-outcome-rej {
+  color:        var(--muted);
+  border-color: rgba(220, 38, 38, 0);   /* red at alpha=0 → prevents black-bleed */
+}
 
 .btn-outcome-rej:hover {
-  color:        #f87171;                           /* vibrant coral-red */
-  border-color: rgba(220, 38, 38, 0.58);           /* thin red border fades in */
-  background:   rgba(220, 38, 38, 0.04);           /* barely-there tint */
+  color:        #f87171;
+  border-color: rgba(220, 38, 38, 0.58);
+  background:   rgba(220, 38, 38, 0.04);
   transform:    scale(1.03);
   box-shadow:   0 0 0 3px rgba(220, 38, 38, 0.07),
-                0 0 18px  rgba(220, 38, 38, 0.16); /* soft outer red glow */
+                0 0 18px  rgba(220, 38, 38, 0.16);
 }
 
-/* selected (after click) */
+/* selected: bright text + soft border + 7% tint — zero solid fill */
 .btn-outcome-rej.selected {
-  color:        #ffffff;
-  background:   #dc2626;
-  border-color: #dc2626;
+  color:        #f87171;
+  border-color: rgba(220, 38, 38, 0.52);
+  background:   rgba(220, 38, 38, 0.07);
 }
 .btn-outcome-rej.selected:hover {
-  background:   #b91c1c;
-  border-color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.65);
+  background:   rgba(220, 38, 38, 0.10);
   transform:    scale(1.03);
-  box-shadow:   0 0 0 3px rgba(220, 38, 38, 0.14),
-                0 0 22px  rgba(220, 38, 38, 0.30);
+  box-shadow:   0 0 0 3px rgba(220, 38, 38, 0.10),
+                0 0 22px  rgba(220, 38, 38, 0.26);
 }
 
 /* ── Modal ── */
