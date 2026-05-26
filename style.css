@@ -101,7 +101,14 @@ p  { color: var(--text-2); }
   font-weight: 500;
   cursor: pointer;
   border: none;
-  transition: opacity 0.15s, background 0.15s;
+  transform-origin: center;
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.18s ease-in-out,
+    box-shadow       0.18s ease-in-out,
+    opacity          0.18s ease-in-out;
   text-decoration: none;
 }
 
@@ -111,28 +118,43 @@ p  { color: var(--text-2); }
   background: var(--accent);
   color: #fff;
 }
-.btn-primary:hover:not(:disabled) { background: var(--accent-dk); }
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-dk);
+  transform: scale(1.04);
+  box-shadow: 0 4px 16px rgba(176, 26, 24, 0.45);
+}
 
 .btn-outline {
   background: transparent;
   color: var(--text-2);
   border: 1px solid var(--border);
 }
-.btn-outline:hover:not(:disabled) { background: var(--card-2); }
+.btn-outline:hover:not(:disabled) {
+  background: var(--card-2);
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(241, 245, 249, 0.07);
+}
 
 .btn-ghost {
   background: transparent;
   color: var(--muted);
   padding: 6px 10px;
 }
-.btn-ghost:hover { color: var(--text); }
+.btn-ghost:hover {
+  color: var(--text);
+  transform: scale(1.04);
+}
 
 .btn-danger {
   background: transparent;
   color: var(--red);
   border: 1px solid var(--red);
 }
-.btn-danger:hover { background: rgba(239,68,68,0.1); }
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.10);
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.28);
+}
 
 .btn-lg {
   padding: 12px 28px;
@@ -688,10 +710,25 @@ tr:hover td { background: var(--card-2); }
   border: 1px solid var(--border);
   background: transparent;
   color: var(--muted);
-  transition: all 0.15s;
+  transform-origin: center;
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.18s ease-in-out,
+    box-shadow       0.18s ease-in-out;
 }
 .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.filter-chip:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+.filter-chip.active:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(176, 26, 24, 0.40);
+}
+.filter-chip:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(176, 26, 24, 0.20);
+}
 
 /* ── Video review ── */
 .review-grid {
@@ -918,10 +955,25 @@ tr:hover td { background: var(--card-2); }
   color: var(--muted);
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.15s;
+  transform-origin: center;
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.18s ease-in-out,
+    box-shadow       0.18s ease-in-out;
 }
-.bg-opt:hover { border-color: var(--accent); color: var(--text); }
+.bg-opt:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(176, 26, 24, 0.22);
+}
 .bg-opt.active { border-color: var(--accent); background: rgba(176,26,24,0.12); color: var(--accent); font-weight: 600; }
+.bg-opt.active:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(176, 26, 24, 0.35);
+}
 
 .bg-swatch {
   width: 28px;
@@ -955,10 +1007,22 @@ tr:hover td { background: var(--card-2); }
   border-radius: 5px;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.15s;
+  transform-origin: center;
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    transform        0.18s ease-in-out,
+    box-shadow       0.18s ease-in-out;
 }
 .invite-mode-btn.active { background: var(--card); color: var(--text); }
-.invite-mode-btn:hover:not(.active) { color: var(--text-2); }
+.invite-mode-btn.active:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(241, 245, 249, 0.07);
+}
+.invite-mode-btn:hover:not(.active) {
+  color: var(--text-2);
+  transform: scale(1.04);
+}
 
 /* ── Bulk drop zone ── */
 #bulk-drop-zone {
