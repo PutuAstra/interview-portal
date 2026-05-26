@@ -1621,21 +1621,22 @@ async function listBookingLinks(request) {
 
 async function createBookingLink(request) {
   requireAdmin(request);
-  const { title, clientName, position, duration, tzOffset, daysAhead, slotRules } = await request.json();
+  const { title, clientName, position, duration, tzOffset, daysAhead, slotRules, minNoticeHours } = await request.json();
   if (!title) return jsonRes({ error: 'title required' }, 400);
   if (!slotRules?.length) return jsonRes({ error: 'slotRules required' }, 400);
 
   const token = uid();
   const link = {
     token, title,
-    clientName: clientName || '',
-    position:   position || '',
-    duration:   duration || 30,
-    tzOffset:      tzOffset ?? 0,
-    daysAhead:     daysAhead || 14,
+    clientName:     clientName || '',
+    position:       position || '',
+    duration:       duration || 30,
+    tzOffset:       tzOffset ?? 0,
+    daysAhead:      daysAhead || 14,
+    minNoticeHours: minNoticeHours ?? 24,   // default: 24 h — prevents last-minute bookings
     slotRules,
-    active:        true,
-    createdAt:     Date.now(),
+    active:         true,
+    createdAt:      Date.now(),
   };
   await kvPut(`booking:link:${token}`, link);
   const list = (await kvGet('booking:link:list')) || [];
@@ -1809,11 +1810,14 @@ async function cancelBookingHandler(bookingId, request) {
 //                a 30-min booking correctly blocks a 60-min slot on another link
 //                that shares the same start time.
 function generateBookingSlots(link, blockedRanges, blockedDates = new Set()) {
-  const { slotRules = [], duration = 30, daysAhead = 14, tzOffset = 0 } = link;
+  const { slotRules = [], duration = 30, daysAhead = 14, tzOffset = 0, minNoticeHours = 2 } = link;
   const durationMs  = duration * 60 * 1000;
   const tzOffsetMs  = tzOffset * 60 * 1000;
   const now         = Date.now();
-  const bufferMs    = 2 * 60 * 60 * 1000; // 2-hour lead time
+  // cutoffMs: the earliest UTC ms a slot may start — enforces the minimum scheduling notice.
+  // Slots starting at or before this threshold are hidden from candidates.
+  // Default 2h preserves original behaviour for links created before this field existed.
+  const cutoffMs    = now + minNoticeHours * 60 * 60 * 1000;
   const slots       = [];
 
   for (let d = 0; d < daysAhead; d++) {
@@ -1845,7 +1849,7 @@ function generateBookingSlots(link, blockedRanges, blockedDates = new Set()) {
 
       let t = startUtc;
       while (t + durationMs <= endUtc) {
-        if (t > now + bufferMs) {
+        if (t > cutoffMs) {
           // Overlap check: slot [t, t+duration] is taken if ANY blocked range
           // intersects it. Two intervals overlap when: startA < endB && endA > startB
           const slotEnd  = t + durationMs;
