@@ -91,13 +91,25 @@ p  { color: var(--text-2); }
 }
 
 /*
- * ── Button spring-hover system ─────────────────────────────────
- * Two-phase transition asymmetry (standard CSS behaviour):
- *   mouse-IN  → transition on :hover rule fires  (spring overshoot)
- *   mouse-OUT → transition on base element fires (fast ease-out snap)
- * cubic-bezier(0.34, 1.56, 0.64, 1) is the "spring" curve:
- *   it overshoots the target by ~60%, creating a natural soft bounce.
- * ─────────────────────────────────────────────────────────────── */
+ * ── Universal Ghost-Hover Button System ──────────────────────
+ * Identical design language as the Review Outcome buttons,
+ * applied to every interactive button and chip in the app.
+ *
+ *   Default   transparent bg, invisible border (pre-seeded to the hover
+ *             hue at alpha=0 — avoids the rgba(0,0,0,0) black-bleed
+ *             anti-aliasing artifact on dark backgrounds), muted text.
+ *             Buttons read as labelled text glyphs at rest.
+ *
+ *   Hover     border alpha-fades in, text brightens, scale(1.03) lift,
+ *             soft layered outer glow (3px halo + 16-18px blur).
+ *             Background max 10% opacity tint — no solid fills.
+ *
+ *   Active /  Bright text + soft persistent border + 8-10% tint.
+ *   Selected  State communicated through colour, never a filled box.
+ *
+ * transition: 0.2s ease-in-out on all animating properties.
+ * will-change promotes transform + box-shadow to GPU layer.
+ * ──────────────────────────────────────────────────────────── */
 
 /* ── Buttons ── */
 .btn {
@@ -109,90 +121,72 @@ p  { color: var(--text-2); }
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  border: none;
-  transform-origin: center;
-  /* Mouse-OUT: fast, clean snap-back */
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    opacity          0.18s ease-in-out;
+  border: 1px solid transparent;
+  background: transparent;
   text-decoration: none;
+  transform-origin: center;
+  will-change: transform, box-shadow;
+  transition:
+    color            0.2s ease-in-out,
+    background-color 0.2s ease-in-out,
+    border-color     0.2s ease-in-out,
+    transform        0.2s ease-in-out,
+    box-shadow       0.2s ease-in-out,
+    opacity          0.2s ease-in-out;
 }
 
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* ── Primary (accent red) ── */
 .btn-primary {
-  background: var(--accent);
-  color: #fff;
+  color:        var(--text);
+  border-color: rgba(176, 26, 24, 0);
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-dk);
-  transform: scale(1.04);
-  box-shadow: 0 4px 16px rgba(176, 26, 24, 0.45);
-  /* Mouse-IN: spring overshoot */
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out,
-    opacity          0.18s ease-in-out;
+  color:        #ffffff;
+  border-color: rgba(176, 26, 24, 0.55);
+  background:   rgba(176, 26, 24, 0.10);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(176, 26, 24, 0.08),
+                0 0 18px  rgba(176, 26, 24, 0.28);
 }
 
+/* ── Outline (neutral slate) ── */
 .btn-outline {
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--border);
+  color:        var(--text-2);
+  border-color: rgba(148, 163, 184, 0);
 }
 .btn-outline:hover:not(:disabled) {
-  background: var(--card-2);
-  transform: scale(1.04);
-  box-shadow: 0 4px 14px rgba(241, 245, 249, 0.07);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out,
-    opacity          0.18s ease-in-out;
+  color:        var(--text);
+  border-color: rgba(148, 163, 184, 0.50);
+  background:   rgba(241, 245, 249, 0.05);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(148, 163, 184, 0.06),
+                0 0 16px  rgba(148, 163, 184, 0.12);
 }
 
+/* ── Ghost (minimal — scale only, no border / glow) ── */
 .btn-ghost {
-  background: transparent;
-  color: var(--muted);
+  color:   var(--muted);
   padding: 6px 10px;
 }
 .btn-ghost:hover {
-  color: var(--text);
-  transform: scale(1.04);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out,
-    opacity          0.18s ease-in-out;
+  color:     var(--text);
+  transform: scale(1.03);
 }
 
+/* ── Danger (destructive red) ── */
 .btn-danger {
-  background: transparent;
-  color: var(--red);
-  border: 1px solid var(--red);
+  color:        var(--muted);
+  border-color: rgba(239, 68, 68, 0);
 }
 .btn-danger:hover {
-  background: rgba(239, 68, 68, 0.10);
-  transform: scale(1.04);
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.28);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out,
-    opacity          0.18s ease-in-out;
+  color:        #f87171;
+  border-color: rgba(239, 68, 68, 0.55);
+  background:   rgba(239, 68, 68, 0.05);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(239, 68, 68, 0.07),
+                0 0 16px  rgba(239, 68, 68, 0.20);
 }
 
 .btn-lg {
@@ -760,40 +754,38 @@ tr:hover td { background: var(--card-2); }
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(176, 26, 24, 0);  /* accent-at-zero to prevent black-bleed */
   background: transparent;
   color: var(--muted);
   transform-origin: center;
-  /* Mouse-OUT snap-back */
+  will-change: transform, box-shadow;
   transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    color            0.2s ease-in-out,
+    background-color 0.2s ease-in-out,
+    border-color     0.2s ease-in-out,
+    transform        0.2s ease-in-out,
+    box-shadow       0.2s ease-in-out;
 }
-.filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* active = currently selected filter — bright text + soft border, no solid fill */
+.filter-chip.active {
+  color:        var(--text);
+  border-color: rgba(176, 26, 24, 0.50);
+  background:   rgba(176, 26, 24, 0.10);
+}
+.filter-chip:hover {
+  color:        var(--text);
+  border-color: rgba(176, 26, 24, 0.50);
+  background:   rgba(176, 26, 24, 0.06);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(176, 26, 24, 0.06),
+                0 0 14px  rgba(176, 26, 24, 0.18);
+}
 .filter-chip.active:hover {
-  transform: scale(1.04);
-  box-shadow: 0 4px 14px rgba(176, 26, 24, 0.40);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out;
-}
-.filter-chip:hover:not(.active) {
-  border-color: var(--accent);
-  color: var(--accent);
-  transform: scale(1.04);
-  box-shadow: 0 4px 12px rgba(176, 26, 24, 0.20);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out;
+  border-color: rgba(176, 26, 24, 0.65);
+  background:   rgba(176, 26, 24, 0.12);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(176, 26, 24, 0.10),
+                0 0 16px  rgba(176, 26, 24, 0.25);
 }
 
 /* ── Video review ── */
@@ -855,9 +847,11 @@ tr:hover td { background: var(--card-2); }
   background: none;
   border: none;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
+  border-bottom: 2px solid transparent;   /* underline nav pattern — kept intentionally */
   margin-bottom: -1px;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color        0.2s ease-in-out,
+    border-color 0.2s ease-in-out;
 }
 
 .tab-btn.active {
@@ -1015,43 +1009,41 @@ tr:hover td { background: var(--card-2); }
   padding: 5px 12px;
   font-size: 12px;
   font-weight: 500;
-  border: 1.5px solid var(--border);
+  border: 1px solid rgba(176, 26, 24, 0);   /* accent-at-zero */
   border-radius: 6px;
-  background: none;
+  background: transparent;
   color: var(--muted);
   cursor: pointer;
   font-family: inherit;
   transform-origin: center;
-  /* Mouse-OUT snap-back */
+  will-change: transform, box-shadow;
   transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    color            0.2s ease-in-out,
+    background-color 0.2s ease-in-out,
+    border-color     0.2s ease-in-out,
+    transform        0.2s ease-in-out,
+    box-shadow       0.2s ease-in-out;
 }
 .bg-opt:hover {
-  border-color: var(--accent);
-  color: var(--text);
-  transform: scale(1.04);
-  box-shadow: 0 4px 12px rgba(176, 26, 24, 0.22);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out;
+  color:        var(--text);
+  border-color: rgba(176, 26, 24, 0.50);
+  background:   rgba(176, 26, 24, 0.06);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(176, 26, 24, 0.06),
+                0 0 14px  rgba(176, 26, 24, 0.18);
 }
-.bg-opt.active { border-color: var(--accent); background: rgba(176,26,24,0.12); color: var(--accent); font-weight: 600; }
+.bg-opt.active {
+  color:        var(--text);
+  border-color: rgba(176, 26, 24, 0.50);
+  background:   rgba(176, 26, 24, 0.10);
+  font-weight:  600;
+}
 .bg-opt.active:hover {
-  transform: scale(1.04);
-  box-shadow: 0 4px 14px rgba(176, 26, 24, 0.35);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    border-color     0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out;
+  border-color: rgba(176, 26, 24, 0.65);
+  background:   rgba(176, 26, 24, 0.12);
+  transform:    scale(1.03);
+  box-shadow:   0 0 0 3px rgba(176, 26, 24, 0.10),
+                0 0 16px  rgba(176, 26, 24, 0.22);
 }
 
 .bg-swatch {
@@ -1080,38 +1072,37 @@ tr:hover td { background: var(--card-2); }
   padding: 5px 14px;
   font-size: 12px;
   font-weight: 500;
-  border: none;
+  border: 1px solid rgba(148, 163, 184, 0);  /* slate-at-zero */
   background: transparent;
   color: var(--muted);
   border-radius: 5px;
   cursor: pointer;
   font-family: inherit;
   transform-origin: center;
-  /* Mouse-OUT snap-back */
+  will-change: transform, box-shadow;
   transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    color            0.2s ease-in-out,
+    background-color 0.2s ease-in-out,
+    border-color     0.2s ease-in-out,
+    transform        0.2s ease-in-out,
+    box-shadow       0.2s ease-in-out;
 }
-.invite-mode-btn.active { background: var(--card); color: var(--text); }
+.invite-mode-btn.active {
+  color:        var(--text);
+  border-color: rgba(148, 163, 184, 0.40);
+  background:   rgba(241, 245, 249, 0.07);
+}
+.invite-mode-btn:hover {
+  color:        var(--text-2);
+  border-color: rgba(148, 163, 184, 0.35);
+  background:   rgba(241, 245, 249, 0.04);
+  transform:    scale(1.03);
+}
 .invite-mode-btn.active:hover {
-  transform: scale(1.04);
-  box-shadow: 0 4px 12px rgba(241, 245, 249, 0.07);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out;
-}
-.invite-mode-btn:hover:not(.active) {
-  color: var(--text-2);
-  transform: scale(1.04);
-  transition:
-    background-color 0.18s ease-in-out,
-    color            0.18s ease-in-out,
-    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow       0.30s ease-out;
+  border-color: rgba(148, 163, 184, 0.55);
+  background:   rgba(241, 245, 249, 0.09);
+  transform:    scale(1.03);
+  box-shadow:   0 0 12px rgba(148, 163, 184, 0.08);
 }
 
 /* ── Bulk drop zone ── */
