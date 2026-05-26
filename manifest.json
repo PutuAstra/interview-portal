@@ -1,7 +1,7 @@
 {
-  "name": "ClaudeHire",
-  "short_name": "ClaudeHire",
-  "description": "CTI Group Worldwide Services - ClaudeHire Admin Portal",
+  "name": "ZeusHire",
+  "short_name": "ZeusHire",
+  "description": "CTI Group Worldwide Services - ZeusHire Admin Portal",
   "icons": [
     {
       "src": "cti-logo.png",

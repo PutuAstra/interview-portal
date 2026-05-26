@@ -460,7 +460,7 @@ function emailWrap(headerBg, title, bodyRows) {
     <tr>
       <td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:16px 32px">
         <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;font-family:Arial,Helvetica,sans-serif;line-height:18px">
-          CTI Group Worldwide Services, Inc. &nbsp;&middot;&nbsp; ClaudeHire Portal<br />
+          CTI Group Worldwide Services, Inc. &nbsp;&middot;&nbsp; ZeusHire Portal<br />
           This is an automated message &mdash; please do not reply to this email.
         </p>
       </td>
@@ -498,7 +498,7 @@ async function sendInterviewEmail(token, request) {
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
 
-  const html = emailWrap('#B01A18', 'CTI ClaudeHire', `
+  const html = emailWrap('#B01A18', 'CTI ZeusHire', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
     <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been invited to complete a one-way video interview for the following position:</p>
     ${emailInfoBox('#B01A18', interviewTitle)}
@@ -519,9 +519,9 @@ async function sendInterviewEmail(token, request) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Interview Invitation: ${interviewTitle} — CTI ClaudeHire`,
+        subject: `Interview Invitation: ${interviewTitle} — CTI ZeusHire`,
         body: { contentType: 'HTML', content: html },
-        from: { emailAddress: { name: 'CTI ClaudeHire', address: sender } },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
       },
       saveToSentItems: true,
@@ -788,7 +788,7 @@ async function sendTWEmail(id, request) {
     ? dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : '';
 
-  const html = emailWrap('#B01A18', 'CTI ClaudeHire', `
+  const html = emailWrap('#B01A18', 'CTI ZeusHire', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
     <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been scheduled for a two-way interview for the following position:</p>
     ${emailInfoBox('#B01A18', session.position)}
@@ -824,9 +824,9 @@ async function sendTWEmail(id, request) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Interview Scheduled: ${session.position} — CTI ClaudeHire`,
+        subject: `Interview Scheduled: ${session.position} — CTI ZeusHire`,
         body: { contentType: 'HTML', content: html },
-        from: { emailAddress: { name: 'CTI ClaudeHire', address: sender } },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
       },
       saveToSentItems: true,
@@ -1049,7 +1049,7 @@ async function createTeamsMeeting(session) {
     body: {
       contentType: 'HTML',
       content: `
-        <p>Interview scheduled via <strong>CTI ClaudeHire</strong>.</p>
+        <p>Interview scheduled via <strong>CTI ZeusHire</strong>.</p>
         <table cellpadding="6" style="font-family:Arial,sans-serif;font-size:14px">
           <tr><td style="color:#6b7280;width:100px">Candidate</td><td><strong>${session.candidateName}</strong> &lt;${session.candidateEmail}&gt;</td></tr>
           <tr><td style="color:#6b7280">Position</td><td>${session.position}</td></tr>
@@ -1680,9 +1680,9 @@ async function sendBookingInviteEmail(candidateName, candidateEmail, link, bookU
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Interview Invitation: ${link.title} — ${candidateName} — CTI ClaudeHire`,
+        subject: `Interview Invitation: ${link.title} — ${candidateName} — CTI ZeusHire`,
         body: { contentType: 'HTML', content: html },
-        from: { emailAddress: { name: 'CTI ClaudeHire', address: sender } },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: candidateEmail } }],
       },
       saveToSentItems: true,
@@ -2190,9 +2190,9 @@ async function sendBookingConfirmationEmail(booking, link) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Interview Confirmed: ${link.title} — ${booking.candidateName} — CTI ClaudeHire`,
+        subject: `Interview Confirmed: ${link.title} — ${booking.candidateName} — CTI ZeusHire`,
         body: { contentType: 'HTML', content: html },
-        from: { emailAddress: { name: 'CTI ClaudeHire', address: sender } },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: booking.candidateEmail } }],
       },
       saveToSentItems: true,
@@ -2231,9 +2231,9 @@ async function sendBookingCancellationEmail(booking, link) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Interview Cancelled: ${link.title || 'Interview'} — ${booking.candidateName} — CTI ClaudeHire`,
+        subject: `Interview Cancelled: ${link.title || 'Interview'} — ${booking.candidateName} — CTI ZeusHire`,
         body: { contentType: 'HTML', content: html },
-        from: { emailAddress: { name: 'CTI ClaudeHire', address: sender } },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: booking.candidateEmail } }],
       },
       saveToSentItems: true,
