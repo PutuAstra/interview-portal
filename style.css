@@ -348,7 +348,9 @@ tr:hover td { background: var(--card-2); }
 }
 
 /* ── Move Forward ── */
-.btn-outcome-fwd          { color: var(--muted); }
+/* border-color pre-set to green-at-zero-alpha so the transition is a pure
+   alpha fade — avoids the rgba(0,0,0,0) black-bleed artifact on dark bg  */
+.btn-outcome-fwd          { color: var(--muted); border-color: rgba(22, 163, 74, 0); }
 
 .btn-outcome-fwd:hover {
   color:        #4ade80;                          /* vibrant green */
@@ -374,7 +376,8 @@ tr:hover td { background: var(--card-2); }
 }
 
 /* ── Not Moving Forward ── */
-.btn-outcome-rej          { color: var(--muted); }
+/* same fix: pre-set to red-at-zero-alpha */
+.btn-outcome-rej          { color: var(--muted); border-color: rgba(220, 38, 38, 0); }
 
 .btn-outcome-rej:hover {
   color:        #f87171;                           /* vibrant coral-red */
