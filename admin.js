@@ -2522,14 +2522,17 @@ function renderHolidaysContent() {
             ).join('')}
           </select>
         </div>
-        <button class="btn btn-outline" id="sync-btn" onclick="syncHolidays()" style="font-size:13px;white-space:nowrap">
-          🔄 Sync National Holidays
-        </button>
-        <span style="font-size:12px;color:var(--muted);align-self:center">
-          ${syncedYears.length
-            ? `<span style="color:var(--green)">✓</span> Synced: ${syncedYears.join(', ')}`
-            : 'No years synced yet — click Sync to import'}
-        </span>
+        <!-- Button + status grouped so both bottom-align with the selects -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-outline" id="sync-btn" onclick="syncHolidays()" style="font-size:13px;white-space:nowrap">
+            🔄 Sync National Holidays
+          </button>
+          <span style="font-size:12px;color:var(--muted);white-space:nowrap">
+            ${syncedYears.length
+              ? `<span style="color:var(--green)">✓</span> Synced: ${syncedYears.join(', ')}`
+              : 'No years synced yet'}
+          </span>
+        </div>
       </div>
       <p style="font-size:11px;color:var(--muted);margin-top:10px">
         Powered by <strong style="color:var(--text-2)">Nager.Date</strong> — free public holiday API, no key required.
