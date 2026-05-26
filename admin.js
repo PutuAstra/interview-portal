@@ -2,7 +2,8 @@
 //  Interview Admin Panel
 // ─────────────────────────────────────────────────────────────
 
-const WORKER_URL = 'https://interview-api.putuastrawijaya.workers.dev';
+const WORKER_URL  = 'https://interview-api.putuastrawijaya.workers.dev';
+const ADMIN_EMAIL = 'corporate-recruiter@cti-usa.com'; // primary recruiter mailbox
 
 // ── State ─────────────────────────────────────────────────────
 let adminKey = '';
@@ -57,7 +58,7 @@ function doLogout() {
 function showApp() {
   document.getElementById('login-gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const valid = ['ow-list', 'ow-create', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays'];
+  const valid = ['ow-list', 'ow-create', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync'];
   const hash  = window.location.hash.replace('#', '');
   gotoPage(valid.includes(hash) ? hash : 'ow-list');
 }
@@ -103,6 +104,7 @@ function gotoPage(page) {
                   : page === 'scripts' ? 'scripts'
                   : ['booking', 'booking-create', 'booking-edit'].includes(page) ? 'booking'
                   : page === 'holidays' ? 'holidays'
+                  : page === 'calendar-sync' ? 'calendar-sync'
                   : 'tw-list';
   document.querySelectorAll('.sidebar-item').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.page === activeNav)
@@ -119,6 +121,7 @@ function gotoPage(page) {
   if (page === 'booking-create') renderCreateBookingLinkPage();
   if (page === 'booking-edit')   renderEditBookingLinkPage(_editingBookingToken);
   if (page === 'holidays')       renderHolidaysPage();
+  if (page === 'calendar-sync') renderCalendarSyncPage();
 }
 
 // ── One-Way: List page ────────────────────────────────────────
@@ -2769,6 +2772,156 @@ async function setBulkHolidayActive(type, active) {
     renderHolidaysContent();
     toast(`${active ? 'Enabled' : 'Disabled'} all ${type} holidays`, 'success');
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Calendar Sync ─────────────────────────────────────────────
+
+let _calSyncSettings = { linkedCalendars: [] };
+
+async function renderCalendarSyncPage() {
+  const main = document.getElementById('admin-main');
+  main.innerHTML = `<div class="spinner" style="margin:80px auto"></div>`;
+  try {
+    _calSyncSettings = await apiJSON('GET', '/api/recruiter/settings');
+  } catch {
+    _calSyncSettings = { linkedCalendars: [] };
+  }
+  renderCalendarSyncContent();
+}
+
+function renderCalendarSyncContent() {
+  const main = document.getElementById('admin-main');
+  const cals  = _calSyncSettings.linkedCalendars || [];
+
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <h2 class="mb-16">Calendar Sync</h2>
+
+      <!-- How it works -->
+      <div class="card" style="margin-bottom:16px;background:rgba(99,100,167,0.08);border-color:rgba(99,100,167,0.3)">
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <span style="font-size:22px;flex-shrink:0">🟦</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">How this works</div>
+            <div style="font-size:13px;color:var(--muted);line-height:20px">
+              When candidates load the booking calendar, ZeusHire checks <strong style="color:var(--text-2)">all linked calendars</strong>
+              for busy/tentative/out-of-office events and hides those slots automatically.
+              No login required — the Azure App already has read access to any mailbox in your Microsoft 365 tenant.
+              Busy times are cached for <strong style="color:var(--text-2)">5 minutes</strong> to keep the calendar page fast.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Primary calendar (read-only info) -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:10px">Primary Calendar (Managed by ZeusHire)</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:8px;height:8px;border-radius:50%;background:#16a34a;flex-shrink:0"></div>
+          <span style="font-size:14px;font-weight:600">${ADMIN_EMAIL || 'corporate-recruiter@cti-usa.com'}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:auto">Booking interviews, Direct Invites, Teams meetings</span>
+        </div>
+      </div>
+
+      <!-- Linked calendars list -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px">
+          Linked Calendars (Read-Only — Busy Time Sync)
+        </div>
+        <div id="cal-list" style="display:grid;gap:8px">
+          ${cals.length
+            ? cals.map(email => renderLinkedCalRow(email)).join('')
+            : `<div style="font-size:13px;color:var(--muted);padding:8px 0">No linked calendars yet. Add one below.</div>`
+          }
+        </div>
+      </div>
+
+      <!-- Add new calendar -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px">Add Linked Calendar</div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div class="form-group" style="margin-bottom:0;flex:1">
+            <label>Microsoft 365 Email Address</label>
+            <input type="email" id="cal-new-email" placeholder="e.g. herry.wahyudi@cti-usa.com" autocomplete="off"
+              style="width:100%" onkeydown="if(event.key==='Enter')addLinkedCalendar()" />
+          </div>
+          <button class="btn btn-primary" onclick="addLinkedCalendar()" style="white-space:nowrap">+ Add &amp; Test</button>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">
+          Must be a valid mailbox in your Microsoft 365 tenant. The Azure App reads busy/tentative/OOF events only — meeting subjects are never stored.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function renderLinkedCalRow(email) {
+  return `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+      <div style="width:8px;height:8px;border-radius:50%;background:#6264a7;flex-shrink:0"></div>
+      <span style="font-size:13px;flex:1;word-break:break-all">${esc(email)}</span>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;white-space:nowrap;color:#6264a7"
+        onclick="testCalendarConnection('${esc(email)}')">🔗 Test</button>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--muted)"
+        onclick="removeLinkedCalendar('${esc(email)}')">✕ Remove</button>
+    </div>
+  `;
+}
+
+async function addLinkedCalendar() {
+  const email = document.getElementById('cal-new-email').value.trim().toLowerCase();
+  if (!email) return toast('Enter an email address', 'error');
+  if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) return toast('Invalid email address', 'error');
+
+  const existing = _calSyncSettings.linkedCalendars || [];
+  if (existing.includes(email)) return toast('Already linked', 'warning');
+
+  // Test connection first
+  toast('Testing connection…', 'info');
+  try {
+    const result = await apiJSON('POST', '/api/recruiter/calendars/test', { email });
+    if (!result.ok) {
+      return toast(`Cannot connect: ${result.error}`, 'error');
+    }
+  } catch (e) {
+    return toast('Connection test failed: ' + e.message, 'error');
+  }
+
+  // Save
+  const updated = [...existing, email];
+  try {
+    _calSyncSettings = await apiJSON('PUT', '/api/recruiter/settings', { linkedCalendars: updated });
+    toast(`✓ ${email} linked — busy times will now be blocked`, 'success');
+    renderCalendarSyncContent();
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+async function removeLinkedCalendar(email) {
+  if (!confirm(`Remove ${email} from calendar sync?\n\nCandidates will no longer be blocked from booking during this calendar's events.`)) return;
+  const updated = (_calSyncSettings.linkedCalendars || []).filter(e => e !== email);
+  try {
+    _calSyncSettings = await apiJSON('PUT', '/api/recruiter/settings', { linkedCalendars: updated });
+    toast(`${email} removed`, 'success');
+    renderCalendarSyncContent();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function testCalendarConnection(email) {
+  toast(`Testing ${email}…`, 'info');
+  try {
+    const result = await apiJSON('POST', '/api/recruiter/calendars/test', { email });
+    if (result.ok) {
+      toast(`✓ ${result.message}`, 'success');
+    } else {
+      toast(`✗ ${result.error}${result.hint ? ' — ' + result.hint : ''}`, 'error');
+    }
+  } catch (e) {
+    toast('Test failed: ' + e.message, 'error');
+  }
 }
 
 // ── Booking Invite Modal ──────────────────────────────────────

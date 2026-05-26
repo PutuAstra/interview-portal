@@ -187,6 +187,15 @@ async function route(request) {
     return createBookingHandler(seg[2], request);
   }
 
+  // ── Recruiter / Calendar-Sync Settings ──────────────────────
+  if (seg[0] === 'recruiter' && seg[1] === 'settings' && seg.length === 2) {
+    if (m === 'GET') return getRecruiterSettings(request);
+    if (m === 'PUT') return updateRecruiterSettings(request);
+  }
+  if (seg[0] === 'recruiter' && seg[1] === 'calendars' && seg[2] === 'test' && m === 'POST') {
+    return testLinkedCalendar(request);
+  }
+
   // ── Holiday & Closure Settings ───────────────────────────────
   // /api/holidays/settings  (must be before /api/holidays length-1 catch-all)
   if (seg[0] === 'holidays' && seg[1] === 'settings') {
@@ -1942,6 +1951,138 @@ async function cancelBookingHandler(bookingId, request) {
   return jsonRes({ ok: true, emailSent, emailError });
 }
 
+// ── Recruiter Settings ────────────────────────────────────────
+
+async function getRecruiterSettings(request) {
+  requireAdmin(request);
+  return jsonRes(await kvGet('recruiter:settings') || { linkedCalendars: [] });
+}
+
+async function updateRecruiterSettings(request) {
+  requireAdmin(request);
+  const updates  = await request.json();
+  const existing = (await kvGet('recruiter:settings')) || {};
+  const updated  = { ...existing, ...updates };
+  await kvPut('recruiter:settings', updated);
+  return jsonRes(updated);
+}
+
+async function testLinkedCalendar(request) {
+  requireAdmin(request);
+  const { email } = await request.json();
+  if (!email) return jsonRes({ error: 'email required' }, 400);
+
+  const accessToken = await getAccessToken();
+  const startStr = new Date().toISOString().replace('Z', '');
+  const endStr   = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().replace('Z', '');
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}/calendarView` +
+    `?startDateTime=${startStr}&endDateTime=${endStr}&$select=subject,start,end,showAs&$top=5`,
+    { headers: { 'Authorization': `Bearer ${accessToken}`, 'Prefer': 'outlook.timezone="UTC"' } }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return jsonRes({
+      ok: false,
+      error: `Graph API error (${res.status}): ${err.error?.message || 'Cannot read this calendar.'}`,
+      hint: res.status === 403
+        ? 'Check that the Azure App has Calendars.Read.All (Application) permission and admin consent has been granted.'
+        : 'Verify the email belongs to your Microsoft 365 tenant.',
+    });
+  }
+
+  const data = await res.json();
+  const count = data.value?.length ?? 0;
+  return jsonRes({ ok: true, message: `Connected — ${count} event(s) found in the next 7 days.`, email });
+}
+
+// ── Multi-Calendar Busy Range Fetcher ────────────────────────
+//
+// Architecture note: the Azure App uses Application-level permissions
+// (Calendars.ReadWrite.All), so the same access token that manages
+// corporate-recruiter@cti-usa.com can also READ any other user's
+// calendar in the tenant — no separate OAuth flow is required.
+//
+// Busy ranges are KV-cached per email for 5 minutes so that concurrent
+// candidates loading the booking page don't each trigger a Graph API round-trip.
+//
+// Failure mode: if a linked calendar is unreachable (e.g. user disabled,
+// Graph 429 rate-limit), the function returns [] — slots remain available
+// rather than blocking the entire booking page (fail-open by design).
+// The error is logged so the admin can investigate.
+async function fetchOutlookBusyRanges(email, windowStartMs, windowEndMs, accessToken) {
+  // ── Cache check (KV, 5-min TTL) ──────────────────────────────
+  const cacheKey = `calendar:busy:${email}`;
+  try {
+    const cached = await kvGet(cacheKey);
+    if (
+      cached &&
+      (Date.now() - cached.cachedAt) < 5 * 60 * 1000 &&
+      cached.windowStart <= windowStartMs &&
+      cached.windowEnd   >= windowEndMs
+    ) {
+      console.log(`[cal-sync] cache HIT ${email}: ${cached.ranges.length} ranges`);
+      return cached.ranges;
+    }
+  } catch { /* cache miss — continue to live fetch */ }
+
+  // ── Live fetch from Microsoft Graph calendarView ──────────────
+  const startStr = new Date(windowStartMs).toISOString().replace('Z', '');
+  const endStr   = new Date(windowEndMs).toISOString().replace('Z', '');
+  const headers  = {
+    'Authorization': `Bearer ${accessToken}`,
+    'Prefer':        'outlook.timezone="UTC"',
+  };
+
+  let allEvents = [];
+  let url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}/calendarView` +
+    `?startDateTime=${startStr}&endDateTime=${endStr}` +
+    `&$select=subject,start,end,showAs,isAllDay&$top=100`;
+
+  try {
+    // Follow @odata.nextLink pagination — a heavy recruiter calendar can exceed 100 events
+    while (url) {
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error(`[cal-sync] calendarView ${email} → ${res.status}: ${err.error?.message || ''}`);
+        return []; // fail-open
+      }
+      const data = await res.json();
+      allEvents.push(...(data.value || []));
+      url = data['@odata.nextLink'] || null;
+      if (allEvents.length > 500) break; // safety cap (prevent infinite loop)
+    }
+  } catch (e) {
+    console.error(`[cal-sync] fetch error ${email}:`, e.message);
+    return []; // fail-open — network/timeout
+  }
+
+  // Keep only events that actually block time (exclude 'free' and 'workingElsewhere')
+  const blocked = ['busy', 'tentative', 'oof'];
+  const ranges = allEvents
+    .filter(evt => blocked.includes(evt.showAs))
+    .map(evt => ({
+      // Graph returns dateTime WITHOUT 'Z' when Prefer:UTC is set — append it
+      start: new Date(evt.start.dateTime + 'Z').getTime(),
+      end:   new Date(evt.end.dateTime   + 'Z').getTime(),
+    }))
+    .filter(r => !isNaN(r.start) && !isNaN(r.end) && r.end > r.start);
+
+  console.log(`[cal-sync] live fetch ${email}: ${allEvents.length} events → ${ranges.length} blocked ranges`);
+
+  // ── Write to KV cache with 5-min TTL ─────────────────────────
+  try {
+    await INTERVIEW_DATA.put(cacheKey, JSON.stringify({
+      cachedAt: Date.now(), windowStart: windowStartMs, windowEnd: windowEndMs, ranges,
+    }), { expirationTtl: 300 });
+  } catch { /* cache write failure is non-fatal */ }
+
+  return ranges;
+}
+
 // ── Slot generation (public) ──────────────────────────────────
 
 // blockedDates:  Set of 'YYYY-MM-DD' strings  (Step 2 — holiday protection)
@@ -2045,16 +2186,20 @@ async function getBookingSlots(token) {
     }
   }
 
-  // ── Step 3 (Outlook calendar sync — future enhancement) ──────
-  // When implemented: query recruiter's Microsoft Graph calendar for
-  // Busy/OOF events and add their dates to blockedDates / blockedSlots.
+  // ── Step 3: Linked calendars busy-range fetch ────────────────
+  // Loads recruiter:settings from KV to get the list of additional email
+  // addresses to check (e.g. herry.wahyudi@cti-usa.com).
+  // Uses the same app-level Graph token — no OAuth per-user flow needed since
+  // the Azure App has Calendars.ReadWrite.All (Application) permission.
+  // Results are KV-cached 5 min so concurrent page loads share one API call.
+  // On failure the function returns [] — slots stay open (fail-open).
+  const recruiterSettings = await kvGet('recruiter:settings');
+  const linkedCalendars   = recruiterSettings?.linkedCalendars || [];
 
   // ── Step 4: Build global blocked time ranges ─────────────────
-  // Previously this only checked the current link's own bookings, allowing
-  // candidates to double-book the recruiter via a different link/template.
-  // Now we scan EVERY confirmed booking across ALL links plus all scheduled
-  // direct-invite (tw-session) appointments so the recruiter's calendar is
-  // treated as a single unified availability source.
+  // Scans ALL confirmed bookings across ALL links + all scheduled
+  // direct-invite (tw-session) appointments so the recruiter's ZeusHire
+  // calendar is treated as a single unified availability source.
 
   // 4a. All booking links → all confirmed candidate bookings
   const allLinkTokens    = (await kvGet('booking:link:list')) || [];
@@ -2068,7 +2213,7 @@ async function getBookingSlots(token) {
   const twIds      = (await kvGet('tw-session:list')) || [];
   const twSessions = await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)));
 
-  // 4c. Merge into unified blocked ranges [ { start, end } ] in UTC ms
+  // 4c. Merge ZeusHire bookings + tw-sessions into base blocked ranges
   const blockedRanges = [
     ...allBookings
       .filter(b => b?.status === 'confirmed')
@@ -2083,6 +2228,29 @@ async function getBookingSlots(token) {
         end:   s.scheduledAt + (s.duration || 30) * 60 * 1000,
       })),
   ];
+
+  // ── Step 4d: Merge linked Outlook calendar busy blocks ────────
+  // Runs AFTER base blockedRanges is built so a single error doesn't
+  // prevent internal bookings from being blocked correctly.
+  if (linkedCalendars.length) {
+    const windowStartMs = Date.now();
+    const windowEndMs   = windowStartMs + (link.daysAhead || 14) * 24 * 60 * 60 * 1000;
+    try {
+      const accessToken = await getAccessToken();
+      // Concurrent: all linked calendars fetched in parallel
+      const busyArrays = await Promise.all(
+        linkedCalendars.map(email =>
+          fetchOutlookBusyRanges(email, windowStartMs, windowEndMs, accessToken)
+        )
+      );
+      for (const ranges of busyArrays) blockedRanges.push(...ranges);
+      console.log(`[cal-sync] merged ${busyArrays.flat().length} external busy ranges from ${linkedCalendars.length} calendar(s)`);
+    } catch (e) {
+      // Non-fatal — if linked calendar lookup crashes, serve slots from
+      // internal bookings only rather than blocking the whole page
+      console.error('[cal-sync] linked calendar merge failed:', e.message);
+    }
+  }
 
   // Generate slots applying all filters
   const slots = generateBookingSlots(link, blockedRanges, blockedDates);
