@@ -130,8 +130,8 @@ p  { color: var(--text-2); }
     color            0.2s ease-in-out,
     background-color 0.2s ease-in-out,
     border-color     0.2s ease-in-out,
-    transform        0.2s ease-in-out,
-    box-shadow       0.2s ease-in-out,
+    transform        0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow       0.25s cubic-bezier(0.16, 1, 0.3, 1),
     opacity          0.2s ease-in-out;
 }
 
@@ -342,8 +342,8 @@ tr:hover td { background: var(--card-2); }
     color            0.2s ease-in-out,
     background-color 0.2s ease-in-out,
     border-color     0.2s ease-in-out,
-    transform        0.2s ease-in-out,
-    box-shadow       0.2s ease-in-out;
+    transform        0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow       0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Move Forward ── */
@@ -763,8 +763,8 @@ tr:hover td { background: var(--card-2); }
     color            0.2s ease-in-out,
     background-color 0.2s ease-in-out,
     border-color     0.2s ease-in-out,
-    transform        0.2s ease-in-out,
-    box-shadow       0.2s ease-in-out;
+    transform        0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow       0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 /* active = currently selected filter — bright text + soft border, no solid fill */
 .filter-chip.active {
@@ -1021,8 +1021,8 @@ tr:hover td { background: var(--card-2); }
     color            0.2s ease-in-out,
     background-color 0.2s ease-in-out,
     border-color     0.2s ease-in-out,
-    transform        0.2s ease-in-out,
-    box-shadow       0.2s ease-in-out;
+    transform        0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow       0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .bg-opt:hover {
   color:        var(--text);
@@ -1084,8 +1084,8 @@ tr:hover td { background: var(--card-2); }
     color            0.2s ease-in-out,
     background-color 0.2s ease-in-out,
     border-color     0.2s ease-in-out,
-    transform        0.2s ease-in-out,
-    box-shadow       0.2s ease-in-out;
+    transform        0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow       0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .invite-mode-btn.active {
   color:        var(--text);
