@@ -477,6 +477,11 @@ function renderTWSessionRow(s) {
         <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="markSelfBookedCompleted('${s.id}')">✓ Done</button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:12px" onclick="cancelSelfBookedSession('${s.id}','${safeName}')">Cancel</button>
       `;
+    } else if (s.status === 'completed') {
+      const recBtn = s.recordingDriveItemId
+        ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px;color:var(--accent);border-color:var(--accent)" onclick="openBookingRecording('${s.id}')">▶ Recording</button>`
+        : `<button class="btn btn-ghost"   style="padding:4px 10px;font-size:12px" title="Search OneDrive Recordings folder" onclick="fetchAndRefreshBookingRecording('${s.id}')">⟳ Fetch</button>`;
+      actions = recBtn;
     } else {
       actions = `<span class="text-muted" style="font-size:12px">—</span>`;
     }
@@ -579,8 +584,47 @@ async function markSelfBookedCompleted(id) {
   if (!confirm('Mark this booking as completed?')) return;
   try {
     await apiJSON('PUT', `/api/booking/booking/${id}`, { status: 'completed' });
-    toast('Marked as completed', 'success');
+    toast('Marked as completed — searching for recording…', 'info');
     await loadTWSessions();
+    // Auto-try to find the recording in OneDrive (same as Direct Invite flow)
+    try {
+      const result = await apiJSON('POST', `/api/booking/booking/${id}/fetch-recording`);
+      if (result.ok) {
+        toast('Recording found and linked!', 'success');
+        await loadTWSessions();
+      } else {
+        toast(result.message || 'No recording found yet — use ⟳ Fetch to retry later.', 'info');
+      }
+    } catch { /* recording not ready yet — no error shown */ }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function fetchAndRefreshBookingRecording(id) {
+  toast('Searching OneDrive Recordings…', 'info');
+  try {
+    const result = await apiJSON('POST', `/api/booking/booking/${id}/fetch-recording`);
+    if (result.ok) {
+      toast('Recording found: ' + result.fileName, 'success');
+      await loadTWSessions();
+    } else {
+      toast(result.message || 'No recording found yet.', 'info');
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function openBookingRecording(id) {
+  toast('Loading recording…', 'info');
+  try {
+    const { downloadUrl, webUrl, fileName } = await apiJSON('GET', `/api/booking/booking/${id}/recording-url`);
+    document.getElementById('review-candidate-name').textContent   = fileName || 'Meeting Recording';
+    document.getElementById('review-interview-title').textContent  = 'Two-Way Interview Recording';
+    document.getElementById('review-content').innerHTML = downloadUrl
+      ? `<video src="${downloadUrl}" controls style="width:100%;border-radius:6px;background:#000;display:block"></video>
+         <div class="mt-8" style="text-align:right">
+           <a href="${webUrl}" target="_blank" class="btn btn-ghost" style="font-size:11px">Open in OneDrive ↗</a>
+         </div>`
+      : `<div class="empty-state"><a href="${webUrl}" target="_blank" class="btn btn-primary">Open Recording in OneDrive ↗</a></div>`;
+    openModal('modal-review');
   } catch (e) { toast(e.message, 'error'); }
 }
 

@@ -173,6 +173,12 @@ async function route(request) {
   if (seg[0] === 'booking' && seg[1] === 'booking' && seg.length === 3 && m === 'PUT') {
     return updateBookingStatusHandler(seg[2], request);
   }
+  if (seg[0] === 'booking' && seg[1] === 'booking' && seg[3] === 'fetch-recording' && m === 'POST') {
+    return fetchBookingRecording(seg[2], request);
+  }
+  if (seg[0] === 'booking' && seg[1] === 'booking' && seg[3] === 'recording-url' && m === 'GET') {
+    return getBookingRecordingUrl(seg[2], request);
+  }
   // Public routes (no admin key required)
   if (seg[0] === 'booking' && seg[1] === 'slots' && seg.length === 3 && m === 'GET') {
     return getBookingSlots(seg[2]);
@@ -727,9 +733,9 @@ async function listUnifiedTWSessions(request) {
         status:               b.status === 'confirmed' ? 'scheduled' : (b.status || 'scheduled'),
         createdAt:            b.createdAt         || 0,
         notes:                '',
-        recordingDriveItemId: null,
-        recordingFileName:    null,
-        recordingWebUrl:      null,
+        recordingDriveItemId: b.recordingDriveItemId || null,
+        recordingFileName:    b.recordingFileName    || null,
+        recordingWebUrl:      b.recordingWebUrl      || null,
         linkToken:            b.linkToken,
         linkTitle:            link.title          || '',
         calendarEventId:      b.calendarEventId   || null,
@@ -953,103 +959,238 @@ async function resolveOrganizerDriveBase(organizer, accessToken) {
   return { driveBase: siteBase, error: null };
 }
 
+// ── Shared recording-matching helper ─────────────────────────────
+//
+// Matches ONE recording file to a specific interview session with precision.
+//
+// Matching tiers (in priority order):
+//
+//   Tier 1 — AUTHORITATIVE: Unique CTI tag  [CTI-{shortId}]
+//     • All ZeusHire-generated Teams meetings embed this tag in the meeting
+//       subject → Teams includes it in the recording filename.
+//     • If meetingShortId is set on the session, ONLY this match is accepted.
+//     • Never falls back to name-matching when shortId is available.
+//       (Prevents cross-session contamination for same-name candidates.)
+//
+//   Tier 2 — NAME MATCH: ALL significant words must appear in the filename.
+//     • Only used when no meetingShortId (manual / pre-feature sessions).
+//     • Requires every word >2 chars in the candidate name to match.
+//       Partial word-list matches are rejected to avoid false positives.
+//
+// Returns { match: DriveItem|null, reason: string }
+function findRecordingCandidate(files, session) {
+  if (!files.length) return { match: null, reason: 'no_files_in_window' };
+
+  // ── Tier 1: Unique [CTI-{shortId}] tag ───────────────────────
+  if (session.meetingShortId) {
+    const tag   = `cti-${session.meetingShortId}`;
+    const match = files.find(f => f.name.toLowerCase().includes(tag));
+    if (match) return { match, reason: `id_tag:${tag}` };
+    // Tag set but NOT found — do NOT fall through to name search.
+    // A name-based guess here would silently return the wrong recording.
+    const pool = files.slice(0, 5).map(f => f.name).join(' | ');
+    return {
+      match: null,
+      reason: `tag_not_found:[CTI-${session.meetingShortId}] not in ${files.length} file(s): ${pool}`,
+    };
+  }
+
+  // ── Tier 2: Name match (manual/legacy sessions only) ─────────
+  const nameWords = (session.candidateName || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => w.length > 2);
+
+  if (!nameWords.length) {
+    return { match: null, reason: 'no_usable_name_terms' };
+  }
+
+  // ALL significant words must match — one-word hits are false positives.
+  const match = files.find(f => {
+    const fn = f.name.toLowerCase();
+    return nameWords.every(w => fn.includes(w));
+  });
+  if (match) return { match, reason: `name_all_words:${nameWords.join('+')}` };
+
+  const pool = files.slice(0, 5).map(f => f.name).join(' | ');
+  return {
+    match: null,
+    reason: `name_not_found:"${session.candidateName}" (words: ${nameWords.join(',')}) not matched in ${files.length} file(s): ${pool}`,
+  };
+}
+
+// ── Shared OneDrive recording file collector ──────────────────────
+// Lists /Recordings folder (Teams default) then falls back to drive search.
+async function collectRecordingFiles(driveBase, accessToken) {
+  const videoExt = /\.(mp4|mkv|webm)$/i;
+  let files = [];
+
+  const folderRes = await fetch(
+    `${driveBase}/root:/Recordings:/children` +
+    `?$orderby=createdDateTime+desc&$top=50&$select=id,name,createdDateTime,size,webUrl`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  );
+  if (folderRes.ok) {
+    const data = await folderRes.json();
+    files.push(...(data.value || []).filter(f => videoExt.test(f.name)));
+  }
+
+  // Drive-wide search as fallback (covers recordings saved outside /Recordings)
+  if (!files.length) {
+    const searchRes = await fetch(
+      `${driveBase}/search(q='.mp4')?$top=50&$select=id,name,createdDateTime,size,webUrl`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    if (searchRes.ok) {
+      const data = await searchRes.json();
+      files.push(...(data.value || []).filter(f => videoExt.test(f.name)));
+    }
+  }
+  return files;
+}
+
+// ── Narrow files to the meeting's time window ─────────────────────
+// Only return files whose createdDateTime falls between:
+//   windowStart = meetingStart        (recording can't exist before meeting starts)
+//   windowEnd   = meetingEnd + 4 h   (Teams processing delay, generous but bounded)
+//
+// Bounded upper limit is the critical fix — previously unbounded, which allowed
+// recordings from LATER sessions to contaminate the candidate pool.
+function applyTimeWindow(files, meetingStartMs, durationMinutes) {
+  if (!meetingStartMs) return files; // no scheduledAt → can't filter
+  const meetingEndMs = meetingStartMs + durationMinutes * 60 * 1000;
+  const windowEnd    = meetingEndMs + 4 * 60 * 60 * 1000; // +4h processing grace
+  return files.filter(f => {
+    const t = new Date(f.createdDateTime).getTime();
+    return t >= meetingStartMs && t <= windowEnd;
+  });
+}
+
 async function fetchTWRecording(id, request) {
   requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
-  // Use EMAIL_SENDER — recordings land in corporate-recruiter's drive
-  // since that account is now the Teams meeting organizer.
   const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
-
-  // ── Step 1: resolve drive base (with 423 fallback) ─────────────
   const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
   if (error) return jsonRes(error, 500);
 
-  // ── Step 2: search for recordings ──────────────────────────────
-  // Teams recordings are named after the meeting subject (e.g. "Interview -
-  // Cunard Line.mp4"), NOT "recording.mp4", so we search several terms and
-  // also list the Recordings folder directly.
-  let files = [];
-  const videoExt = /\.(mp4|mkv|webm)$/i;
-
-  // 2a. List Recordings folder (most reliable — Teams saves here by default)
-  const recFolderRes = await fetch(
-    `${driveBase}/root:/Recordings:/children` +
-    `?$orderby=createdDateTime+desc&$top=50&$select=id,name,createdDateTime,size,webUrl`,
-    { headers: { 'Authorization': `Bearer ${accessToken}` } }
-  );
-  if (recFolderRes.ok) {
-    const data = await recFolderRes.json();
-    files.push(...(data.value || []).filter(f => videoExt.test(f.name)));
-  }
-
-  // 2b. Drive search for ".mp4" — catches files outside the Recordings folder
-  if (!files.length) {
-    const s = await fetch(
-      `${driveBase}/search(q='.mp4')` +
-      `?$top=50&$select=id,name,createdDateTime,size,webUrl`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
-    if (s.ok) {
-      const data = await s.json();
-      files.push(...(data.value || []).filter(f => videoExt.test(f.name)));
-    }
-  }
-
-  const meetingStart = session.scheduledAt || 0;
-  // Only look for recordings created AFTER the meeting started (not before).
-  // This prevents picking up recordings from earlier sessions.
-  const windowStart  = meetingStart;
-
-  // Match video files created at or after the meeting time
-  let candidates = files.filter(f =>
-    new Date(f.createdDateTime).getTime() >= windowStart
-  );
-  // If time filter yields nothing (meeting time not set / clock skew), use all
-  if (!candidates.length) candidates = files;
+  const allFiles   = await collectRecordingFiles(driveBase, accessToken);
+  const candidates = applyTimeWindow(allFiles, session.scheduledAt, session.duration || 60);
 
   if (!candidates.length) {
-    return jsonRes({ notFound: true, message: 'No recording found yet. Recording may still be processing — try again in a few minutes.' });
-  }
-
-  // ── Match by unique session ID tag first (most reliable) ──────
-  // New meetings have [CTI-xxxxxxxx] embedded in the subject → filename.
-  const idTag     = session.meetingShortId ? `cti-${session.meetingShortId}` : null;
-  const idMatch   = idTag
-    ? candidates.find(f => f.name.toLowerCase().includes(idTag))
-    : null;
-
-  // ── Fallback: meaningful words from the candidate's name ────────
-  // (skip short words/honorifics like "I", "de", "Mr")
-  const nameWords = session.candidateName
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length > 2);
-
-  const nameMatch = candidates.find(f => {
-    const fn = f.name.toLowerCase();
-    return nameWords.some(w => fn.includes(w));
-  });
-
-  const best = idMatch || nameMatch;
-
-  if (!best) {
-    // Neither tag nor name matched — don't guess, report what was found
-    const fileList = candidates.map(f => f.name).join(', ');
     return jsonRes({
       notFound: true,
-      message: `Found ${candidates.length} recording(s) after meeting time but none matched "${session.candidateName}". Files found: ${fileList}`,
+      message: allFiles.length
+        ? `Found ${allFiles.length} recording(s) in OneDrive but none fall within the expected ` +
+          `meeting window (${new Date(session.scheduledAt).toISOString()} + ${session.duration || 60} min + 4h). ` +
+          `Recording may still be processing — retry in a few minutes.`
+        : 'No recording found yet. Recording may still be processing — try again in a few minutes.',
     });
   }
 
-  session.recordingDriveItemId = best.id;
-  session.recordingFileName    = best.name;
-  session.recordingWebUrl      = best.webUrl;
+  const { match, reason } = findRecordingCandidate(candidates, session);
+
+  if (!match) {
+    return jsonRes({
+      notFound: true,
+      message: reason.startsWith('tag_not_found')
+        ? `Recording tag not found — ${reason.replace('tag_not_found:', '')}. ` +
+          `Teams may still be processing — retry in a few minutes.`
+        : `No recording matched for "${session.candidateName}". ${reason}`,
+    });
+  }
+
+  // Persist the exact Drive item ID — all future playback uses this ID directly,
+  // never re-runs the search, so no future mismatch is possible.
+  session.recordingDriveItemId  = match.id;
+  session.recordingFileName     = match.name;
+  session.recordingWebUrl       = match.webUrl;
+  session.recordingMatchReason  = reason; // audit trail
   await kvPut(`tw-session:${id}`, session);
 
-  return jsonRes({ ok: true, fileName: best.name, webUrl: best.webUrl });
+  return jsonRes({ ok: true, fileName: match.name, webUrl: match.webUrl });
+}
+
+async function fetchBookingRecording(bookingId, request) {
+  requireAdmin(request);
+  const booking = await kvGet(`booking:booking:${bookingId}`);
+  if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
+
+  const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+  const accessToken = await getAccessToken();
+  const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
+  if (error) return jsonRes(error, 500);
+
+  const duration   = booking.slotEnd
+    ? Math.round((booking.slotEnd - booking.slotStart) / 60000)
+    : 30;
+  const allFiles   = await collectRecordingFiles(driveBase, accessToken);
+  const candidates = applyTimeWindow(allFiles, booking.slotStart, duration);
+
+  if (!candidates.length) {
+    return jsonRes({
+      notFound: true,
+      message: allFiles.length
+        ? `Found ${allFiles.length} recording(s) but none fall within the expected meeting window. ` +
+          `Recording may still be processing — retry in a few minutes.`
+        : 'No recording found yet — try again in a few minutes.',
+    });
+  }
+
+  // Build session-like object for the shared matcher
+  const sessionLike = {
+    meetingShortId: booking.meetingShortId || null,
+    candidateName:  booking.candidateName,
+  };
+  const { match, reason } = findRecordingCandidate(candidates, sessionLike);
+
+  if (!match) {
+    return jsonRes({
+      notFound: true,
+      message: reason.startsWith('tag_not_found')
+        ? `Recording tag not found — ${reason.replace('tag_not_found:', '')}. ` +
+          `Teams may still be processing — retry in a few minutes.`
+        : `No recording matched for "${booking.candidateName}". ${reason}`,
+    });
+  }
+
+  booking.recordingDriveItemId = match.id;
+  booking.recordingFileName    = match.name;
+  booking.recordingWebUrl      = match.webUrl;
+  booking.recordingMatchReason = reason;
+  await kvPut(`booking:booking:${bookingId}`, booking);
+
+  return jsonRes({ ok: true, fileName: match.name, webUrl: match.webUrl });
+}
+
+async function getBookingRecordingUrl(bookingId, request) {
+  requireAdmin(request);
+  const booking = await kvGet(`booking:booking:${bookingId}`);
+  if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
+  if (!booking.recordingDriveItemId) {
+    return jsonRes({ error: 'No recording linked to this booking' }, 404);
+  }
+  try {
+    const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+    const accessToken = await getAccessToken();
+    const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
+    if (error) return jsonRes(error, 500);
+
+    const itemRes = await fetch(
+      `${driveBase}/items/${booking.recordingDriveItemId}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    const item = await itemRes.json();
+    return jsonRes({
+      downloadUrl: item['@microsoft.graph.downloadUrl'],
+      webUrl:      item.webUrl,
+      fileName:    booking.recordingFileName,
+    });
+  } catch (e) {
+    return jsonRes({ error: 'Could not fetch recording URL: ' + e.message }, 500);
+  }
 }
 
 async function getTWRecordingUrl(id, request) {
@@ -2039,6 +2180,11 @@ async function createBookingHandler(token, request) {
     booking.calendarEventId  = meeting.eventId;
     booking.calendarEventUrl = meeting.webLink;
     booking.meetingLink      = meeting.joinUrl;
+    // Store the unique short ID so fetchBookingRecording can match
+    // the recording file by the [CTI-{shortId}] tag embedded in
+    // the Teams meeting subject — prevents cross-session mismatch.
+    booking.meetingShortId   = meeting.shortId;
+    booking.meetingSubjectTag = meeting.subjectTag;
   } catch (e) {
     console.error('[booking] calendar event failed:', e.message);
     // Non-fatal — booking still confirmed
