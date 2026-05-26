@@ -551,10 +551,16 @@ async function openTWRecording(id) {
 }
 
 async function cancelTWSession(id, name) {
-  if (!confirm(`Cancel ${name}'s interview session?`)) return;
+  if (!confirm(`Cancel ${name}'s interview session?\nA cancellation email will be sent to the candidate if an email address is on file.`)) return;
   try {
-    await apiJSON('PUT', `/api/tw-session/${id}`, { status: 'cancelled' });
-    toast('Session cancelled', 'success');
+    const data = await apiJSON('PUT', `/api/tw-session/${id}`, { status: 'cancelled' });
+    if (data.emailSent) {
+      toast('Session cancelled & candidate notified', 'success');
+    } else if (data.candidateEmail) {
+      toast('Session cancelled (email failed — check EMAIL_SENDER secret in Cloudflare)', 'warning');
+    } else {
+      toast('Session cancelled (no email on file)', 'success');
+    }
     await loadTWSessions();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -581,8 +587,12 @@ async function markSelfBookedCompleted(id) {
 async function cancelSelfBookedSession(id, name) {
   if (!confirm(`Cancel ${name}'s booking?\nThis will remove the Teams meeting and send a cancellation email.`)) return;
   try {
-    await apiJSON('DELETE', `/api/booking/booking/${id}`);
-    toast('Booking cancelled & candidate notified', 'success');
+    const data = await apiJSON('DELETE', `/api/booking/booking/${id}`);
+    if (data.emailSent) {
+      toast('Booking cancelled & candidate notified', 'success');
+    } else {
+      toast('Booking cancelled (email failed — check EMAIL_SENDER secret in Cloudflare)', 'warning');
+    }
     await loadTWSessions();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -2249,10 +2259,14 @@ async function viewLinkBookings(token) {
 }
 
 async function cancelAdminBooking(bookingId, linkToken, name) {
-  if (!confirm(`Cancel booking for ${name}?`)) return;
+  if (!confirm(`Cancel booking for ${name}?\nA cancellation email will be sent to the candidate.`)) return;
   try {
-    await apiJSON('DELETE', `/api/booking/booking/${bookingId}`);
-    toast('Booking cancelled', 'success');
+    const data = await apiJSON('DELETE', `/api/booking/booking/${bookingId}`);
+    if (data.emailSent) {
+      toast('Booking cancelled & candidate notified', 'success');
+    } else {
+      toast('Booking cancelled (email failed — check EMAIL_SENDER secret in Cloudflare)', 'warning');
+    }
     await viewLinkBookings(linkToken);
   } catch (e) { toast(e.message, 'error'); }
 }

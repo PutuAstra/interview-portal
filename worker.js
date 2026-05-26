@@ -764,7 +764,19 @@ async function updateTWSession(id, request) {
   const updates = await request.json();
   const updated = { ...existing, ...updates };
   await kvPut(`tw-session:${id}`, updated);
-  return jsonRes(updated);
+
+  // Send cancellation email when status transitions to 'cancelled'
+  let emailSent = false;
+  if (updates.status === 'cancelled' && existing.status !== 'cancelled' && updated.candidateEmail) {
+    try {
+      await sendTWCancellationEmail(updated);
+      emailSent = true;
+    } catch (e) {
+      console.error('[tw-session] cancellation email failed:', e.message);
+    }
+  }
+
+  return jsonRes({ ...updated, emailSent });
 }
 
 async function deleteTWSessionHandler(id, request) {
@@ -773,6 +785,49 @@ async function deleteTWSessionHandler(id, request) {
   const list = (await kvGet('tw-session:list')) || [];
   await kvPut('tw-session:list', list.filter(i => i !== id));
   return jsonRes({ ok: true });
+}
+
+async function sendTWCancellationEmail(session) {
+  const sender = EMAIL_SENDER;
+  const dt       = session.scheduledAt ? new Date(session.scheduledAt) : null;
+  const dateStr  = dt ? dt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : null;
+  const timeStr  = dt ? dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : null;
+
+  const html = emailWrap('#374151', 'Interview Cancelled', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">We regret to inform you that your scheduled interview has been <strong>cancelled</strong>. Here are the details of the cancelled session:</p>
+    ${emailInfoBox('#9ca3af', session.position || 'Interview')}
+    ${dateStr ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:20px">
+      <tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Date</td>
+        <td valign="top" style="padding:8px 0;color:#9ca3af;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;text-decoration:line-through">${dateStr}</td>
+      </tr>
+      ${timeStr ? `<tr>
+        <td width="120" valign="top" style="padding:8px 0;color:#6b7280;font-size:13px;font-family:Arial,Helvetica,sans-serif">Time</td>
+        <td valign="top" style="padding:8px 0;color:#9ca3af;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;text-decoration:line-through">${timeStr}</td>
+      </tr>` : ''}
+    </table>` : ''}
+    <p style="margin:0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">If you have questions or would like to reschedule, please contact us directly and we will arrange a new time for you.</p>
+  `);
+
+  const accessToken = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: `Interview Cancelled: ${session.position || 'Interview'} — ${session.candidateName} — CTI ZeusHire`,
+        body: { contentType: 'HTML', content: html },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
+        toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error('Graph sendMail failed: ' + (err.error?.message || res.status));
+  }
 }
 
 async function sendTWEmail(id, request) {
@@ -1731,14 +1786,18 @@ async function cancelBookingHandler(bookingId, request) {
   }
 
   // ── Send cancellation email to candidate ──────────────────────
+  let emailSent = false;
+  let emailError = null;
   try {
     const link = await kvGet(`booking:link:${booking.linkToken}`);
     await sendBookingCancellationEmail(booking, link || {});
+    emailSent = true;
   } catch (e) {
+    emailError = e.message;
     console.error('[booking] cancellation email failed:', e.message);
   }
 
-  return jsonRes({ ok: true });
+  return jsonRes({ ok: true, emailSent, emailError });
 }
 
 // ── Slot generation (public) ──────────────────────────────────
