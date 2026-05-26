@@ -90,6 +90,15 @@ p  { color: var(--text-2); }
   border-radius: 50%;
 }
 
+/*
+ * ── Button spring-hover system ─────────────────────────────────
+ * Two-phase transition asymmetry (standard CSS behaviour):
+ *   mouse-IN  → transition on :hover rule fires  (spring overshoot)
+ *   mouse-OUT → transition on base element fires (fast ease-out snap)
+ * cubic-bezier(0.34, 1.56, 0.64, 1) is the "spring" curve:
+ *   it overshoots the target by ~60%, creating a natural soft bounce.
+ * ─────────────────────────────────────────────────────────────── */
+
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
@@ -102,12 +111,13 @@ p  { color: var(--text-2); }
   cursor: pointer;
   border: none;
   transform-origin: center;
+  /* Mouse-OUT: fast, clean snap-back */
   transition:
     background-color 0.18s ease-in-out,
     color            0.18s ease-in-out,
     border-color     0.18s ease-in-out,
-    transform        0.18s ease-in-out,
-    box-shadow       0.18s ease-in-out,
+    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     opacity          0.18s ease-in-out;
   text-decoration: none;
 }
@@ -122,6 +132,14 @@ p  { color: var(--text-2); }
   background: var(--accent-dk);
   transform: scale(1.04);
   box-shadow: 0 4px 16px rgba(176, 26, 24, 0.45);
+  /* Mouse-IN: spring overshoot */
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out,
+    opacity          0.18s ease-in-out;
 }
 
 .btn-outline {
@@ -133,6 +151,13 @@ p  { color: var(--text-2); }
   background: var(--card-2);
   transform: scale(1.04);
   box-shadow: 0 4px 14px rgba(241, 245, 249, 0.07);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out,
+    opacity          0.18s ease-in-out;
 }
 
 .btn-ghost {
@@ -143,6 +168,13 @@ p  { color: var(--text-2); }
 .btn-ghost:hover {
   color: var(--text);
   transform: scale(1.04);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out,
+    opacity          0.18s ease-in-out;
 }
 
 .btn-danger {
@@ -154,6 +186,13 @@ p  { color: var(--text-2); }
   background: rgba(239, 68, 68, 0.10);
   transform: scale(1.04);
   box-shadow: 0 4px 14px rgba(239, 68, 68, 0.28);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out,
+    opacity          0.18s ease-in-out;
 }
 
 .btn-lg {
@@ -293,12 +332,13 @@ tr:hover td { background: var(--card-2); }
   border: 1px solid transparent;
   cursor: pointer;
   transform-origin: center;
+  /* Mouse-OUT snap-back */
   transition:
     background-color 0.18s ease-in-out,
     color            0.18s ease-in-out,
     border-color     0.18s ease-in-out,
-    transform        0.18s ease-in-out,
-    box-shadow       0.18s ease-in-out;
+    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* ── Move Forward ── */
@@ -313,6 +353,13 @@ tr:hover td { background: var(--card-2); }
   border-color: rgba(22, 163, 74, 0.30);
   transform:    scale(1.04);
   box-shadow:   0 4px 14px rgba(22, 163, 74, 0.22);
+  /* Mouse-IN spring */
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 /* selected (after click) */
@@ -327,6 +374,12 @@ tr:hover td { background: var(--card-2); }
   border-color: #15803d;
   transform:    scale(1.04);
   box-shadow:   0 4px 18px rgba(22, 163, 74, 0.40);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 /* ── Not Moving Forward ── */
@@ -341,6 +394,12 @@ tr:hover td { background: var(--card-2); }
   border-color: rgba(220, 38, 38, 0.25);
   transform:    scale(1.04);
   box-shadow:   0 4px 14px rgba(220, 38, 38, 0.18);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 /* selected (after click) */
@@ -355,6 +414,12 @@ tr:hover td { background: var(--card-2); }
   border-color: #b91c1c;
   transform:    scale(1.04);
   box-shadow:   0 4px 18px rgba(220, 38, 38, 0.40);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 /* ── Modal ── */
@@ -711,23 +776,36 @@ tr:hover td { background: var(--card-2); }
   background: transparent;
   color: var(--muted);
   transform-origin: center;
+  /* Mouse-OUT snap-back */
   transition:
     background-color 0.18s ease-in-out,
     color            0.18s ease-in-out,
     border-color     0.18s ease-in-out,
-    transform        0.18s ease-in-out,
-    box-shadow       0.18s ease-in-out;
+    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .filter-chip.active:hover {
   transform: scale(1.04);
   box-shadow: 0 4px 14px rgba(176, 26, 24, 0.40);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 .filter-chip:hover:not(.active) {
   border-color: var(--accent);
   color: var(--accent);
   transform: scale(1.04);
   box-shadow: 0 4px 12px rgba(176, 26, 24, 0.20);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 /* ── Video review ── */
@@ -956,23 +1034,36 @@ tr:hover td { background: var(--card-2); }
   cursor: pointer;
   font-family: inherit;
   transform-origin: center;
+  /* Mouse-OUT snap-back */
   transition:
     background-color 0.18s ease-in-out,
     color            0.18s ease-in-out,
     border-color     0.18s ease-in-out,
-    transform        0.18s ease-in-out,
-    box-shadow       0.18s ease-in-out;
+    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .bg-opt:hover {
   border-color: var(--accent);
   color: var(--text);
   transform: scale(1.04);
   box-shadow: 0 4px 12px rgba(176, 26, 24, 0.22);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 .bg-opt.active { border-color: var(--accent); background: rgba(176,26,24,0.12); color: var(--accent); font-weight: 600; }
 .bg-opt.active:hover {
   transform: scale(1.04);
   box-shadow: 0 4px 14px rgba(176, 26, 24, 0.35);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 .bg-swatch {
@@ -1008,20 +1099,31 @@ tr:hover td { background: var(--card-2); }
   cursor: pointer;
   font-family: inherit;
   transform-origin: center;
+  /* Mouse-OUT snap-back */
   transition:
     background-color 0.18s ease-in-out,
     color            0.18s ease-in-out,
-    transform        0.18s ease-in-out,
-    box-shadow       0.18s ease-in-out;
+    transform        0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow       0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .invite-mode-btn.active { background: var(--card); color: var(--text); }
 .invite-mode-btn.active:hover {
   transform: scale(1.04);
   box-shadow: 0 4px 12px rgba(241, 245, 249, 0.07);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 .invite-mode-btn:hover:not(.active) {
   color: var(--text-2);
   transform: scale(1.04);
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    transform        0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.30s ease-out;
 }
 
 /* ── Bulk drop zone ── */
