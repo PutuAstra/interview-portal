@@ -254,6 +254,87 @@ tr:hover td { background: var(--card-2); }
 #toast.info     { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
 #toast.warning  { background: #78350f; color: #fde68a; border: 1px solid #f59e0b; }
 
+/* ── Review Outcome decision buttons ────────────────────────── */
+/*
+ * Base: shared reset so scale() works without clipping neighbours.
+ * All transitioning properties are listed explicitly (not 'all') so
+ * only the intended properties animate — prevents jank on display/layout props.
+ */
+.btn-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transform-origin: center;
+  transition:
+    background-color 0.18s ease-in-out,
+    color            0.18s ease-in-out,
+    border-color     0.18s ease-in-out,
+    transform        0.18s ease-in-out,
+    box-shadow       0.18s ease-in-out;
+}
+
+/* ── Move Forward ── */
+.btn-outcome-fwd {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+}
+.btn-outcome-fwd:hover {
+  background:   rgba(22, 163, 74, 0.12);
+  color:        #4ade80;
+  border-color: rgba(22, 163, 74, 0.30);
+  transform:    scale(1.04);
+  box-shadow:   0 4px 14px rgba(22, 163, 74, 0.22);
+}
+
+/* selected (after click) */
+.btn-outcome-fwd.selected {
+  background:   #16a34a;
+  color:        #ffffff;
+  border-color: #16a34a;
+}
+.btn-outcome-fwd.selected:hover {
+  background:   #15803d;
+  color:        #ffffff;
+  border-color: #15803d;
+  transform:    scale(1.04);
+  box-shadow:   0 4px 18px rgba(22, 163, 74, 0.40);
+}
+
+/* ── Not Moving Forward ── */
+.btn-outcome-rej {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+}
+.btn-outcome-rej:hover {
+  background:   rgba(220, 38, 38, 0.10);
+  color:        #f87171;
+  border-color: rgba(220, 38, 38, 0.25);
+  transform:    scale(1.04);
+  box-shadow:   0 4px 14px rgba(220, 38, 38, 0.18);
+}
+
+/* selected (after click) */
+.btn-outcome-rej.selected {
+  background:   #dc2626;
+  color:        #ffffff;
+  border-color: #dc2626;
+}
+.btn-outcome-rej.selected:hover {
+  background:   #b91c1c;
+  color:        #ffffff;
+  border-color: #b91c1c;
+  transform:    scale(1.04);
+  box-shadow:   0 4px 18px rgba(220, 38, 38, 0.40);
+}
+
 /* ── Modal ── */
 .modal-overlay {
   display: none;

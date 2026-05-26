@@ -1533,13 +1533,11 @@ async function openReview(token, candidateName) {
         <h3 style="margin:0 0 12px;font-size:14px">Review Outcome</h3>
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <button id="btn-fwd" onclick="setReviewDecision('move_forward')"
-            class="btn" style="font-size:12px;padding:7px 16px;transition:all 0.15s;
-            ${decisionFwd ? 'background:#16a34a;color:#fff;border:1px solid #16a34a' : 'background:transparent;border:1px solid transparent;color:var(--muted)'}">
+            class="btn-outcome btn-outcome-fwd${decisionFwd ? ' selected' : ''}">
             ✓ Move Forward
           </button>
           <button id="btn-rej" onclick="setReviewDecision('not_moving_forward')"
-            class="btn" style="font-size:12px;padding:7px 16px;transition:all 0.15s;
-            ${decisionRej ? 'background:#dc2626;color:#fff;border:1px solid #dc2626' : 'background:transparent;border:1px solid transparent;color:var(--muted)'}">
+            class="btn-outcome btn-outcome-rej${decisionRej ? ' selected' : ''}">
             ✗ Not Moving Forward
           </button>
           <div id="star-picker" style="display:inline-flex;gap:2px;margin-left:6px;align-items:center">
@@ -1585,10 +1583,8 @@ function setReviewDecision(decision) {
   _reviewDecision = decision;
   const fwd = document.getElementById('btn-fwd');
   const rej = document.getElementById('btn-rej');
-  if (fwd) fwd.style.cssText = fwd.style.cssText.replace(/background:[^;]+;color:[^;]+;border:[^;]+/, '')
-    + (decision === 'move_forward' ? ';background:#16a34a;color:#fff;border:1px solid #16a34a' : ';background:transparent;color:var(--muted);border:1px solid transparent');
-  if (rej) rej.style.cssText = rej.style.cssText.replace(/background:[^;]+;color:[^;]+;border:[^;]+/, '')
-    + (decision === 'not_moving_forward' ? ';background:#dc2626;color:#fff;border:1px solid #dc2626' : ';background:transparent;color:var(--muted);border:1px solid transparent');
+  if (fwd) fwd.classList.toggle('selected', decision === 'move_forward');
+  if (rej) rej.classList.toggle('selected', decision === 'not_moving_forward');
 }
 
 async function saveReviewOutcome(token) {
