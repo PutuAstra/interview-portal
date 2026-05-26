@@ -7,7 +7,8 @@
 //    TENANT_ID       — Azure tenant ID
 //    CLIENT_ID       — Azure app client ID
 //    CLIENT_SECRET   — Azure app client secret
-//    ONEDRIVE_USER   — OneDrive owner email (e.g. putua@ctigroup.com)
+//    ONEDRIVE_USER   — OneDrive owner email for video file storage (e.g. putu.astra@cti-usa.com)
+//    EMAIL_SENDER    — Recruiter calendar owner + email from-address (corporate-recruiter@cti-usa.com)
 //
 //  Required KV binding (Worker Settings → Bindings → KV Namespace):
 //    INTERVIEW_DATA  → interview-data
@@ -902,9 +903,9 @@ async function fetchTWRecording(id, request) {
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
-  // Use ONEDRIVE_USER (not EMAIL_SENDER) — Teams meetings are created in
-  // ONEDRIVE_USER's calendar so recordings land in their accessible drive.
-  const organizer   = ONEDRIVE_USER;
+  // Use EMAIL_SENDER — recordings land in corporate-recruiter's drive
+  // since that account is now the Teams meeting organizer.
+  const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
 
   // ── Step 1: resolve drive base (with 423 fallback) ─────────────
@@ -1003,7 +1004,7 @@ async function getTWRecordingUrl(id, request) {
   if (!session.recordingDriveItemId) return jsonRes({ error: 'No recording linked to this session' }, 404);
 
   try {
-    const organizer   = ONEDRIVE_USER;
+    const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
     const accessToken = await getAccessToken();
 
     const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
@@ -1026,10 +1027,10 @@ async function getTWRecordingUrl(id, request) {
 
 async function createTeamsMeeting(session) {
   const accessToken = await getAccessToken();
-  // Always use ONEDRIVE_USER as the Teams meeting organizer so that
-  // recordings land in ONEDRIVE_USER's drive (accessible via app-only auth).
-  // EMAIL_SENDER is only used as the FROM address in notification emails.
-  const organizer   = ONEDRIVE_USER;
+  // Use EMAIL_SENDER (corporate-recruiter@cti-usa.com) as the Teams meeting
+  // organizer so calendar events appear in the recruiter's calendar.
+  // Fall back to ONEDRIVE_USER only if EMAIL_SENDER is not set.
+  const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
 
   const startMs  = session.scheduledAt;
   const endMs    = startMs + (session.duration || 60) * 60 * 1000;
@@ -1719,7 +1720,7 @@ async function cancelBookingHandler(bookingId, request) {
   if (booking.calendarEventId) {
     try {
       const accessToken = await getAccessToken();
-      const organizer   = ONEDRIVE_USER;
+      const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
       await fetch(
         `https://graph.microsoft.com/v1.0/users/${organizer}/calendar/events/${booking.calendarEventId}`,
         { method: 'DELETE', headers: { 'Authorization': `Bearer ${accessToken}` } }
