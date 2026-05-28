@@ -1598,7 +1598,7 @@ function openDeadlinePicker(token, anchorEl) {
     </p>
 
     <div class="flex gap-8">
-      <button class="btn btn-primary" style="flex:1;font-size:12px" id="deadline-save-btn">Save</button>
+      <button class="btn btn-primary" style="font-size:12px" id="deadline-save-btn">Save</button>
       ${currentVal ? `<button class="btn btn-danger" style="font-size:12px" id="deadline-clear-btn">Clear</button>` : ''}
       <button class="btn btn-outline" style="font-size:12px" id="deadline-cancel-btn">Cancel</button>
     </div>
