@@ -720,6 +720,17 @@ tr:hover td { background: var(--card-2); }
 .q-fields input:focus,
 .q-fields select:focus { border-color: var(--accent); }
 
+.q-selects {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.q-selects select {
+  flex: 1 1 110px;
+  min-width: 100px;
+}
+
 /* ── Session list ── */
 .sessions-table-header {
   display: grid;

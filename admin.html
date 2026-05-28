@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#B01A18" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20250526n" />
+  <link rel="stylesheet" href="style.css?v=20250528a" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
   <style>
     /* Circular crop box for logo */
@@ -112,7 +112,10 @@
     <hr class="divider" />
     <div class="flex justify-between items-center mb-16">
       <h3>Questions</h3>
-      <button class="btn btn-outline" onclick="addEditQuestion()">+ Add Question</button>
+      <div class="flex gap-8">
+        <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('edit')">📋 Templates</button>
+        <button class="btn btn-outline" onclick="addEditQuestion()">+ Add Question</button>
+      </div>
     </div>
     <div id="edit-questions-builder"></div>
     <div class="mt-24 flex gap-8">
@@ -143,10 +146,15 @@
 
       <!-- Single invite -->
       <div id="invite-single-section">
-        <div class="mb-16 flex gap-8 items-center">
+        <div class="mb-8 flex gap-8 items-center">
           <input type="text" id="new-cand-name" placeholder="Candidate name *" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px" />
           <input type="email" id="new-cand-email" placeholder="Email *" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px" />
           <button class="btn btn-primary" onclick="generateLink()">Generate Link</button>
+        </div>
+        <div class="mb-16 flex gap-8 items-center">
+          <label style="font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0">⏰ Deadline:</label>
+          <input type="date" id="new-cand-deadline" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px" />
+          <span style="font-size:11px;color:var(--muted)">Optional — triggers automatic 48h &amp; 24h reminder emails</span>
         </div>
         <div id="generated-link-box" style="display:none">
           <p class="text-sm text-muted mb-4">Share this link with the candidate:</p>
@@ -340,9 +348,28 @@
   </div>
 </div>
 
+<!-- Modal: Question Templates -->
+<div class="modal-overlay" id="modal-templates">
+  <div class="modal" style="max-width:780px;width:calc(100vw - 80px)">
+    <div class="modal-header">
+      <h2>📋 Question Templates</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-templates')">✕</button>
+    </div>
+    <p class="text-muted text-sm mb-16">Select a category to preview its questions, then load them into your interview builder.</p>
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:20px;min-height:320px">
+      <div id="template-list" style="border-right:1px solid var(--border);padding-right:16px"></div>
+      <div id="template-preview" style="overflow-y:auto;max-height:420px"></div>
+    </div>
+    <div class="mt-16 flex gap-8 justify-end">
+      <button id="use-template-btn" class="btn btn-primary" style="display:none">Use This Template</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-templates')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250526g"></script>
+<script src="admin.js?v=20250528a"></script>
 </body>
 </html>

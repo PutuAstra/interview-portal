@@ -28,6 +28,10 @@ addEventListener('fetch', event => {
   event.respondWith(handle(event.request));
 });
 
+addEventListener('scheduled', event => {
+  event.waitUntil(handleScheduled());
+});
+
 async function handle(request) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS });
@@ -187,6 +191,18 @@ async function route(request) {
     return createBookingHandler(seg[2], request);
   }
 
+  // ── Question Templates ───────────────────────────────────────
+  if (seg[0] === 'templates' && seg.length === 1 && m === 'GET') {
+    return listTemplates(request);
+  }
+
+  // ── Reminder trigger (manual / external cron) ────────────────
+  if (seg[0] === 'reminders' && seg[1] === 'run' && m === 'POST') {
+    requireAdmin(request);
+    const result = await handleScheduled();
+    return jsonRes(result);
+  }
+
   // ── Recruiter / Calendar-Sync Settings ──────────────────────
   if (seg[0] === 'recruiter' && seg[1] === 'settings' && seg.length === 2) {
     if (m === 'GET') return getRecruiterSettings(request);
@@ -236,6 +252,188 @@ function requireAdmin(request) {
 function uid() {
   return crypto.randomUUID();
 }
+
+// ── Question Templates ────────────────────────────────────────
+
+const QUESTION_TEMPLATES_DATA = [
+  {
+    id: 'general',
+    category: 'General Behavioral',
+    questions: [
+      { text: 'Tell me about yourself and what makes you a strong candidate for this role.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe a challenging situation you faced at work or school and how you resolved it.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'What are your greatest strengths, and how do they apply to this position?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Where do you see yourself professionally in 3–5 years?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Why are you interested in working with CTI Group and what motivated you to apply?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'sales',
+    category: 'Sales & Business Development',
+    questions: [
+      { text: 'Tell me about a time you exceeded a sales target. What was your approach?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you handle a prospect who says they\'re not interested? Walk me through your response.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe your process for researching a new prospect before a cold call or meeting.', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about your most challenging sale. What obstacles did you face and how did you close the deal?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'engineering',
+    category: 'Engineering & Technical',
+    questions: [
+      { text: 'Walk me through a complex technical problem you solved. What was your thought process?', duration: 180, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you stay current with new technologies and industry trends?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe a time you had to learn a new technology quickly. How did you approach it?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about a project where you had to balance technical quality with delivery deadlines.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'customer-service',
+    category: 'Customer Service',
+    questions: [
+      { text: 'Describe a time you turned a frustrated customer into a satisfied one. What did you do?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you prioritize when you have multiple customer requests at the same time?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about a time you went above and beyond for a customer. What was the outcome?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you handle a situation where you do not know the answer to a customer\'s question?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'marketing',
+    category: 'Marketing & Communications',
+    questions: [
+      { text: 'Tell me about a marketing campaign you worked on. What was your role and what were the results?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you approach creating content for different target audiences?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe a time you used data or analytics to improve a marketing strategy.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'What social media platforms do you have experience with, and how have you grown an audience?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'hr',
+    category: 'HR & Operations',
+    questions: [
+      { text: 'Describe your experience with recruitment. Walk me through your typical hiring process.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you handle a situation where two team members have a conflict? Walk me through your approach.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about a process improvement you implemented. What was the impact?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you ensure compliance with company policies and employment regulations?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+];
+
+function listTemplates(request) {
+  requireAdmin(request);
+  return jsonRes(QUESTION_TEMPLATES_DATA);
+}
+
+// ── Scheduled handler (cron + manual trigger) ─────────────────
+
+async function handleScheduled() {
+  const now    = Date.now();
+  const h48    = 48 * 60 * 60 * 1000;
+  const h24    = 24 * 60 * 60 * 1000;
+  const window = 2  * 60 * 60 * 1000; // ±2h fire window
+
+  let sent48 = 0, sent24 = 0, errors = 0;
+
+  const interviewIds = (await kvGet('interview:list')) || [];
+
+  for (const iid of interviewIds) {
+    const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
+    for (const token of tokens) {
+      const session = await kvGet(`session:${token}`);
+      if (!session?.expiresAt || session.status !== 'pending') continue;
+      if (!session.candidateEmail) continue;
+
+      const timeLeft = session.expiresAt - now;
+
+      // 48h window: between 46h and 50h remaining
+      if (!session.reminder48hSent && timeLeft >= (h48 - window) && timeLeft < (h48 + window)) {
+        try {
+          await sendReminderEmail(session, '48h');
+          session.reminder48hSent = true;
+          await kvPut(`session:${token}`, session);
+          sent48++;
+        } catch (e) {
+          console.error('[reminders] 48h email failed for', token, e.message);
+          errors++;
+        }
+      }
+
+      // 24h window: between 22h and 26h remaining
+      if (!session.reminder24hSent && timeLeft >= (h24 - window) && timeLeft < (h24 + window)) {
+        try {
+          await sendReminderEmail(session, '24h');
+          session.reminder24hSent = true;
+          await kvPut(`session:${token}`, session);
+          sent24++;
+        } catch (e) {
+          console.error('[reminders] 24h email failed for', token, e.message);
+          errors++;
+        }
+      }
+    }
+  }
+
+  return { ok: true, sent48, sent24, errors };
+}
+
+async function sendReminderEmail(session, type) {
+  const interview = await kvGet(`interview:${session.interviewId}`);
+  const interviewTitle = interview?.title || 'Interview';
+  const deadline = new Date(session.expiresAt).toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+  const label = type === '48h' ? '48 Hours' : '24 Hours';
+
+  // Build the interview link
+  // We don't know the exact domain here — store it on session if known, else omit
+  const link = session.interviewLink || null;
+
+  const html = emailWrap('#B01A18', 'CTI ZeusHire — Interview Reminder', `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
+    <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
+      This is a friendly reminder that your video interview is due in <strong>${label}</strong>.
+    </p>
+    ${emailInfoBox('#B01A18', interviewTitle, `Deadline: ${deadline}`)}
+    <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
+      Please complete your interview before the deadline to be considered for this opportunity.
+    </p>
+    ${link ? emailButton(link, 'Complete My Interview') : ''}
+    ${link ? `
+    <p style="margin:16px 0 4px 0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif">Or copy this link into your browser:</p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+      <td bgcolor="#f3f4f6" style="background-color:#f3f4f6;padding:10px;word-break:break-all">
+        <p style="margin:0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif;word-break:break-all">${link}</p>
+      </td>
+    </tr></table>
+    ` : ''}
+    <p style="margin:20px 0 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif">
+      If you have already completed your interview, please disregard this reminder.
+    </p>
+  `);
+
+  const sender = EMAIL_SENDER;
+  const accessToken = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: `Reminder: Complete your ${interviewTitle} interview — ${label} remaining`,
+        body: { contentType: 'HTML', content: html },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
+        toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error('Email failed: ' + (err.error?.message || res.status));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 
 async function kvGet(key) {
   const v = await INTERVIEW_DATA.get(key);
@@ -374,7 +572,7 @@ async function createSession(interviewId, request) {
   const interview = await kvGet(`interview:${interviewId}`);
   if (!interview) return jsonRes({ error: 'Interview not found' }, 404);
 
-  const { candidateName, candidateEmail } = await request.json();
+  const { candidateName, candidateEmail, expiresAt } = await request.json();
   if (!candidateName) return jsonRes({ error: 'candidateName required' }, 400);
 
   const token = uid();
@@ -385,6 +583,9 @@ async function createSession(interviewId, request) {
     responses: [],
     createdAt: Date.now(),
     completedAt: null,
+    expiresAt: expiresAt || null,
+    reminder48hSent: false,
+    reminder24hSent: false,
   };
   await kvPut(`session:${token}`, session);
 
@@ -513,6 +714,12 @@ async function sendInterviewEmail(token, request) {
   const { link } = await request.json();
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
+
+  // Persist the link so reminder emails can include it
+  if (link && !session.interviewLink) {
+    session.interviewLink = link;
+    await kvPut(`session:${token}`, session);
+  }
 
   const html = emailWrap('#B01A18', 'CTI ZeusHire', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>

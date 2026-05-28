@@ -9,6 +9,7 @@ const WORKER_URL = 'https://interview-api.putuastrawijaya.workers.dev';
 let session = null;
 let interview = null;
 let currentQ = 0;
+let retakesUsed = {}; // { [questionIndex]: number }
 let mediaStream = null;
 let recorder = null;
 let chunks = [];
@@ -797,7 +798,11 @@ function showQuestion(index) {
         </div>
 
         <div id="controls" class="flex gap-12 justify-between items-center mt-16">
-          <p class="text-muted text-sm">Press Record when you're ready. You have ${formatTime(q.duration)}.</p>
+          <div>
+            <p class="text-muted text-sm">Press Record when you're ready. You have ${formatTime(q.duration)}.</p>
+            ${q.thinkTime ? `<p class="text-muted text-sm" style="margin-top:3px">💭 ${q.thinkTime}s think time before recording starts.</p>` : ''}
+            ${(q.maxRetakes || 0) > 0 ? `<p class="text-muted text-sm" style="margin-top:3px">🔄 ${(q.maxRetakes || 0) - (retakesUsed[index] || 0)} retake${((q.maxRetakes || 0) - (retakesUsed[index] || 0)) !== 1 ? 's' : ''} remaining.</p>` : ''}
+          </div>
           <button class="btn btn-primary btn-lg" id="record-btn" onclick="startCountdown()">
             ● Record
           </button>
@@ -835,7 +840,7 @@ function startCountdown() {
 
   const q = interview.questions[currentQ];
 
-  // ── Step 2: 3-2-1 countdown → start recording ────────────────
+  // ── Step 3: 3-2-1 countdown → start recording ────────────────
   function beginCountdown() {
     let count = 3;
     showOverlay(`
@@ -858,77 +863,99 @@ function startCountdown() {
     }, 1000);
   }
 
-  // ── Step 1: read question aloud, then countdown ───────────────
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+  // ── Step 1: think time (optional) → then read + countdown ──────
+  function beginThinkTime(onDone) {
+    const thinkSecs = q.thinkTime || 0;
+    if (!thinkSecs) { onDone(); return; }
 
+    let remaining = thinkSecs;
     showOverlay(`
       <div class="countdown-overlay" id="countdown-overlay">
-        <div style="font-size:36px;margin-bottom:8px">🔊</div>
-        <div class="countdown-label">Reading question…</div>
+        <div style="font-size:28px;margin-bottom:6px">💭</div>
+        <div class="countdown-number" id="think-num">${remaining}</div>
+        <div class="countdown-label">Think time — prepare your answer</div>
       </div>`);
 
-    // Pick the best available recruiter-style voice.
-    // Preference order: Windows Neural Online → Google Neural → macOS natural → any en-US
-    function pickVoice(voices) {
-      const tests = [
-        // Windows/Edge neural online voices (highest quality)
-        v => /\bonline\b/i.test(v.name) && /en[-_]US/i.test(v.lang),
-        v => /\bonline\b/i.test(v.name) && v.lang.startsWith('en'),
-        // Chrome Google voices
-        v => /google.*us.*english|google.*english.*us/i.test(v.name),
-        v => /google/i.test(v.name) && v.lang.startsWith('en'),
-        // macOS / iOS natural voices
-        v => /\b(samantha|alex|karen|daniel|moira|kate|victoria)\b/i.test(v.name),
-        // Any en-US fallback
-        v => /en[-_]US/i.test(v.lang),
-        v => v.lang.startsWith('en'),
-      ];
-      for (const t of tests) {
-        const m = voices.find(t);
-        if (m) return m;
+    const tick = setInterval(() => {
+      remaining--;
+      const el = document.getElementById('think-num');
+      if (!el) { clearInterval(tick); return; }
+      if (remaining <= 0) {
+        clearInterval(tick);
+        clearOverlay();
+        onDone();
+      } else {
+        el.textContent = remaining;
       }
-      return null;
-    }
-
-    // Single utterance — avoids all mobile chaining/timing issues.
-    // The "..." ellipsis creates a natural pause between preamble and question
-    // without relying on chained speak() calls (which fail silently on mobile).
-    function doSpeak(voice) {
-      const numWords = ['one','two','three','four','five','six','seven','eight','nine','ten'];
-      const qNum = numWords[currentQ] || String(currentQ + 1);
-      const utt = new SpeechSynthesisUtterance(
-        `Question number ${qNum}... ${q.text || ''}`
-      );
-      if (voice) utt.voice = voice;
-      utt.rate   = 0.88;
-      utt.pitch  = 0.95;
-      utt.volume = 1;
-      utt.onend   = () => beginCountdown();
-      utt.onerror = () => beginCountdown();
-      window.speechSynthesis.speak(utt);
-    }
-
-    // Voices may not be loaded yet on first call — wait if needed
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length) {
-      doSpeak(pickVoice(voices));
-    } else {
-      window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.onvoiceschanged = null;
-        doSpeak(pickVoice(window.speechSynthesis.getVoices()));
-      };
-      // Safety timeout — if voices never load, go straight to countdown
-      setTimeout(() => {
-        if (document.getElementById('countdown-num')) return; // already counting
-        window.speechSynthesis.cancel();
-        beginCountdown();
-      }, 2000);
-    }
-  } else {
-    // Browser doesn't support TTS — skip straight to countdown
-    beginCountdown();
+    }, 1000);
   }
+
+  // ── Step 2: read question aloud, then countdown ───────────────
+  function startTTS() {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+
+      showOverlay(`
+        <div class="countdown-overlay" id="countdown-overlay">
+          <div style="font-size:36px;margin-bottom:8px">🔊</div>
+          <div class="countdown-label">Reading question…</div>
+        </div>`);
+
+      // Pick the best available recruiter-style voice.
+      // Preference order: Windows Neural Online → Google Neural → macOS natural → any en-US
+      function pickVoice(voices) {
+        const tests = [
+          v => /\bonline\b/i.test(v.name) && /en[-_]US/i.test(v.lang),
+          v => /\bonline\b/i.test(v.name) && v.lang.startsWith('en'),
+          v => /google.*us.*english|google.*english.*us/i.test(v.name),
+          v => /google/i.test(v.name) && v.lang.startsWith('en'),
+          v => /\b(samantha|alex|karen|daniel|moira|kate|victoria)\b/i.test(v.name),
+          v => /en[-_]US/i.test(v.lang),
+          v => v.lang.startsWith('en'),
+        ];
+        for (const t of tests) {
+          const m = voices.find(t);
+          if (m) return m;
+        }
+        return null;
+      }
+
+      function doSpeak(voice) {
+        const numWords = ['one','two','three','four','five','six','seven','eight','nine','ten'];
+        const qNum = numWords[currentQ] || String(currentQ + 1);
+        const utt = new SpeechSynthesisUtterance(
+          `Question number ${qNum}... ${q.text || ''}`
+        );
+        if (voice) utt.voice = voice;
+        utt.rate   = 0.88;
+        utt.pitch  = 0.95;
+        utt.volume = 1;
+        utt.onend   = () => beginCountdown();
+        utt.onerror = () => beginCountdown();
+        window.speechSynthesis.speak(utt);
+      }
+
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length) {
+        doSpeak(pickVoice(voices));
+      } else {
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.onvoiceschanged = null;
+          doSpeak(pickVoice(window.speechSynthesis.getVoices()));
+        };
+        setTimeout(() => {
+          if (document.getElementById('countdown-num')) return;
+          window.speechSynthesis.cancel();
+          beginCountdown();
+        }, 2000);
+      }
+    } else {
+      beginCountdown();
+    }
+  }
+
+  // Run think time first (if set), then TTS → 3-2-1 → record
+  beginThinkTime(startTTS);
 }
 
 function startRecording() {
@@ -1051,12 +1078,27 @@ async function retryUpload() {
 function showAfterRecording() {
   const total = interview.questions.length;
   const isLast = currentQ === total - 1;
+  const q = interview.questions[currentQ];
+  const maxRetakes  = q.maxRetakes || 0;
+  const usedRetakes = retakesUsed[currentQ] || 0;
+  const canRetake   = usedRetakes < maxRetakes;
 
   document.getElementById('controls').innerHTML = `
-    <p class="text-muted text-sm" style="color:var(--green)">✓ Answer saved</p>
-    <button class="btn btn-primary btn-lg" onclick="${isLast ? 'finishInterview()' : `showQuestion(${currentQ + 1})`}">
-      ${isLast ? 'Finish Interview' : 'Next Question →'}
-    </button>`;
+    <p class="text-muted text-sm" style="color:var(--green)">✓ Answer saved${maxRetakes > 0 ? ` &nbsp;·&nbsp; ${maxRetakes - usedRetakes} retake${(maxRetakes - usedRetakes) !== 1 ? 's' : ''} remaining` : ''}</p>
+    <div class="flex gap-8">
+      ${canRetake ? `<button class="btn btn-outline" onclick="retakeAnswer()">↩ Retake</button>` : ''}
+      <button class="btn btn-primary btn-lg" onclick="${isLast ? 'finishInterview()' : `showQuestion(${currentQ + 1})`}">
+        ${isLast ? 'Finish Interview' : 'Next Question →'}
+      </button>
+    </div>`;
+}
+
+function retakeAnswer() {
+  retakesUsed[currentQ] = (retakesUsed[currentQ] || 0) + 1;
+  chunks = [];
+  // Clear the saved state and re-enter countdown flow
+  document.getElementById('controls').innerHTML = '';
+  startCountdown();
 }
 
 async function finishInterview() {

@@ -154,7 +154,7 @@ async function renderOWListPage() {
 // ── One-Way: Create page ──────────────────────────────────────
 
 function renderOWCreatePage() {
-  questions = [{ text: '', duration: 120 }];
+  questions = [{ text: '', duration: 120, thinkTime: 0, maxRetakes: 0 }];
   const main = document.getElementById('admin-main');
   main.innerHTML = `
     <div style="max-width:680px">
@@ -171,7 +171,10 @@ function renderOWCreatePage() {
         <hr class="divider" />
         <div class="flex justify-between items-center mb-16">
           <h3>Questions</h3>
-          <button class="btn btn-outline" onclick="addQuestion()">+ Add Question</button>
+          <div class="flex gap-8">
+            <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('create')">📋 Templates</button>
+            <button class="btn btn-outline" onclick="addQuestion()">+ Add Question</button>
+          </div>
         </div>
         <div id="questions-builder"></div>
         <div class="mt-24 flex gap-8">
@@ -268,7 +271,7 @@ async function deleteInterview(id) {
 // ── Questions builder (one-way) ───────────────────────────────
 
 function addQuestion() {
-  questions.push({ text: '', duration: 120 });
+  questions.push({ text: '', duration: 120, thinkTime: 0, maxRetakes: 0 });
   renderQuestions();
 }
 
@@ -294,11 +297,23 @@ function renderQuestions() {
       <div class="q-fields">
         <input type="text" placeholder="Question text *" value="${esc(q.text)}"
           oninput="questions[${i}].text = this.value" />
-        <select onchange="questions[${i}].duration = parseInt(this.value)">
-          ${[30, 60, 90, 120, 180, 240, 300].map(s =>
-            `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s}s (${s < 60 ? s + 's' : (s/60) + ' min'})</option>`
-          ).join('')}
-        </select>
+        <div class="q-selects">
+          <select onchange="questions[${i}].duration = parseInt(this.value)" title="Answer time limit">
+            ${[30, 60, 90, 120, 180, 240, 300].map(s =>
+              `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s < 60 ? s+'s' : (s/60)+'min'} limit</option>`
+            ).join('')}
+          </select>
+          <select onchange="questions[${i}].thinkTime = parseInt(this.value)" title="Think time before recording starts">
+            ${[0, 15, 30, 60, 90, 120].map(s =>
+              `<option value="${s}" ${(q.thinkTime || 0) === s ? 'selected' : ''}>${s === 0 ? 'No think time' : s + 's think time'}</option>`
+            ).join('')}
+          </select>
+          <select onchange="questions[${i}].maxRetakes = parseInt(this.value)" title="Max retakes allowed">
+            ${[0, 1, 2, 3].map(n =>
+              `<option value="${n}" ${(q.maxRetakes || 0) === n ? 'selected' : ''}>${n === 0 ? 'No retakes' : n + ' retake' + (n > 1 ? 's' : '')}</option>`
+            ).join('')}
+          </select>
+        </div>
       </div>
       <button class="btn btn-ghost" onclick="moveQuestion(${i}, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button class="btn btn-ghost" onclick="removeQuestion(${i})" style="color:var(--red)">✕</button>
@@ -318,6 +333,154 @@ async function submitInterview() {
   } catch (e) {
     toast(e.message, 'error');
   }
+}
+
+// ── Question Template Library ─────────────────────────────────
+
+const QUESTION_TEMPLATES = [
+  {
+    id: 'general',
+    category: '🌟 General Behavioral',
+    questions: [
+      { text: 'Tell me about yourself and what makes you a strong candidate for this role.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe a challenging situation you faced at work or school and how you resolved it.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'What are your greatest strengths, and how do they apply to this position?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Where do you see yourself professionally in 3–5 years?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Why are you interested in working with CTI Group and what motivated you to apply?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'sales',
+    category: '💼 Sales & Business Development',
+    questions: [
+      { text: 'Tell me about a time you exceeded a sales target. What was your approach?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you handle a prospect who says "I\'m not interested"? Walk me through your response.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe your process for researching a new prospect before a cold call or meeting.', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about your most challenging sale. What obstacles did you face and how did you close the deal?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'engineering',
+    category: '⚙️ Engineering & Technical',
+    questions: [
+      { text: 'Walk me through a complex technical problem you solved. What was your thought process?', duration: 180, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you stay current with new technologies and industry trends?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe a time you had to learn a new technology quickly. How did you approach it?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about a project where you had to balance technical quality with delivery deadlines.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'customer-service',
+    category: '🎧 Customer Service',
+    questions: [
+      { text: 'Describe a time you turned a frustrated customer into a satisfied one. What did you do?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you prioritize when you have multiple customer requests at the same time?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about a time you went above and beyond for a customer. What was the outcome?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you handle a situation where you don\'t know the answer to a customer\'s question?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'marketing',
+    category: '📣 Marketing & Communications',
+    questions: [
+      { text: 'Tell me about a marketing campaign you worked on. What was your role and what were the results?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you approach creating content for different target audiences?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Describe a time you used data or analytics to improve a marketing strategy.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'What social media platforms do you have experience with, and how have you grown an audience?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+  {
+    id: 'hr',
+    category: '👥 HR & Operations',
+    questions: [
+      { text: 'Describe your experience with recruitment. Walk me through your typical hiring process.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you handle a situation where two team members have a conflict? Walk me through your approach.', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'Tell me about a process improvement you implemented. What was the impact?', duration: 120, thinkTime: 30, maxRetakes: 1 },
+      { text: 'How do you ensure compliance with company policies and employment regulations?', duration: 90, thinkTime: 30, maxRetakes: 1 },
+    ],
+  },
+];
+
+let _templateTarget = 'create'; // 'create' or 'edit'
+
+function openTemplateModal(target = 'create') {
+  _templateTarget = target;
+  const modal = document.getElementById('modal-templates');
+  if (!modal) return;
+
+  // Render template category list
+  document.getElementById('template-list').innerHTML = QUESTION_TEMPLATES.map(t => `
+    <div class="template-cat-card" onclick="previewTemplate('${t.id}')" id="tmpl-card-${t.id}"
+      style="padding:14px 16px;border:1px solid var(--border);border-radius:8px;cursor:pointer;
+             background:var(--bg);margin-bottom:8px;transition:background 0.15s,border-color 0.15s">
+      <div style="font-size:14px;font-weight:600;margin-bottom:3px">${t.category}</div>
+      <div style="font-size:12px;color:var(--muted)">${t.questions.length} questions</div>
+    </div>
+  `).join('');
+
+  document.getElementById('template-preview').innerHTML = `
+    <div class="empty-state" style="font-size:13px">Select a category to preview its questions</div>`;
+  document.getElementById('use-template-btn').style.display = 'none';
+
+  openModal('modal-templates');
+}
+
+function previewTemplate(id) {
+  const tmpl = QUESTION_TEMPLATES.find(t => t.id === id);
+  if (!tmpl) return;
+
+  // Highlight selected card
+  document.querySelectorAll('.template-cat-card').forEach(el => {
+    el.style.borderColor = '';
+    el.style.background = 'var(--bg)';
+  });
+  const card = document.getElementById(`tmpl-card-${id}`);
+  if (card) {
+    card.style.borderColor = 'var(--accent)';
+    card.style.background = 'rgba(176,26,24,0.04)';
+  }
+
+  document.getElementById('template-preview').innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text-2)">${tmpl.category}</div>
+    ${tmpl.questions.map((q, i) => `
+      <div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--card)">
+        <div style="font-size:13px;margin-bottom:5px">${i + 1}. ${esc(q.text)}</div>
+        <div style="font-size:11px;color:var(--muted)">
+          ${q.duration < 60 ? q.duration + 's' : (q.duration/60) + 'min'} limit
+          ${q.thinkTime ? ' · ' + q.thinkTime + 's think time' : ''}
+          ${q.maxRetakes ? ' · ' + q.maxRetakes + ' retake' + (q.maxRetakes > 1 ? 's' : '') : ''}
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  const btn = document.getElementById('use-template-btn');
+  btn.style.display = 'inline-flex';
+  btn.onclick = () => applyTemplate(id);
+}
+
+function applyTemplate(id) {
+  const tmpl = QUESTION_TEMPLATES.find(t => t.id === id);
+  if (!tmpl) return;
+
+  const target = _templateTarget === 'edit' ? editQuestions : questions;
+  const hasContent = target.some(q => q.text.trim());
+
+  if (hasContent && !confirm(`Replace all current questions with the "${tmpl.category}" template?`)) return;
+
+  const newQs = tmpl.questions.map(q => ({ ...q }));
+  if (_templateTarget === 'edit') {
+    editQuestions.length = 0;
+    newQs.forEach(q => editQuestions.push(q));
+    renderEditQuestions();
+  } else {
+    questions.length = 0;
+    newQs.forEach(q => questions.push(q));
+    renderQuestions();
+  }
+
+  closeModal('modal-templates');
+  toast(`Loaded ${tmpl.questions.length} questions from template`, 'success');
 }
 
 // ── Two-Way: List page ────────────────────────────────────────
@@ -826,6 +989,8 @@ function switchSessionTab(name) {
 function resetInviteForm() {
   document.getElementById('new-cand-name').value = '';
   document.getElementById('new-cand-email').value = '';
+  const deadline = document.getElementById('new-cand-deadline');
+  if (deadline) deadline.value = '';
   document.getElementById('generated-link-box').style.display = 'none';
   const btn = document.getElementById('send-email-btn');
   btn.style.display = 'none';
@@ -1271,7 +1436,7 @@ function renderSessionRow(s, num) {
         <div id="av-${s.token}" class="candidate-avatar">${avatarContent}</div>
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
-          <div class="text-muted" style="font-size:11px;margin-top:1px">${s.candidateEmail ? esc(s.candidateEmail) : ''}</div>
+          <div class="text-muted" style="font-size:11px;margin-top:1px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;justify-content:center">
@@ -1302,10 +1467,14 @@ async function generateLink() {
   if (!name) return toast('Candidate name is required', 'error');
   if (!email) return toast('Email is required', 'error');
 
+  const deadlineVal = document.getElementById('new-cand-deadline')?.value;
+  const expiresAt = deadlineVal ? new Date(deadlineVal + 'T23:59:59').getTime() : null;
+
   try {
     const data = await apiJSON('POST', `/api/interview/${currentInterviewId}/sessions`, {
       candidateName: name,
       candidateEmail: email,
+      ...(expiresAt ? { expiresAt } : {}),
     });
     const link = buildTakeUrl(data.token);
     document.getElementById('generated-link-text').textContent = link;
@@ -1671,7 +1840,7 @@ async function openEditInterview(id) {
 }
 
 function addEditQuestion() {
-  editQuestions.push({ text: '', duration: 120 });
+  editQuestions.push({ text: '', duration: 120, thinkTime: 0, maxRetakes: 0 });
   renderEditQuestions();
 }
 
@@ -1696,11 +1865,23 @@ function renderEditQuestions() {
       <div class="q-fields">
         <input type="text" placeholder="Question text *" value="${esc(q.text)}"
           oninput="editQuestions[${i}].text = this.value" />
-        <select onchange="editQuestions[${i}].duration = parseInt(this.value)">
-          ${[30, 60, 90, 120, 180, 240, 300].map(s =>
-            `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s}s (${s < 60 ? s + 's' : (s/60) + ' min'})</option>`
-          ).join('')}
-        </select>
+        <div class="q-selects">
+          <select onchange="editQuestions[${i}].duration = parseInt(this.value)" title="Answer time limit">
+            ${[30, 60, 90, 120, 180, 240, 300].map(s =>
+              `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s < 60 ? s+'s' : (s/60)+'min'} limit</option>`
+            ).join('')}
+          </select>
+          <select onchange="editQuestions[${i}].thinkTime = parseInt(this.value)" title="Think time before recording starts">
+            ${[0, 15, 30, 60, 90, 120].map(s =>
+              `<option value="${s}" ${(q.thinkTime || 0) === s ? 'selected' : ''}>${s === 0 ? 'No think time' : s + 's think time'}</option>`
+            ).join('')}
+          </select>
+          <select onchange="editQuestions[${i}].maxRetakes = parseInt(this.value)" title="Max retakes allowed">
+            ${[0, 1, 2, 3].map(n =>
+              `<option value="${n}" ${(q.maxRetakes || 0) === n ? 'selected' : ''}>${n === 0 ? 'No retakes' : n + ' retake' + (n > 1 ? 's' : '')}</option>`
+            ).join('')}
+          </select>
+        </div>
       </div>
       <button class="btn btn-ghost" onclick="moveEditQuestion(${i}, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button class="btn btn-ghost" onclick="removeEditQuestion(${i})" style="color:var(--red)">✕</button>
