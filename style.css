@@ -1160,15 +1160,28 @@ tr:hover td { background: var(--card-2); }
 
 /* ── Take page: mobile / small screen ───────────────────────── */
 @media (max-width: 700px) {
-  /* Reduce outer padding so card fills screen edge-to-edge */
+  /* Push content to the top — no vertical centering on phones */
   .take-main {
-    padding: 10px 8px;
-    justify-content: flex-start;
+    padding: 8px;
+    justify-content: flex-start !important;
+    align-items: stretch;
+  }
+
+  /* Card fills screen edge-to-edge on phone */
+  .question-card {
+    max-width: 100% !important;
+    border-radius: 10px;
   }
 
   /* Setup grid: stack camera above controls */
   .setup-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Camera: use portrait aspect ratio to match phone front-camera
+     — eliminates the black sidebars caused by 16/9 landscape wrapper */
+  .camera-wrap {
+    aspect-ratio: 3/4;
   }
 
   /* Question card: tighter inner padding */
@@ -1192,7 +1205,7 @@ tr:hover td { background: var(--card-2); }
     gap: 10px;
   }
 
-  /* All primary action buttons in take page fill full width */
+  /* All primary action buttons fill full width on phone */
   .take-main .btn-lg {
     width: 100%;
     justify-content: center;
