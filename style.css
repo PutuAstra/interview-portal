@@ -1149,3 +1149,69 @@ tr:hover td { background: var(--card-2); }
 /* ── Profile upload step (take page) ── */
 #photo-circle:hover { border-color: var(--accent) !important; }
 #resume-drop:hover  { border-color: var(--accent) !important; }
+
+/* ── Take page: setup screen responsive grid ────────────────── */
+.setup-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ── Take page: mobile / small screen ───────────────────────── */
+@media (max-width: 700px) {
+  /* Reduce outer padding so card fills screen edge-to-edge */
+  .take-main {
+    padding: 10px 8px;
+    justify-content: flex-start;
+  }
+
+  /* Setup grid: stack camera above controls */
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Question card: tighter inner padding */
+  .question-body {
+    padding: 14px 12px;
+  }
+
+  .question-header {
+    padding: 10px 12px;
+  }
+
+  .question-text {
+    font-size: 15px;
+    margin-bottom: 14px;
+  }
+
+  /* Controls bar: stack text + button vertically */
+  #controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  /* All primary action buttons in take page fill full width */
+  .take-main .btn-lg {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 20px;
+    font-size: 15px;
+  }
+
+  /* Topbar: tighter on phones */
+  .topbar {
+    padding: 0 12px;
+    height: 46px;
+  }
+
+  .topbar-brand {
+    font-size: 13px;
+    gap: 8px;
+  }
+
+  .topbar-brand img {
+    height: 26px !important;
+  }
+}

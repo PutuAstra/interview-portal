@@ -465,12 +465,12 @@ async function showSetup() {
   await bgVid.play();
 
   main().innerHTML = `
-    <div style="max-width:820px;width:100%">
+    <div style="max-width:1080px;width:100%">
       <div style="text-align:center;margin-bottom:20px">
         <h2>Setup &amp; Preview</h2>
         <p class="text-muted text-sm mt-4">Check your camera, microphone, and background before starting</p>
       </div>
-      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start">
+      <div class="setup-grid">
         <div style="position:relative">
           <canvas id="bg-canvas" style="width:100%;border-radius:12px;background:#111;display:block"></canvas>
         </div>
@@ -812,7 +812,7 @@ function showQuestion(index) {
   updateProgress(index, total);
 
   main().innerHTML = `
-    <div class="question-card" style="max-width:720px;width:100%">
+    <div class="question-card" style="max-width:900px;width:100%">
       <div class="question-header">
         <span class="text-muted text-sm">Question ${index + 1} of ${total}</span>
         <span class="text-sm" style="color:var(--text-2)">Time limit: ${formatTime(q.duration)}</span>
@@ -838,12 +838,12 @@ function showQuestion(index) {
         </div>
 
         <div id="controls" class="flex gap-12 justify-between items-center mt-16">
-          <div>
+          <div style="min-width:0;flex:1">
             <p class="text-muted text-sm">Press Record when you're ready. You have ${formatTime(q.duration)}.</p>
             ${q.thinkTime ? `<p class="text-muted text-sm" style="margin-top:3px">💭 ${q.thinkTime}s think time before recording starts.</p>` : ''}
             ${(q.maxRetakes || 0) > 0 ? `<p class="text-muted text-sm" style="margin-top:3px">🔄 ${(q.maxRetakes || 0) - (retakesUsed[index] || 0)} retake${((q.maxRetakes || 0) - (retakesUsed[index] || 0)) !== 1 ? 's' : ''} remaining.</p>` : ''}
           </div>
-          <button class="btn btn-primary btn-lg" id="record-btn" onclick="startCountdown()">
+          <button class="btn btn-primary btn-lg" id="record-btn" onclick="startCountdown()" style="flex-shrink:0">
             ● Record
           </button>
         </div>
