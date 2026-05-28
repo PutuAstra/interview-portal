@@ -1540,61 +1540,61 @@ async function revokeSession(token, name) {
 
 // ── Deadline picker popover ───────────────────────────────────
 
-const REMINDER_OPTIONS = [
-  { hours: 120, label: '5 days' },
-  { hours: 96,  label: '4 days' },
-  { hours: 72,  label: '3 days' },
-  { hours: 48,  label: '2 days' },
-  { hours: 24,  label: '1 day'  },
-  { hours: 12,  label: '12 hrs' },
+const REMINDER_FREQ_OPTIONS = [
+  { hours: 24,  label: 'Every day'    },
+  { hours: 48,  label: 'Every 2 days' },
+  { hours: 72,  label: 'Every 3 days' },
+  { hours: 168, label: 'Every week'   },
 ];
 
 function openDeadlinePicker(token, anchorEl) {
   document.getElementById('deadline-popover')?.remove();
 
   const session = _allSessions.find(s => s.token === token);
-  const currentVal = session?.expiresAt
+  const currentVal  = session?.expiresAt
     ? new Date(session.expiresAt).toISOString().split('T')[0]
     : '';
-  const currentIntervals = session?.reminderIntervals || [48, 24];
+  const currentFreq = session?.reminderFrequency || 24;
 
-  const checkboxes = REMINDER_OPTIONS.map(opt => `
-    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;
-                  padding:5px 8px;border:1px solid var(--border);border-radius:6px;
-                  background:var(--bg);white-space:nowrap;user-select:none">
-      <input type="checkbox" value="${opt.hours}"
-        ${currentIntervals.includes(opt.hours) ? 'checked' : ''}
-        style="cursor:pointer;accent-color:var(--accent)" />
+  const chips = REMINDER_FREQ_OPTIONS.map(opt => `
+    <button class="reminder-freq-chip" data-hours="${opt.hours}"
+      onclick="selectReminderFreqChip(this)"
+      style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;
+             white-space:nowrap;transition:all 0.15s;
+             border:1px solid ${opt.hours === currentFreq ? 'var(--accent)' : 'var(--border)'};
+             background:${opt.hours === currentFreq ? 'rgba(176,26,24,0.10)' : 'var(--bg)'};
+             color:${opt.hours === currentFreq ? 'var(--accent)' : 'var(--text-2)'}">
       ${opt.label}
-    </label>
+    </button>
   `).join('');
 
   const popover = document.createElement('div');
   popover.id = 'deadline-popover';
+  popover._selectedFreq = currentFreq;
   popover.style.cssText = `
     position:fixed;z-index:9999;
     background:var(--card);border:1px solid var(--border);
-    border-radius:10px;padding:14px 16px;
-    box-shadow:0 8px 32px rgba(0,0,0,0.4);
-    width:300px;
+    border-radius:10px;padding:16px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.45);
+    width:290px;
   `;
 
   popover.innerHTML = `
     <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;
-              letter-spacing:0.05em;margin-bottom:10px">⏰ Reminder Deadline</p>
+              letter-spacing:0.05em;margin-bottom:12px">⏰ Reminder Schedule</p>
 
-    <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">COMPLETION DEADLINE</label>
+    <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">DEADLINE DATE</label>
     <input type="date" id="deadline-input" value="${currentVal}"
       style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;
              padding:7px 10px;color:var(--text);font-size:13px;font-family:inherit;
-             outline:none;box-sizing:border-box;margin-bottom:12px" />
+             outline:none;box-sizing:border-box;margin-bottom:14px" />
 
-    <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px">REMIND BEFORE DEADLINE</label>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
-      ${checkboxes}
+    <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:7px">REMINDER FREQUENCY</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      ${chips}
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
-      Candidate gets an email at each checked interval before the deadline.
+    <p style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5">
+      Candidate receives a repeat reminder email at this interval until the deadline or they complete the interview.
     </p>
 
     <div class="flex gap-8">
@@ -1607,25 +1607,23 @@ function openDeadlinePicker(token, anchorEl) {
   document.body.appendChild(popover);
 
   const rect = anchorEl.getBoundingClientRect();
-  const top  = Math.min(rect.bottom + 6, window.innerHeight - popover.offsetHeight - 12);
-  const left = Math.min(rect.left, window.innerWidth - 316);
-  popover.style.top  = `${top}px`;
-  popover.style.left = `${left}px`;
+  const top  = Math.min(rect.bottom + 6, window.innerHeight - 360);
+  const left = Math.min(rect.left, window.innerWidth - 306);
+  popover.style.top  = `${Math.max(8, top)}px`;
+  popover.style.left = `${Math.max(8, left)}px`;
 
   document.getElementById('deadline-save-btn').onclick = async () => {
-    const val = document.getElementById('deadline-input').value;
-    if (!val) { toast('Pick a deadline date first', 'error'); return; }
-    const checked = [...popover.querySelectorAll('input[type=checkbox]:checked')];
-    if (!checked.length) { toast('Select at least one reminder interval', 'error'); return; }
-    const expiresAt = new Date(val + 'T23:59:59').getTime();
-    const reminderIntervals = checked.map(cb => parseInt(cb.value));
-    await saveDeadline(token, expiresAt, reminderIntervals);
+    const val  = document.getElementById('deadline-input').value;
+    const freq = document.getElementById('deadline-popover')._selectedFreq;
+    if (!val)  { toast('Pick a deadline date first', 'error'); return; }
+    if (!freq) { toast('Select a reminder frequency', 'error'); return; }
+    await saveDeadline(token, new Date(val + 'T23:59:59').getTime(), freq);
     popover.remove();
   };
 
   if (currentVal) {
     document.getElementById('deadline-clear-btn').onclick = async () => {
-      await saveDeadline(token, null, []);
+      await saveDeadline(token, null, null);
       popover.remove();
     };
   }
@@ -1642,10 +1640,29 @@ function openDeadlinePicker(token, anchorEl) {
   }, 0);
 }
 
-async function saveDeadline(token, expiresAt, reminderIntervals) {
+function selectReminderFreqChip(el) {
+  const popover = document.getElementById('deadline-popover');
+  if (!popover) return;
+  popover.querySelectorAll('.reminder-freq-chip').forEach(c => {
+    c.style.borderColor = 'var(--border)';
+    c.style.background  = 'var(--bg)';
+    c.style.color       = 'var(--text-2)';
+  });
+  el.style.borderColor = 'var(--accent)';
+  el.style.background  = 'rgba(176,26,24,0.10)';
+  el.style.color       = 'var(--accent)';
+  popover._selectedFreq = parseInt(el.dataset.hours);
+}
+
+async function saveDeadline(token, expiresAt, reminderFrequency) {
   try {
-    await apiJSON('PATCH', `/api/session/${token}`, { expiresAt, reminderIntervals });
-    toast(expiresAt ? `Deadline set — reminders at ${reminderIntervals.map(h => h+'h').join(', ')} before` : 'Deadline cleared', 'success');
+    await apiJSON('PATCH', `/api/session/${token}`, { expiresAt, reminderFrequency });
+    if (expiresAt) {
+      const opt = REMINDER_FREQ_OPTIONS.find(o => o.hours === reminderFrequency);
+      toast(`Deadline set — reminders ${opt?.label || 'scheduled'}`, 'success');
+    } else {
+      toast('Deadline & reminders cleared', 'success');
+    }
     await loadSessions(currentInterviewId);
   } catch (e) { toast('Failed: ' + e.message, 'error'); }
 }

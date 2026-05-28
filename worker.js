@@ -330,9 +330,7 @@ function listTemplates(request) {
 // ── Scheduled handler (cron + manual trigger) ─────────────────
 
 async function handleScheduled() {
-  const now        = Date.now();
-  const fireWindow = 2 * 60 * 60 * 1000; // ±2h window around each checkpoint
-
+  const now = Date.now();
   let sentTotal = 0, errors = 0;
 
   const interviewIds = (await kvGet('interview:list')) || [];
@@ -341,44 +339,32 @@ async function handleScheduled() {
     const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
     for (const token of tokens) {
       const session = await kvGet(`session:${token}`);
-      if (!session?.expiresAt || session.status !== 'pending') continue;
-      if (!session.candidateEmail) continue;
 
-      const timeLeft  = session.expiresAt - now;
-      // Support new reminderIntervals array; fall back to legacy 48/24 flags
-      const intervals = session.reminderIntervals?.length ? session.reminderIntervals : [48, 24];
-      const sent      = session.reminderSent || {};
-      let   dirty     = false;
+      // Skip: no deadline, no frequency, already completed, no email, past deadline
+      if (!session?.expiresAt || !session.nextReminderAt) continue;
+      if (session.status !== 'pending')     continue;
+      if (!session.candidateEmail)          continue;
+      if (now > session.expiresAt)          continue; // deadline passed
 
-      for (const hours of intervals) {
-        const key      = String(hours);
-        const targetMs = hours * 60 * 60 * 1000;
+      // Is it time to fire?
+      if (now < session.nextReminderAt) continue;
 
-        // Already sent this checkpoint?
-        if (sent[key]) continue;
-        // Legacy flag check for 48/24
-        if (hours === 48 && session.reminder48hSent) continue;
-        if (hours === 24 && session.reminder24hSent) continue;
+      try {
+        await sendReminderEmail(session);
 
-        // Are we within the fire window for this checkpoint?
-        if (timeLeft >= (targetMs - fireWindow) && timeLeft < (targetMs + fireWindow)) {
-          try {
-            await sendReminderEmail(session, hours);
-            sent[key] = true;
-            if (hours === 48) session.reminder48hSent = true;
-            if (hours === 24) session.reminder24hSent = true;
-            dirty = true;
-            sentTotal++;
-          } catch (e) {
-            console.error(`[reminders] ${hours}h email failed for ${token}:`, e.message);
-            errors++;
-          }
-        }
-      }
+        // Advance to next reminder, skip past any missed intervals
+        const freqMs   = (session.reminderFrequency || 24) * 60 * 60 * 1000;
+        let   nextTime = session.nextReminderAt + freqMs;
+        // If multiple intervals were missed (e.g. worker was down), catch up to now+freq
+        while (nextTime < now) nextTime += freqMs;
 
-      if (dirty) {
-        session.reminderSent = sent;
+        // Don't schedule past the deadline
+        session.nextReminderAt = nextTime <= session.expiresAt ? nextTime : null;
         await kvPut(`session:${token}`, session);
+        sentTotal++;
+      } catch (e) {
+        console.error(`[reminders] email failed for ${token}:`, e.message);
+        errors++;
       }
     }
   }
@@ -386,17 +372,16 @@ async function handleScheduled() {
   return { ok: true, sentTotal, errors };
 }
 
-async function sendReminderEmail(session, hours) {
+async function sendReminderEmail(session) {
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
   const deadline = new Date(session.expiresAt).toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
-  // Human-friendly label: 24→"1 Day", 48→"2 Days", 72→"3 Days", 12→"12 Hours"
-  const days = hours / 24;
-  const label = Number.isInteger(days) && days >= 1
-    ? `${days} Day${days !== 1 ? 's' : ''}`
-    : `${hours} Hours`;
+  // Compute how many days are left at send time
+  const msLeft   = session.expiresAt - Date.now();
+  const daysLeft = Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+  const label    = daysLeft === 1 ? '1 Day' : `${daysLeft} Days`;
 
   // Build the interview link
   // We don't know the exact domain here — store it on session if known, else omit
@@ -598,8 +583,8 @@ async function createSession(interviewId, request) {
     createdAt: Date.now(),
     completedAt: null,
     expiresAt: expiresAt || null,
-    reminderIntervals: [48, 24],   // default: 2-day + 1-day reminder
-    reminderSent: {},               // { "48": true, "24": false, ... }
+    reminderFrequency: 24,          // hours between recurring reminders (default: every day)
+    nextReminderAt: null,           // timestamp of next reminder send; null = not scheduled
   };
   await kvPut(`session:${token}`, session);
 
@@ -834,18 +819,25 @@ async function patchSession(token, request) {
 
   const updates = await request.json();
 
-  // Allow updating expiresAt and reminderIntervals
-  if ('expiresAt' in updates) {
-    session.expiresAt = updates.expiresAt || null;
-  }
-  if ('reminderIntervals' in updates) {
-    session.reminderIntervals = (updates.reminderIntervals?.length) ? updates.reminderIntervals : [48, 24];
-  }
-  // Reset all sent flags whenever deadline or intervals change so fresh reminders fire
-  if ('expiresAt' in updates || 'reminderIntervals' in updates) {
-    session.reminderSent = {};
-    session.reminder48hSent = false; // backward compat
-    session.reminder24hSent = false;
+  // Update deadline and/or frequency; recalculate nextReminderAt whenever either changes
+  const freqChanged     = 'reminderFrequency' in updates;
+  const deadlineChanged = 'expiresAt' in updates;
+
+  if (deadlineChanged) session.expiresAt = updates.expiresAt || null;
+  if (freqChanged)     session.reminderFrequency = updates.reminderFrequency || 24;
+
+  if (deadlineChanged || freqChanged) {
+    if (session.expiresAt && session.reminderFrequency) {
+      // Schedule first reminder one full interval from now
+      const freqMs = session.reminderFrequency * 60 * 60 * 1000;
+      session.nextReminderAt = Date.now() + freqMs;
+    } else {
+      session.nextReminderAt = null;
+    }
+    // Clear legacy flags
+    session.reminderSent     = {};
+    session.reminder48hSent  = false;
+    session.reminder24hSent  = false;
   }
 
   await kvPut(`session:${token}`, session);
