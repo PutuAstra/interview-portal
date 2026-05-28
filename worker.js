@@ -359,11 +359,12 @@ Respond with ONLY valid JSON — no commentary:
 }
 Duration: 60–180s based on complexity. thinkTime: 15–30s. maxRetakes: 1.`;
 
+  const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type':      'application/json',
-      'x-api-key':         ANTHROPIC_API_KEY.trim(),
+      'x-api-key':         anthropicKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
@@ -1665,15 +1666,23 @@ async function analyzeSession(token, request) {
       form.append('language', 'en');
 
       // Groq's Whisper API is OpenAI-compatible — same response shape, much faster
-      const whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${GROQ_API_KEY.trim()}` },
-        body: form,
-      });
+      // Strip ALL non-printable characters from the key (handles invisible paste artifacts)
+      const groqKey = (GROQ_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
+      let whisperRes;
+      try {
+        whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${groqKey}` },
+          body: form,
+        });
+      } catch (fetchErr) {
+        console.error(`[analyze] Groq fetch error Q${qIndex + 1}:`, fetchErr.message);
+        return { qIndex, qText, transcript: `[Groq header error: ${fetchErr.message} — re-enter GROQ_API_KEY in Cloudflare]`, error: true };
+      }
       if (!whisperRes.ok) {
         const e = await whisperRes.json().catch(() => ({}));
         console.error(`[analyze] Groq Whisper Q${qIndex + 1}:`, JSON.stringify(e));
-        return { qIndex, qText, transcript: '[Transcription failed]', error: true };
+        return { qIndex, qText, transcript: `[Groq ${whisperRes.status}: ${e.error?.message || 'transcription failed'}]`, error: true };
       }
       const wData = await whisperRes.json();
       return { qIndex, qText, transcript: wData.text?.trim() || '' };
@@ -1724,19 +1733,27 @@ Respond with ONLY a valid JSON object — no commentary before or after:
 }`;
 
   // Use Anthropic Claude for analysis
-  const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         ANTHROPIC_API_KEY.trim(),
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model:      'claude-3-haiku-20240307',
-      max_tokens: 1024,
-      messages:   [{ role: 'user', content: prompt }],
-    }),
-  });
+  // Strip ALL non-printable characters from the key (handles invisible paste artifacts)
+  const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
+  let claudeRes;
+  try {
+    claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      'claude-3-haiku-20240307',
+        max_tokens: 1024,
+        messages:   [{ role: 'user', content: prompt }],
+      }),
+    });
+  } catch (fetchErr) {
+    console.error('[analyze] Anthropic fetch error:', fetchErr.message);
+    return jsonRes({ error: 'Claude header error: ' + fetchErr.message + ' — re-enter ANTHROPIC_API_KEY in Cloudflare' }, 500);
+  }
 
   if (!claudeRes.ok) {
     const e = await claudeRes.json().catch(() => ({}));
