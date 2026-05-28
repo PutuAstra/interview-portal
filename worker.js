@@ -127,6 +127,11 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'POST') return saveSessionReview(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'GET')  return getSessionReview(seg[1], request);
 
+  // One-way: shareable review links (admin creates, public reads)
+  if (seg[0] === 'session' && seg[2] === 'share' && m === 'POST') return createShareLink(seg[1], request);
+  if (seg[0] === 'share'   && seg.length === 2    && m === 'GET')  return getShare(seg[1]);
+  if (seg[0] === 'share'   && seg[2] === 'video'  && m === 'GET')  return getShareVideo(seg[1], parseInt(seg[3]));
+
   // Interview Script management
   if (seg[0] === 'script' && seg[1] === 'clients' && seg.length === 2) {
     if (m === 'GET')  return listScriptClients(request);
@@ -606,7 +611,14 @@ async function getSession(token) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const interview = await kvGet(`interview:${session.interviewId}`);
-  return jsonRes({ session, interview });
+  const settings  = (await kvGet('recruiter:settings')) || {};
+  const branding  = {
+    brandName:       settings.brandName       || '',
+    brandColor:      settings.brandColor      || '',
+    brandWelcomeMsg: settings.brandWelcomeMsg || '',
+    brandLogoUrl:    settings.brandLogoUrl    || '',
+  };
+  return jsonRes({ session, interview, branding });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1808,8 +1820,13 @@ async function getResumeUrl(token, request) {
 
 async function saveSessionReview(token, request) {
   requireAdmin(request);
-  const { notes, decision, stars } = await request.json();
-  await kvPut(`session:${token}:review`, { notes, decision, stars: stars || 0, reviewedAt: Date.now() });
+  const { notes, decision, stars, questionScores } = await request.json();
+  await kvPut(`session:${token}:review`, {
+    notes, decision,
+    stars:          stars          || 0,
+    questionScores: questionScores || {},
+    reviewedAt:     Date.now(),
+  });
   // Mirror decision + stars onto the session for fast list rendering
   const session = await kvGet(`session:${token}`);
   if (session) {
@@ -2187,6 +2204,60 @@ async function cancelBookingHandler(bookingId, request) {
   }
 
   return jsonRes({ ok: true, emailSent, emailError });
+}
+
+// ── Shareable Review Links ────────────────────────────────────
+
+async function createShareLink(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  // Reuse existing share token if already created
+  let shareToken = session.shareToken;
+  if (!shareToken) {
+    shareToken = uid();
+    session.shareToken = shareToken;
+    await kvPut(`session:${token}`, session);
+    await kvPut(`share:${shareToken}`, token);
+  }
+  return jsonRes({ shareToken });
+}
+
+async function getShare(shareToken) {
+  const token = await kvGet(`share:${shareToken}`);
+  if (!token) return jsonRes({ error: 'Share link not found' }, 404);
+  const session   = await kvGet(`session:${token}`);
+  if (!session)   return jsonRes({ error: 'Session not found' }, 404);
+  const interview = await kvGet(`interview:${session.interviewId}`);
+  const review    = await kvGet(`session:${token}:review`);
+  const settings  = (await kvGet('recruiter:settings')) || {};
+  const branding  = {
+    brandName:       settings.brandName       || '',
+    brandColor:      settings.brandColor      || '',
+    brandWelcomeMsg: settings.brandWelcomeMsg || '',
+    brandLogoUrl:    settings.brandLogoUrl    || '',
+  };
+  return jsonRes({ session, interview, review: review || null, shareToken, branding });
+}
+
+async function getShareVideo(shareToken, qIndex) {
+  const token = await kvGet(`share:${shareToken}`);
+  if (!token) return jsonRes({ error: 'Share link not found' }, 404);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  const response = session.responses?.find(r => r.questionIndex === qIndex);
+  if (!response?.driveItemId) return jsonRes({ error: 'Video not found' }, 404);
+  try {
+    const accessToken = await getAccessToken();
+    const itemRes = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${response.driveItemId}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    const item = await itemRes.json();
+    return jsonRes({ downloadUrl: item['@microsoft.graph.downloadUrl'], webUrl: item.webUrl });
+  } catch (e) {
+    return jsonRes({ error: 'Could not retrieve video' }, 500);
+  }
 }
 
 // ── Recruiter Settings ────────────────────────────────────────

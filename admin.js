@@ -58,7 +58,7 @@ function doLogout() {
 function showApp() {
   document.getElementById('login-gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const valid = ['ow-list', 'ow-create', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync'];
+  const valid = ['ow-list', 'ow-create', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding'];
   const hash  = window.location.hash.replace('#', '');
   gotoPage(valid.includes(hash) ? hash : 'ow-list');
 }
@@ -105,6 +105,7 @@ function gotoPage(page) {
                   : ['booking', 'booking-create', 'booking-edit'].includes(page) ? 'booking'
                   : page === 'holidays' ? 'holidays'
                   : page === 'calendar-sync' ? 'calendar-sync'
+                  : page === 'branding' ? 'branding'
                   : 'tw-list';
   document.querySelectorAll('.sidebar-item').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.page === activeNav)
@@ -122,6 +123,7 @@ function gotoPage(page) {
   if (page === 'booking-edit')   renderEditBookingLinkPage(_editingBookingToken);
   if (page === 'holidays')       renderHolidaysPage();
   if (page === 'calendar-sync') renderCalendarSyncPage();
+  if (page === 'branding')      renderBrandingPage();
 }
 
 // ── One-Way: List page ────────────────────────────────────────
@@ -250,6 +252,7 @@ function renderInterviewCard(interview) {
           <button class="btn btn-primary" onclick="openSessions('${interview.id}', '${esc(interview.title)}', 'candidates')">Candidates</button>
           <button class="btn btn-outline" onclick="openSessions('${interview.id}', '${esc(interview.title)}', 'invite')">Invite</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Edit" onclick="openEditInterview('${interview.id}')"><span style="display:inline-block;transform:rotate(45deg)">✏</span></button>
+          <button class="btn btn-ghost" style="padding:6px 10px;font-size:14px" title="Duplicate" onclick="cloneInterview('${interview.id}')">⧉</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:16px" title="Delete" onclick="deleteInterview('${interview.id}')">🗑</button>
         </div>
       </div>
@@ -262,6 +265,21 @@ async function deleteInterview(id) {
   try {
     await apiJSON('DELETE', `/api/interview/${id}`);
     toast('Interview deleted', 'success');
+    loadInterviews();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function cloneInterview(id) {
+  try {
+    const src = await apiJSON('GET', `/api/interview/${id}`);
+    await apiJSON('POST', '/api/interviews', {
+      title:       'Copy of ' + src.title,
+      description: src.description || '',
+      questions:   src.questions.map(q => ({ ...q })),
+    });
+    toast('Interview duplicated!', 'success');
     loadInterviews();
   } catch (e) {
     toast(e.message, 'error');
@@ -1428,7 +1446,8 @@ function renderSessionRow(s, num) {
     ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Copy interview link" onclick="copySessionLink('${s.token}')">🔗</button>
        <button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="${s.expiresAt ? 'Edit deadline' : 'Set deadline'}" onclick="openDeadlinePicker('${s.token}', this)">⏰</button>
        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${esc(s.candidateName)}')">Revoke</button>`
-    : `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">Review</button>`;
+    : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
+       <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">Review</button>`;
 
   return `
     <div class="session-row">
@@ -1511,6 +1530,25 @@ function copySessionLink(token) {
 function copyLink() {
   navigator.clipboard.writeText(document.getElementById('generated-link-text').textContent);
   toast('Copied!', 'success');
+}
+
+async function shareSession(token) {
+  try {
+    const { shareToken } = await apiJSON('POST', `/api/session/${token}/share`);
+    const url = buildShareUrl(shareToken);
+    await navigator.clipboard.writeText(url);
+    toast('Share link copied! Send this to hiring managers for read-only review.', 'success');
+  } catch (e) {
+    toast('Could not create share link: ' + e.message, 'error');
+  }
+}
+
+function buildShareUrl(shareToken) {
+  const origin = window.location.origin;
+  let path = window.location.pathname;
+  if (path.includes('admin.html')) path = path.replace('admin.html', 'share.html');
+  else path = path.replace(/\/?$/, '/') + 'share.html';
+  return `${origin}${path}?s=${shareToken}`;
 }
 
 async function sendLinkEmail(token, link, email) {
@@ -1736,6 +1774,29 @@ function renderAnalysisPanel(analysis, token) {
 }
 
 let _reviewDecision = null;
+let _questionScores = {};   // { [qIndex]: 1-5 }
+
+function setQScore(qIndex, score) {
+  _questionScores[qIndex] = score;
+  const container = document.getElementById(`qscore-${qIndex}`);
+  if (!container) return;
+  container.querySelectorAll('.qstar').forEach((s, i) => {
+    s.style.color = i < score ? '#f59e0b' : 'var(--border)';
+  });
+}
+
+function renderQScorePicker(qIndex, saved) {
+  const cur = saved || 0;
+  return `<div id="qscore-${qIndex}" style="display:flex;gap:1px;justify-content:center;padding:4px 6px 6px;border-top:1px solid var(--border)">
+    ${Array.from({length:5}, (_,i) =>
+      `<span class="qstar" data-qi="${qIndex}" data-v="${i+1}"
+        style="font-size:16px;cursor:pointer;color:${i < cur ? '#f59e0b' : 'var(--border)'};transition:color 0.1s;line-height:1;padding:0 1px;user-select:none"
+        onmouseenter="this.closest('[id]').querySelectorAll('.qstar').forEach((s,j)=>s.style.color=j<=${i}?'#f59e0b':'var(--border)')"
+        onmouseleave="setQScore(${qIndex},_questionScores[${qIndex}]||0)"
+        onclick="setQScore(${qIndex},${i+1})">★</span>`
+    ).join('')}
+  </div>`;
+}
 
 async function openReview(token, candidateName) {
   document.getElementById('review-candidate-name').textContent = candidateName;
@@ -1744,6 +1805,7 @@ async function openReview(token, candidateName) {
   content.style.cssText = 'flex:1;min-height:0;display:flex';
   content.innerHTML = '<div style="margin:auto" class="spinner"></div>';
   _reviewDecision = null;
+  _questionScores = {};
 
   try {
     const [{ session, interview }, cachedAnalysis, resumeData, reviewData] = await Promise.all([
@@ -1783,6 +1845,7 @@ async function openReview(token, candidateName) {
                 </div>
                 ${webUrl ? `<a href="${webUrl}" target="_blank" class="btn btn-ghost" style="font-size:10px;padding:2px 5px;flex-shrink:0">↗</a>` : ''}
               </div>
+              ${renderQScorePicker(questionIndex, reviewData?.questionScores?.[questionIndex])}
             </div>`).join('')}
         </div>`
       : `<div class="empty-state">No recordings yet</div>`;
@@ -1816,12 +1879,14 @@ async function openReview(token, candidateName) {
       resumeSection = `<div class="empty-state" style="flex:none">No resume uploaded</div>`;
     }
 
-    // Restore saved decision + stars
+    // Restore saved decision + stars + per-question scores
     if (reviewData && !reviewData.notFound) {
       _reviewDecision = reviewData.decision;
       _reviewStars    = reviewData.stars || 0;
+      _questionScores = reviewData.questionScores || {};
     } else {
-      _reviewStars = 0;
+      _reviewStars    = 0;
+      _questionScores = {};
     }
 
     const decisionFwd = _reviewDecision === 'move_forward';
@@ -1892,7 +1957,10 @@ async function saveReviewOutcome(token) {
   const stars    = _reviewStars || 0;
   if (!decision) return toast('Please select a decision first', 'error');
   try {
-    await apiJSON('POST', `/api/session/${token}/review`, { notes, decision, stars });
+    await apiJSON('POST', `/api/session/${token}/review`, {
+      notes, decision, stars,
+      questionScores: _questionScores,
+    });
     toast('Review saved', 'success');
     closeModal('modal-review');
     // Refresh session list so decision badge + stars show on the card
@@ -3602,5 +3670,123 @@ async function submitCreateBookingLink() {
   } catch (e) {
     toast(e.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'Create Booking Link'; }
+  }
+}
+
+// ── Employer Branding ─────────────────────────────────────────
+
+let _brandingSettings = {};
+
+async function renderBrandingPage() {
+  const main = document.getElementById('admin-main');
+  main.innerHTML = `<div class="spinner" style="margin:80px auto"></div>`;
+  try {
+    _brandingSettings = await apiJSON('GET', '/api/recruiter/settings').catch(() => ({}));
+  } catch { _brandingSettings = {}; }
+  renderBrandingContent();
+}
+
+function renderBrandingContent() {
+  const main = document.getElementById('admin-main');
+  const s = _brandingSettings;
+
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <h2 class="mb-16">Employer Branding</h2>
+      <p class="text-muted text-sm mb-16">These settings are shown to candidates on the interview page.</p>
+
+      <!-- Preview banner -->
+      <div id="brand-preview" style="border-radius:10px;overflow:hidden;margin-bottom:20px;border:1px solid var(--border)">
+        <div style="background:${s.brandColor||'#B01A18'};padding:12px 20px;display:flex;align-items:center;gap:12px">
+          ${s.brandLogoUrl
+            ? `<img src="${esc(s.brandLogoUrl)}" style="height:30px;width:auto;border-radius:4px" />`
+            : `<div style="width:30px;height:30px;background:rgba(255,255,255,0.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px">🏢</div>`}
+          <span style="color:#fff;font-weight:700;font-size:15px">${esc(s.brandName||'CTI ZeusHire')}</span>
+        </div>
+        ${s.brandWelcomeMsg ? `<div style="padding:10px 20px;background:var(--card);font-size:13px;color:var(--text-2);font-style:italic">${esc(s.brandWelcomeMsg)}</div>` : ''}
+      </div>
+
+      <div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;gap:16px">
+        <!-- Brand name -->
+        <div class="form-group" style="margin:0">
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)">Brand Name</label>
+          <input type="text" id="brand-name" value="${esc(s.brandName||'')}" placeholder="e.g. CTI Group ZeusHire"
+            oninput="updateBrandPreview()" style="width:100%" />
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">Shown in the topbar and browser tab on the candidate page.</p>
+        </div>
+
+        <!-- Accent color -->
+        <div class="form-group" style="margin:0">
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)">Accent Color</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="color" id="brand-color" value="${s.brandColor||'#B01A18'}"
+              oninput="updateBrandPreview()" style="width:48px;height:36px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px" />
+            <input type="text" id="brand-color-hex" value="${s.brandColor||'#B01A18'}" placeholder="#B01A18" maxlength="7"
+              oninput="syncColorHex(this.value)"
+              style="width:100px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px" />
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="document.getElementById('brand-color').value='#B01A18';document.getElementById('brand-color-hex').value='#B01A18';updateBrandPreview()">Reset default</button>
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">Used for buttons, highlights, and the topbar on the candidate page.</p>
+        </div>
+
+        <!-- Welcome message -->
+        <div class="form-group" style="margin:0">
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)">Welcome Message</label>
+          <textarea id="brand-welcome" rows="2"
+            placeholder="e.g. Welcome to the CTI Group hiring process! We look forward to learning more about you."
+            oninput="updateBrandPreview()"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box"
+          >${esc(s.brandWelcomeMsg||'')}</textarea>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">Shown as a banner message on the candidate intro screen. Leave blank to hide.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveBrandingSettings()">💾 Save Branding</button>
+        <button class="btn btn-ghost" onclick="renderBrandingContent()">Reset</button>
+      </div>
+    </div>
+  `;
+}
+
+function syncColorHex(val) {
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    const picker = document.getElementById('brand-color');
+    if (picker) picker.value = val;
+    updateBrandPreview();
+  }
+}
+
+function updateBrandPreview() {
+  const name    = document.getElementById('brand-name')?.value || 'CTI ZeusHire';
+  const color   = document.getElementById('brand-color')?.value || '#B01A18';
+  const hexInput = document.getElementById('brand-color-hex');
+  if (hexInput) hexInput.value = color;
+  const welcome = document.getElementById('brand-welcome')?.value || '';
+  const preview = document.getElementById('brand-preview');
+  if (!preview) return;
+  const logoUrl = _brandingSettings.brandLogoUrl || '';
+  preview.innerHTML = `
+    <div style="background:${esc(color)};padding:12px 20px;display:flex;align-items:center;gap:12px">
+      ${logoUrl
+        ? `<img src="${esc(logoUrl)}" style="height:30px;width:auto;border-radius:4px" />`
+        : `<div style="width:30px;height:30px;background:rgba(255,255,255,0.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px">🏢</div>`}
+      <span style="color:#fff;font-weight:700;font-size:15px">${esc(name||'CTI ZeusHire')}</span>
+    </div>
+    ${welcome ? `<div style="padding:10px 20px;background:var(--card);font-size:13px;color:var(--text-2);font-style:italic">${esc(welcome)}</div>` : ''}
+  `;
+}
+
+async function saveBrandingSettings() {
+  const brandName       = document.getElementById('brand-name')?.value.trim()       || '';
+  const brandColor      = document.getElementById('brand-color')?.value              || '#B01A18';
+  const brandWelcomeMsg = document.getElementById('brand-welcome')?.value.trim()     || '';
+  try {
+    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg });
+    _brandingSettings = updated;
+    toast('Branding saved!', 'success');
+    renderBrandingContent();
+  } catch (e) {
+    toast(e.message, 'error');
   }
 }

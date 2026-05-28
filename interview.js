@@ -8,6 +8,7 @@ const WORKER_URL = 'https://interview-api.putuastrawijaya.workers.dev';
 // ── State ─────────────────────────────────────────────────────
 let session = null;
 let interview = null;
+let branding = {};
 let currentQ = 0;
 let retakesUsed = {}; // { [questionIndex]: number }
 let mediaStream = null;
@@ -47,10 +48,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     const res = await fetch(`${WORKER_URL}/api/session/${token}`);
     if (!res.ok) return showError('This interview link is invalid or has expired.');
     const data = await res.json();
-    session = data.session;
+    session   = data.session;
     interview = data.interview;
+    branding  = data.branding || {};
+
+    applyBranding(branding);
 
     if (session.status === 'completed') return showThankYou(true);
+    if (session.expiresAt && Date.now() > session.expiresAt) return showExpired();
     showIntro();
   } catch {
     showError('Could not connect to the interview server. Please try again later.');
@@ -68,6 +73,38 @@ function showError(msg) {
     </div>`;
 }
 
+function showExpired() {
+  main().innerHTML = `
+    <div class="thankyou-screen">
+      <div class="thankyou-icon">⏰</div>
+      <h2 style="color:var(--muted)">Interview Closed</h2>
+      <p class="mt-8">The submission deadline for this interview has passed.</p>
+      <p class="text-muted text-sm mt-8">Please contact your recruiter if you believe this is an error.</p>
+    </div>`;
+}
+
+function applyBranding(b) {
+  if (!b) return;
+  // Apply accent color
+  if (b.brandColor) {
+    document.documentElement.style.setProperty('--accent', b.brandColor);
+    document.documentElement.style.setProperty('--red', b.brandColor);
+  }
+  // Update topbar brand name
+  if (b.brandName) {
+    const topbarBrand = document.querySelector('.topbar-brand');
+    if (topbarBrand) {
+      for (const node of topbarBrand.childNodes) {
+        if (node.nodeType === 3 && node.textContent.trim()) {
+          node.textContent = '\n    ' + b.brandName + '\n  ';
+          break;
+        }
+      }
+    }
+    document.title = b.brandName;
+  }
+}
+
 function showIntro() {
   const totalDuration = interview.questions.reduce((s, q) => s + q.duration, 0);
   const mins = Math.ceil(totalDuration / 60);
@@ -78,6 +115,7 @@ function showIntro() {
       <h1>${esc(interview.title)}</h1>
       <p class="mt-8">Hello, <strong>${esc(session.candidateName)}</strong> 👋</p>
 
+      ${branding.brandWelcomeMsg ? `<p class="mt-16" style="color:var(--accent);font-style:italic;font-size:14px">${esc(branding.brandWelcomeMsg)}</p>` : ''}
       ${interview.description ? `<p class="mt-16" style="color:var(--text-2)">${esc(interview.description)}</p>` : ''}
 
       <div class="card" style="background:var(--bg);margin-top:20px;text-align:left">
