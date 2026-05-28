@@ -1237,6 +1237,11 @@ function resetInviteForm() {
   document.getElementById('new-cand-email').value = '';
   const deadline = document.getElementById('new-cand-deadline');
   if (deadline) deadline.value = '';
+  const reminderRow = document.getElementById('invite-reminder-row');
+  if (reminderRow) reminderRow.style.display = 'none';
+  document.querySelectorAll('#invite-freq-chips .filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.hours === '24')
+  );
   document.getElementById('generated-link-box').style.display = 'none';
   const btn = document.getElementById('send-email-btn');
   btn.style.display = 'none';
@@ -1714,6 +1719,17 @@ function renderSessionRow(s, num) {
   `;
 }
 
+function toggleInviteReminderRow() {
+  const deadline = document.getElementById('new-cand-deadline')?.value;
+  const row = document.getElementById('invite-reminder-row');
+  if (row) row.style.display = deadline ? 'flex' : 'none';
+}
+
+function selectInviteFreqChip(el) {
+  document.querySelectorAll('#invite-freq-chips .filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
 async function generateLink() {
   const name = document.getElementById('new-cand-name').value.trim();
   const email = document.getElementById('new-cand-email').value.trim();
@@ -1722,12 +1738,14 @@ async function generateLink() {
 
   const deadlineVal = document.getElementById('new-cand-deadline')?.value;
   const expiresAt = deadlineVal ? new Date(deadlineVal + 'T23:59:59').getTime() : null;
+  const freqChip = document.querySelector('#invite-freq-chips .filter-chip.active');
+  const reminderFrequency = freqChip ? parseInt(freqChip.dataset.hours) : 24;
 
   try {
     const data = await apiJSON('POST', `/api/interview/${currentInterviewId}/sessions`, {
       candidateName: name,
       candidateEmail: email,
-      ...(expiresAt ? { expiresAt } : {}),
+      ...(expiresAt ? { expiresAt, reminderFrequency } : {}),
     });
     const link = buildTakeUrl(data.token);
     document.getElementById('generated-link-text').textContent = link;

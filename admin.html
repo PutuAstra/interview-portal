@@ -153,10 +153,20 @@
           <input type="email" id="new-cand-email" placeholder="Email *" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px" />
           <button class="btn btn-primary" onclick="generateLink()">Generate Link</button>
         </div>
-        <div class="mb-16 flex gap-8 items-center">
+        <div class="mb-8 flex gap-8 items-center">
           <label style="font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0">⏰ Deadline:</label>
-          <input type="date" id="new-cand-deadline" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px" />
-          <span style="font-size:11px;color:var(--muted)">Optional — triggers automatic 48h &amp; 24h reminder emails</span>
+          <input type="date" id="new-cand-deadline" onchange="toggleInviteReminderRow()"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px" />
+          <span style="font-size:11px;color:var(--muted)">Optional — activates recurring reminder emails</span>
+        </div>
+        <div id="invite-reminder-row" style="display:none;margin-bottom:16px;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0">🔔 Remind every:</label>
+          <div id="invite-freq-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="filter-chip active" data-hours="24" onclick="selectInviteFreqChip(this)">Daily</button>
+            <button class="filter-chip" data-hours="48" onclick="selectInviteFreqChip(this)">Every 2 days</button>
+            <button class="filter-chip" data-hours="72" onclick="selectInviteFreqChip(this)">Every 3 days</button>
+            <button class="filter-chip" data-hours="168" onclick="selectInviteFreqChip(this)">Weekly</button>
+          </div>
         </div>
         <div id="generated-link-box" style="display:none">
           <p class="text-sm text-muted mb-4">Share this link with the candidate:</p>
@@ -448,6 +458,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250528g"></script>
+<script src="admin.js?v=20250528h"></script>
 </body>
 </html>

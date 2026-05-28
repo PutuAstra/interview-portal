@@ -627,8 +627,11 @@ async function createSession(interviewId, request) {
   const interview = await kvGet(`interview:${interviewId}`);
   if (!interview) return jsonRes({ error: 'Interview not found' }, 404);
 
-  const { candidateName, candidateEmail, expiresAt } = await request.json();
+  const { candidateName, candidateEmail, expiresAt, reminderFrequency: remFreq } = await request.json();
   if (!candidateName) return jsonRes({ error: 'candidateName required' }, 400);
+
+  const freqHours = (remFreq && remFreq > 0) ? remFreq : 24;
+  const nextReminderAt = expiresAt ? (Date.now() + freqHours * 60 * 60 * 1000) : null;
 
   const token = uid();
   const session = {
@@ -639,8 +642,8 @@ async function createSession(interviewId, request) {
     createdAt: Date.now(),
     completedAt: null,
     expiresAt: expiresAt || null,
-    reminderFrequency: 24,          // hours between recurring reminders (default: every day)
-    nextReminderAt: null,           // timestamp of next reminder send; null = not scheduled
+    reminderFrequency: freqHours,
+    nextReminderAt,
   };
   await kvPut(`session:${token}`, session);
 
