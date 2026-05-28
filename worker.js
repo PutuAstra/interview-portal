@@ -3,12 +3,14 @@
 //  Format: Service Worker (addEventListener) — paste into Cloudflare dashboard
 //
 //  Required secrets (Worker Settings → Bindings → Secret):
-//    ADMIN_KEY       — your chosen admin password
-//    TENANT_ID       — Azure tenant ID
-//    CLIENT_ID       — Azure app client ID
-//    CLIENT_SECRET   — Azure app client secret
-//    ONEDRIVE_USER   — OneDrive owner email for video file storage (e.g. putu.astra@cti-usa.com)
-//    EMAIL_SENDER    — Recruiter calendar owner + email from-address (corporate-recruiter@cti-usa.com)
+//    ADMIN_KEY         — your chosen admin password
+//    TENANT_ID         — Azure tenant ID
+//    CLIENT_ID         — Azure app client ID
+//    CLIENT_SECRET     — Azure app client secret
+//    ONEDRIVE_USER     — OneDrive owner email for video file storage (e.g. putu.astra@cti-usa.com)
+//    EMAIL_SENDER      — Recruiter calendar owner + email from-address (corporate-recruiter@cti-usa.com)
+//    ANTHROPIC_API_KEY — Anthropic Claude API key (paid plan) — for analysis + question generation
+//    GROQ_API_KEY      — Groq API key (free) — for Whisper audio transcription
 //
 //  Required KV binding (Worker Settings → Bindings → KV Namespace):
 //    INTERVIEW_DATA  → interview-data
@@ -340,8 +342,8 @@ function listTemplates(request) {
 
 async function generateQuestions(request) {
   requireAdmin(request);
-  if (typeof OPENAI_API_KEY === 'undefined' || !OPENAI_API_KEY) {
-    return jsonRes({ error: 'OPENAI_API_KEY is not configured.' }, 500);
+  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
+    return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured.' }, 500);
   }
   const { jobTitle, jobDescription, count = 5 } = await request.json();
   if (!jobTitle) return jsonRes({ error: 'jobTitle required' }, 400);
@@ -357,13 +359,21 @@ Respond with ONLY valid JSON — no commentary:
 }
 Duration: 60–180s based on complexity. thinkTime: 15–30s. maxRetakes: 1.`;
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 1024, messages: [{ role: 'user', content: prompt }] }),
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model:      'claude-3-haiku-20240307',
+      max_tokens: 1024,
+      messages:   [{ role: 'user', content: prompt }],
+    }),
   });
   const data = await res.json();
-  const raw = data.choices?.[0]?.message?.content || '{}';
+  const raw = data.content?.[0]?.text || '{}';
   try {
     const match = raw.match(/\{[\s\S]*\}/);
     return jsonRes(JSON.parse(match ? match[0] : raw));
@@ -1594,13 +1604,16 @@ async function createTeamsMeeting(session) {
 }
 
 // ── English Analysis (One-Way Interview) ──────────────────────
-// Required Worker secrets: OPENAI_API_KEY, ANTHROPIC_API_KEY
+// Required Worker secrets: GROQ_API_KEY (transcription), ANTHROPIC_API_KEY (analysis)
 
 async function analyzeSession(token, request) {
   requireAdmin(request);
 
-  if (typeof OPENAI_API_KEY === 'undefined' || !OPENAI_API_KEY) {
-    return jsonRes({ error: 'OPENAI_API_KEY is not configured in Worker secrets.' }, 500);
+  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
+    return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured in Worker secrets.' }, 500);
+  }
+  if (typeof GROQ_API_KEY === 'undefined' || !GROQ_API_KEY) {
+    return jsonRes({ error: 'GROQ_API_KEY is not configured in Worker secrets.' }, 500);
   }
 
   const session = await kvGet(`session:${token}`);
@@ -1627,7 +1640,7 @@ async function analyzeSession(token, request) {
     }
   }));
 
-  // ── Step 2: download each video + transcribe via OpenAI Whisper (parallel) ──
+  // ── Step 2: download each video + transcribe via Groq Whisper (parallel) ──
   const transcripts = await Promise.all(downloadItems.map(async ({ qIndex, url }) => {
     const qText = questions[qIndex]?.text || `Question ${qIndex + 1}`;
 
@@ -1641,24 +1654,25 @@ async function analyzeSession(token, request) {
       }
       const blob = await videoRes.blob();
 
-      // Whisper hard limit is 25 MB
+      // Groq Whisper limit is 25 MB
       if (blob.size > 24 * 1024 * 1024) {
         return { qIndex, qText, transcript: '[Recording too large to transcribe (>24 MB)]', error: true };
       }
 
       const form = new FormData();
       form.append('file', blob, `q${qIndex + 1}.webm`);
-      form.append('model', 'whisper-1');
+      form.append('model', 'whisper-large-v3');
       form.append('language', 'en');
 
-      const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      // Groq's Whisper API is OpenAI-compatible — same response shape, much faster
+      const whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` },
         body: form,
       });
       if (!whisperRes.ok) {
         const e = await whisperRes.json().catch(() => ({}));
-        console.error(`[analyze] Whisper Q${qIndex + 1}:`, JSON.stringify(e));
+        console.error(`[analyze] Groq Whisper Q${qIndex + 1}:`, JSON.stringify(e));
         return { qIndex, qText, transcript: '[Transcription failed]', error: true };
       }
       const wData = await whisperRes.json();
@@ -1709,28 +1723,29 @@ Respond with ONLY a valid JSON object — no commentary before or after:
   }
 }`;
 
-  // Use OpenAI GPT-4o-mini for analysis (same key already used for Whisper)
-  const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
+  // Use Anthropic Claude for analysis
+  const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type':      'application/json',
+      'x-api-key':         ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model:      'gpt-4o-mini',
+      model:      'claude-3-haiku-20240307',
       max_tokens: 1024,
       messages:   [{ role: 'user', content: prompt }],
     }),
   });
 
-  if (!gptRes.ok) {
-    const e = await gptRes.json().catch(() => ({}));
-    console.error('[analyze] GPT error:', JSON.stringify(e));
-    return jsonRes({ error: 'Analysis failed: ' + (e.error?.message || gptRes.status) }, 500);
+  if (!claudeRes.ok) {
+    const e = await claudeRes.json().catch(() => ({}));
+    console.error('[analyze] Claude error:', JSON.stringify(e));
+    return jsonRes({ error: 'Analysis failed: ' + (e.error?.message || claudeRes.status) }, 500);
   }
 
-  const gptData = await gptRes.json();
-  const rawText = gptData.choices?.[0]?.message?.content || '{}';
+  const claudeData = await claudeRes.json();
+  const rawText = claudeData.content?.[0]?.text || '{}';
 
   let analysis;
   try {
