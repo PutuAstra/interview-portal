@@ -330,12 +330,10 @@ function listTemplates(request) {
 // ── Scheduled handler (cron + manual trigger) ─────────────────
 
 async function handleScheduled() {
-  const now    = Date.now();
-  const h48    = 48 * 60 * 60 * 1000;
-  const h24    = 24 * 60 * 60 * 1000;
-  const window = 2  * 60 * 60 * 1000; // ±2h fire window
+  const now        = Date.now();
+  const fireWindow = 2 * 60 * 60 * 1000; // ±2h window around each checkpoint
 
-  let sent48 = 0, sent24 = 0, errors = 0;
+  let sentTotal = 0, errors = 0;
 
   const interviewIds = (await kvGet('interview:list')) || [];
 
@@ -346,46 +344,59 @@ async function handleScheduled() {
       if (!session?.expiresAt || session.status !== 'pending') continue;
       if (!session.candidateEmail) continue;
 
-      const timeLeft = session.expiresAt - now;
+      const timeLeft  = session.expiresAt - now;
+      // Support new reminderIntervals array; fall back to legacy 48/24 flags
+      const intervals = session.reminderIntervals?.length ? session.reminderIntervals : [48, 24];
+      const sent      = session.reminderSent || {};
+      let   dirty     = false;
 
-      // 48h window: between 46h and 50h remaining
-      if (!session.reminder48hSent && timeLeft >= (h48 - window) && timeLeft < (h48 + window)) {
-        try {
-          await sendReminderEmail(session, '48h');
-          session.reminder48hSent = true;
-          await kvPut(`session:${token}`, session);
-          sent48++;
-        } catch (e) {
-          console.error('[reminders] 48h email failed for', token, e.message);
-          errors++;
+      for (const hours of intervals) {
+        const key      = String(hours);
+        const targetMs = hours * 60 * 60 * 1000;
+
+        // Already sent this checkpoint?
+        if (sent[key]) continue;
+        // Legacy flag check for 48/24
+        if (hours === 48 && session.reminder48hSent) continue;
+        if (hours === 24 && session.reminder24hSent) continue;
+
+        // Are we within the fire window for this checkpoint?
+        if (timeLeft >= (targetMs - fireWindow) && timeLeft < (targetMs + fireWindow)) {
+          try {
+            await sendReminderEmail(session, hours);
+            sent[key] = true;
+            if (hours === 48) session.reminder48hSent = true;
+            if (hours === 24) session.reminder24hSent = true;
+            dirty = true;
+            sentTotal++;
+          } catch (e) {
+            console.error(`[reminders] ${hours}h email failed for ${token}:`, e.message);
+            errors++;
+          }
         }
       }
 
-      // 24h window: between 22h and 26h remaining
-      if (!session.reminder24hSent && timeLeft >= (h24 - window) && timeLeft < (h24 + window)) {
-        try {
-          await sendReminderEmail(session, '24h');
-          session.reminder24hSent = true;
-          await kvPut(`session:${token}`, session);
-          sent24++;
-        } catch (e) {
-          console.error('[reminders] 24h email failed for', token, e.message);
-          errors++;
-        }
+      if (dirty) {
+        session.reminderSent = sent;
+        await kvPut(`session:${token}`, session);
       }
     }
   }
 
-  return { ok: true, sent48, sent24, errors };
+  return { ok: true, sentTotal, errors };
 }
 
-async function sendReminderEmail(session, type) {
+async function sendReminderEmail(session, hours) {
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
   const deadline = new Date(session.expiresAt).toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
-  const label = type === '48h' ? '48 Hours' : '24 Hours';
+  // Human-friendly label: 24→"1 Day", 48→"2 Days", 72→"3 Days", 12→"12 Hours"
+  const days = hours / 24;
+  const label = Number.isInteger(days) && days >= 1
+    ? `${days} Day${days !== 1 ? 's' : ''}`
+    : `${hours} Hours`;
 
   // Build the interview link
   // We don't know the exact domain here — store it on session if known, else omit
@@ -421,7 +432,7 @@ async function sendReminderEmail(session, type) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Reminder: Complete your ${interviewTitle} interview — ${label} remaining`,
+        subject: `Reminder: Complete your ${interviewTitle} interview — ${label} Left`,
         body: { contentType: 'HTML', content: html },
         from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
@@ -587,8 +598,8 @@ async function createSession(interviewId, request) {
     createdAt: Date.now(),
     completedAt: null,
     expiresAt: expiresAt || null,
-    reminder48hSent: false,
-    reminder24hSent: false,
+    reminderIntervals: [48, 24],   // default: 2-day + 1-day reminder
+    reminderSent: {},               // { "48": true, "24": false, ... }
   };
   await kvPut(`session:${token}`, session);
 
@@ -823,11 +834,17 @@ async function patchSession(token, request) {
 
   const updates = await request.json();
 
-  // Allow updating: expiresAt (deadline), and reset reminder flags when deadline changes
+  // Allow updating expiresAt and reminderIntervals
   if ('expiresAt' in updates) {
     session.expiresAt = updates.expiresAt || null;
-    // Reset reminder flags so new deadline triggers fresh reminders
-    session.reminder48hSent = false;
+  }
+  if ('reminderIntervals' in updates) {
+    session.reminderIntervals = (updates.reminderIntervals?.length) ? updates.reminderIntervals : [48, 24];
+  }
+  // Reset all sent flags whenever deadline or intervals change so fresh reminders fire
+  if ('expiresAt' in updates || 'reminderIntervals' in updates) {
+    session.reminderSent = {};
+    session.reminder48hSent = false; // backward compat
     session.reminder24hSent = false;
   }
 
