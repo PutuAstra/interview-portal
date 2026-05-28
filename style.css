@@ -1178,10 +1178,15 @@ tr:hover td { background: var(--card-2); }
     grid-template-columns: 1fr;
   }
 
-  /* Camera: use portrait aspect ratio to match phone front-camera
-     — eliminates the black sidebars caused by 16/9 landscape wrapper */
+  /* Camera: 9:16 portrait box matches phone front-camera native ratio.
+     object-fit:cover fills the box completely — no black bars ever. */
   .camera-wrap {
-    aspect-ratio: 3/4;
+    aspect-ratio: 9/16;
+  }
+
+  .camera-wrap canvas,
+  .camera-wrap video {
+    object-fit: cover !important;
   }
 
   /* Question card: tighter inner padding */

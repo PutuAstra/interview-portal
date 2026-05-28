@@ -418,10 +418,19 @@ async function submitProfileUpload() {
   }
 }
 
+function mobileVideoConstraints() {
+  // On phones (portrait), request 9:16 so the browser delivers portrait frames.
+  // Desktop keeps the standard 16:9 1280×720 landscape constraint.
+  const mobile = window.innerWidth <= 700;
+  return mobile
+    ? { facingMode: 'user', frameRate: { ideal: 30 }, aspectRatio: { ideal: 9/16 } }
+    : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' };
+}
+
 async function requestCamera() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },
+      video: mobileVideoConstraints(),
       audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
     });
     showQuestion(0);
@@ -439,7 +448,7 @@ async function requestCamera() {
 async function showSetup() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },
+      video: mobileVideoConstraints(),
       audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
     });
   } catch (e) {
@@ -516,8 +525,9 @@ async function showSetup() {
     bgCanvas.height = bgVid.videoHeight || 360;
     blurMaskCanvas  = null; // invalidate cached mask when resolution changes
   }, { once: true });
-  bgCanvas.width  = bgVid.videoWidth  || 640;
-  bgCanvas.height = bgVid.videoHeight || 360;
+  const mobile = window.innerWidth <= 700;
+  bgCanvas.width  = bgVid.videoWidth  || (mobile ? 360 : 640);
+  bgCanvas.height = bgVid.videoHeight || (mobile ? 640 : 360);
 
   // Preload CTI logo for watermark
   if (!logoImg) {
