@@ -1667,7 +1667,7 @@ async function analyzeSession(token, request) {
       // Groq's Whisper API is OpenAI-compatible — same response shape, much faster
       const whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` },
+        headers: { 'Authorization': `Bearer ${GROQ_API_KEY.trim()}` },
         body: form,
       });
       if (!whisperRes.ok) {
