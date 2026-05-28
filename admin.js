@@ -13,6 +13,8 @@ let editInterviewId = null;
 let editQuestions = [];
 let _allInterviews = [];
 let _allSessions = [];
+let _compareTokens = new Set();
+let _compareMode = false;
 let _sessionFilter = 'all';
 let _allTWSessions = [];
 let _twFilter = 'all';
@@ -174,6 +176,7 @@ function renderOWCreatePage() {
         <div class="flex justify-between items-center mb-16">
           <h3>Questions</h3>
           <div class="flex gap-8">
+            <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('create')">✨ AI Generate</button>
             <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('create')">📋 Templates</button>
             <button class="btn btn-outline" onclick="addQuestion()">+ Add Question</button>
           </div>
@@ -283,6 +286,231 @@ async function cloneInterview(id) {
     loadInterviews();
   } catch (e) {
     toast(e.message, 'error');
+  }
+}
+
+// ── AI Question Generator ─────────────────────────────────────
+
+let _aiGenTarget = 'create';
+
+function openAIGenModal(target) {
+  _aiGenTarget = target;
+  document.getElementById('aigen-title').value = '';
+  document.getElementById('aigen-desc').value = '';
+  document.getElementById('aigen-count').value = '5';
+  document.getElementById('aigen-results').innerHTML = '';
+  document.getElementById('aigen-add-btn').style.display = 'none';
+  openModal('modal-aigen');
+  setTimeout(() => document.getElementById('aigen-title')?.focus(), 80);
+}
+
+async function runAIGen() {
+  const jobTitle = document.getElementById('aigen-title').value.trim();
+  const jobDescription = document.getElementById('aigen-desc').value.trim();
+  const count = parseInt(document.getElementById('aigen-count').value) || 5;
+  if (!jobTitle) return toast('Job title is required', 'error');
+
+  const btn = document.getElementById('aigen-run-btn');
+  btn.disabled = true; btn.textContent = '✨ Generating…';
+  document.getElementById('aigen-results').innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
+  document.getElementById('aigen-add-btn').style.display = 'none';
+
+  try {
+    const data = await apiJSON('POST', '/api/questions/generate', { jobTitle, jobDescription, count });
+    if (!data.questions?.length) throw new Error('No questions returned');
+    renderAIGenResults(data.questions);
+  } catch (e) {
+    document.getElementById('aigen-results').innerHTML = `<div style="color:var(--red);font-size:13px;padding:12px">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Generate';
+  }
+}
+
+function renderAIGenResults(qs) {
+  const el = document.getElementById('aigen-results');
+  el.innerHTML = `
+    <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--muted)">${qs.length} questions generated — select the ones you want:</span>
+      <label style="font-size:12px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:4px">
+        <input type="checkbox" checked onchange="toggleAllAIGen(this.checked)" /> Select all
+      </label>
+    </div>
+    ${qs.map((q, i) => `
+      <label style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;background:var(--card)" class="aigen-item">
+        <input type="checkbox" class="aigen-cb" data-idx="${i}" checked style="margin-top:2px;accent-color:var(--accent);flex-shrink:0" />
+        <div style="flex:1">
+          <div style="font-size:13px;color:var(--text)">${esc(q.text)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${q.duration}s limit · ${q.thinkTime}s think · ${q.maxRetakes} retake${q.maxRetakes !== 1 ? 's' : ''}</div>
+        </div>
+      </label>`).join('')}
+  `;
+  el.dataset.questions = JSON.stringify(qs);
+  document.getElementById('aigen-add-btn').style.display = 'block';
+}
+
+function toggleAllAIGen(checked) {
+  document.querySelectorAll('.aigen-cb').forEach(cb => cb.checked = checked);
+}
+
+function applyAIGenQuestions() {
+  const el = document.getElementById('aigen-results');
+  const allQs = JSON.parse(el.dataset.questions || '[]');
+  const selected = [...document.querySelectorAll('.aigen-cb:checked')].map(cb => allQs[parseInt(cb.dataset.idx)]);
+  if (!selected.length) return toast('Select at least one question', 'error');
+
+  if (_aiGenTarget === 'create') {
+    // Remove the empty placeholder if it's the only question
+    if (questions.length === 1 && !questions[0].text) questions.length = 0;
+    selected.forEach(q => questions.push({ ...q }));
+    renderQuestions();
+  } else {
+    if (editQuestions.length === 1 && !editQuestions[0].text) editQuestions.length = 0;
+    selected.forEach(q => editQuestions.push({ ...q }));
+    renderEditQuestions();
+  }
+  closeModal('modal-aigen');
+  toast(`${selected.length} question${selected.length !== 1 ? 's' : ''} added!`, 'success');
+}
+
+// ── Candidate Comparison ──────────────────────────────────────
+
+function toggleCompareMode() {
+  _compareMode = !_compareMode;
+  _compareTokens.clear();
+  const btn = document.getElementById('compare-mode-btn');
+  if (btn) {
+    btn.textContent = _compareMode ? '✕ Cancel Compare' : '⚖ Compare';
+    btn.classList.toggle('btn-primary', _compareMode);
+    btn.classList.toggle('btn-ghost', !_compareMode);
+  }
+  filterAndRenderSessions();
+}
+
+function toggleCompareToken(token, checked) {
+  if (checked) _compareTokens.add(token);
+  else _compareTokens.delete(token);
+  const btn = document.getElementById('compare-launch-btn');
+  if (btn) {
+    const n = _compareTokens.size;
+    btn.style.display = n >= 2 ? 'inline-flex' : 'none';
+    btn.textContent = `⚖ Compare ${n} Candidates`;
+  }
+}
+
+function launchCompare() {
+  const tokens = [..._compareTokens];
+  if (tokens.length < 2) return toast('Select at least 2 candidates', 'error');
+  openCompareModal(tokens);
+}
+
+async function openCompareModal(tokens) {
+  openModal('modal-compare');
+  const content = document.getElementById('compare-content');
+  content.innerHTML = '<div class="spinner" style="margin:60px auto"></div>';
+
+  try {
+    // Load all sessions in parallel
+    const sessions = await Promise.all(
+      tokens.map(t =>
+        fetch(`${WORKER_URL}/api/session/${t}`, { headers: { 'X-Admin-Key': adminKey } })
+          .then(r => r.json())
+      )
+    );
+
+    const interview = sessions[0]?.interview;
+    const questions = interview?.questions || [];
+
+    // Fetch review data for each session
+    const reviews = await Promise.all(
+      tokens.map(t =>
+        fetch(`${WORKER_URL}/api/session/${t}/review`, { headers: { 'X-Admin-Key': adminKey } })
+          .then(r => r.json()).catch(() => ({}))
+      )
+    );
+
+    // Build question tabs
+    let activeQ = 0;
+
+    function renderCompare() {
+      const tabsHTML = questions.map((q, i) =>
+        `<button class="btn ${i === activeQ ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:5px 10px"
+          onclick="document.getElementById('compare-content')._renderQ(${i})">Q${i+1}</button>`
+      ).join('');
+
+      // Per-candidate columns for activeQ
+      const cols = sessions.map((sd, ci) => {
+        const s = sd.session;
+        const resp = s.responses?.find(r => r.questionIndex === activeQ);
+        const rv = reviews[ci];
+        const stars = rv?.stars || 0;
+        const qs = rv?.questionScores?.[activeQ] || 0;
+        const decision = rv?.decision;
+        const decisionLabel = decision === 'move_forward' ? '<span style="color:#16a34a;font-size:11px;font-weight:700">✓ Move Forward</span>'
+          : decision === 'not_moving_forward' ? '<span style="color:#dc2626;font-size:11px;font-weight:700">✗ Not Moving Forward</span>'
+          : '<span style="color:var(--muted);font-size:11px">No decision</span>';
+
+        return `
+          <div style="flex:1;min-width:0;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+            <div style="padding:10px 12px;background:var(--card);border-bottom:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:700">${esc(s.candidateName)}</div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
+                ${decisionLabel}
+                <span style="font-size:13px;color:#f59e0b">${'★'.repeat(stars)}<span style="color:var(--border)">${'★'.repeat(5-stars)}</span></span>
+              </div>
+            </div>
+            <div id="compare-vid-${ci}-${activeQ}" style="background:#000;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center">
+              <div class="spinner"></div>
+            </div>
+            <div style="padding:8px 10px">
+              <div style="font-size:11px;color:var(--muted)">Q${activeQ+1} score: <span style="color:#f59e0b">${'★'.repeat(qs)}<span style="color:var(--border)">${'★'.repeat(5-qs)}</span></span></div>
+            </div>
+          </div>`;
+      }).join('');
+
+      content.innerHTML = `
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:12px;color:var(--muted);font-weight:600">Question:</span>
+          ${tabsHTML}
+        </div>
+        <div style="padding:16px 20px">
+          ${questions[activeQ] ? `<p style="font-size:13px;font-weight:600;margin:0 0 14px">${esc(questions[activeQ].text)}</p>` : ''}
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            ${cols}
+          </div>
+        </div>`;
+
+      content._renderQ = (qi) => { activeQ = qi; renderCompare(); loadCompareVideos(); };
+
+      loadCompareVideos();
+    }
+
+    async function loadCompareVideos() {
+      await Promise.all(sessions.map(async (sd, ci) => {
+        const s = sd.session;
+        const resp = s.responses?.find(r => r.questionIndex === activeQ);
+        const cell = document.getElementById(`compare-vid-${ci}-${activeQ}`);
+        if (!cell) return;
+        if (!resp) { cell.innerHTML = '<span style="color:var(--muted);font-size:12px">No recording</span>'; return; }
+        try {
+          const { downloadUrl } = await fetch(
+            `${WORKER_URL}/api/session/${s.token}/video/${activeQ}`,
+            { headers: { 'X-Admin-Key': adminKey } }
+          ).then(r => r.json());
+          if (downloadUrl) {
+            cell.innerHTML = `<video src="${downloadUrl}" controls preload="metadata" style="width:100%;height:100%;object-fit:contain"></video>`;
+          } else {
+            cell.innerHTML = '<span style="color:var(--muted);font-size:12px">Unavailable</span>';
+          }
+        } catch {
+          cell.innerHTML = '<span style="color:var(--muted);font-size:12px">Error</span>';
+        }
+      }));
+    }
+
+    renderCompare();
+
+  } catch (e) {
+    content.innerHTML = `<div style="margin:auto;color:var(--red);font-size:13px;padding:40px">${e.message}</div>`;
   }
 }
 
@@ -1437,6 +1665,11 @@ function renderSessionRow(s, num) {
     ? `<img src="" style="display:none">` // replaced by loadAvatarPhoto
     : `<span style="font-size:11px;font-weight:700;color:var(--muted)">${candidateInitials(s.candidateName)}</span>`;
 
+  const compareCell = _compareMode && s.status === 'completed'
+    ? `<input type="checkbox" ${_compareTokens.has(s.token) ? 'checked' : ''}
+        onchange="toggleCompareToken('${s.token}', this.checked)"
+        style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:auto">`
+    : `<div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">${num}</div>`;
 
   const videosCell = responseCount > 0
     ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:12px;color:var(--accent);white-space:nowrap" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">🎥 View ${responseCount}</button>`
@@ -1451,7 +1684,7 @@ function renderSessionRow(s, num) {
 
   return `
     <div class="session-row">
-      <div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center;align-self:center">${num}</div>
+      <div style="display:flex;align-items:center;justify-content:center;align-self:center">${compareCell}</div>
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
         <div id="av-${s.token}" class="candidate-avatar">${avatarContent}</div>
         <div style="min-width:0">
@@ -1536,10 +1769,46 @@ async function shareSession(token) {
   try {
     const { shareToken } = await apiJSON('POST', `/api/session/${token}/share`);
     const url = buildShareUrl(shareToken);
-    await navigator.clipboard.writeText(url);
-    toast('Share link copied! Send this to hiring managers for read-only review.', 'success');
+    // Store for use in dialog
+    const modal = document.getElementById('modal-share');
+    modal.dataset.token = token;
+    modal.dataset.shareUrl = url;
+    document.getElementById('share-link-input').value = url;
+    document.getElementById('share-email-to').value = '';
+    document.getElementById('share-send-result').innerHTML = '';
+    openModal('modal-share');
   } catch (e) {
     toast('Could not create share link: ' + e.message, 'error');
+  }
+}
+
+function copyShareLink() {
+  const url = document.getElementById('modal-share').dataset.shareUrl;
+  navigator.clipboard.writeText(url);
+  toast('Share link copied!', 'success');
+}
+
+async function sendShareEmailFromModal() {
+  const modal = document.getElementById('modal-share');
+  const token = modal.dataset.token;
+  const shareUrl = modal.dataset.shareUrl;
+  const emailInput = document.getElementById('share-email-to').value.trim();
+  if (!emailInput) return toast('Enter at least one email address', 'error');
+  const emails = emailInput.split(/[,;\s]+/).filter(e => e.includes('@'));
+  if (!emails.length) return toast('No valid email addresses found', 'error');
+
+  const btn = document.getElementById('share-send-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await apiJSON('POST', `/api/session/${token}/share/email`, { emails, shareUrl });
+    document.getElementById('share-send-result').innerHTML =
+      `<div style="color:var(--green);font-size:12px;margin-top:8px">✓ Sent to ${emails.length} reviewer${emails.length !== 1 ? 's' : ''}</div>`;
+    document.getElementById('share-email-to').value = '';
+    toast(`Share email sent to ${emails.length} reviewer${emails.length !== 1 ? 's' : ''}`, 'success');
+  } catch (e) {
+    toast('Failed to send: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '✉ Send';
   }
 }
 
@@ -1737,6 +2006,7 @@ function renderAnalysisPanel(analysis, token) {
         <div style="flex-shrink:0;font-size:18px;line-height:1">${starsHTML(q.stars)}</div>
       </div>
       <p style="font-size:12px;color:var(--text);margin:0 0 8px">${esc(q.feedback || '')}</p>
+      ${q.summary ? `<p style="font-size:12px;color:var(--muted);margin:4px 0 0;font-style:italic">💬 ${esc(q.summary)}</p>` : ''}
       ${q.transcript ? `
         <details style="margin-top:4px">
           <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none">Show transcript</summary>
@@ -1850,6 +2120,30 @@ async function openReview(token, candidateName) {
         </div>`
       : `<div class="empty-state">No recordings yet</div>`;
 
+    // Proctoring summary
+    const pLog = session.proctoringLog || [];
+    const proctoringHTML = pLog.length > 0
+      ? (() => {
+          const counts = {};
+          pLog.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; });
+          const flagLabels = {
+            tab_hidden: 'Tab/window hidden',
+            window_blur: 'Window focus lost',
+            copy_attempt: 'Copy attempt',
+            paste_attempt: 'Paste attempt',
+            right_click: 'Right-click',
+            keyboard_shortcut: 'Keyboard shortcut',
+          };
+          const items = Object.entries(counts).map(([k, v]) =>
+            `<span style="background:rgba(220,38,38,0.1);color:#dc2626;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid rgba(220,38,38,0.2)">${flagLabels[k]||k}: ${v}×</span>`
+          ).join(' ');
+          return `<div style="margin-top:10px;padding:10px 14px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:8px">
+            <div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:6px">⚠️ Proctoring flags (${pLog.length} events)</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${items}</div>
+          </div>`;
+        })()
+      : `<div style="margin-top:10px;font-size:11px;color:var(--muted)">✅ No proctoring flags</div>`;
+
     const analysisSection = cachedAnalysis?.notFound
       ? `<div style="margin-top:8px;text-align:center">
            <button class="btn btn-primary" onclick="runAnalysis('${token}')" id="analyze-btn">🤖 Analyze English Proficiency</button>
@@ -1928,6 +2222,7 @@ async function openReview(token, candidateName) {
         <div style="flex:1;overflow-y:auto;padding:20px 20px 12px">
           <h3 style="margin:0 0 12px;font-size:14px">Recordings</h3>
           ${videosHTML}
+          ${proctoringHTML}
         </div>
         <div style="flex-shrink:0;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
           ${analysisSection}

@@ -109,6 +109,8 @@ async function route(request) {
     return getTWRecordingUrl(seg[1], request);
   }
 
+  if (seg[0] === 'session' && seg[2] === 'proctoring' && m === 'POST') return saveProctoringLog(seg[1], request);
+
   // One-way: AI English analysis
   if (seg[0] === 'session' && seg[2] === 'analyze' && m === 'POST') {
     return analyzeSession(seg[1], request);
@@ -128,6 +130,7 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'GET')  return getSessionReview(seg[1], request);
 
   // One-way: shareable review links (admin creates, public reads)
+  if (seg[0] === 'session' && seg[2] === 'share' && seg[3] === 'email' && m === 'POST') return sendShareEmail(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'share' && m === 'POST') return createShareLink(seg[1], request);
   if (seg[0] === 'share'   && seg.length === 2    && m === 'GET')  return getShare(seg[1]);
   if (seg[0] === 'share'   && seg[2] === 'video'  && m === 'GET')  return getShareVideo(seg[1], parseInt(seg[3]));
@@ -202,6 +205,9 @@ async function route(request) {
   // ── Question Templates ───────────────────────────────────────
   if (seg[0] === 'templates' && seg.length === 1 && m === 'GET') {
     return listTemplates(request);
+  }
+  if (seg[0] === 'questions' && seg[1] === 'generate' && m === 'POST') {
+    return generateQuestions(request);
   }
 
   // ── Reminder trigger (manual / external cron) ────────────────
@@ -330,6 +336,40 @@ const QUESTION_TEMPLATES_DATA = [
 function listTemplates(request) {
   requireAdmin(request);
   return jsonRes(QUESTION_TEMPLATES_DATA);
+}
+
+async function generateQuestions(request) {
+  requireAdmin(request);
+  if (typeof OPENAI_API_KEY === 'undefined' || !OPENAI_API_KEY) {
+    return jsonRes({ error: 'OPENAI_API_KEY is not configured.' }, 500);
+  }
+  const { jobTitle, jobDescription, count = 5 } = await request.json();
+  if (!jobTitle) return jsonRes({ error: 'jobTitle required' }, 400);
+
+  const prompt = `You are an expert recruiter. Generate exactly ${count} interview questions for the role: "${jobTitle}".
+${jobDescription ? `\nJob context:\n${jobDescription}\n` : ''}
+Make questions behavioral, situational, and specific to this role. Mix easy and harder questions.
+Respond with ONLY valid JSON — no commentary:
+{
+  "questions": [
+    { "text": "Question text here?", "duration": 90, "thinkTime": 30, "maxRetakes": 1 }
+  ]
+}
+Duration: 60–180s based on complexity. thinkTime: 15–30s. maxRetakes: 1.`;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 1024, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await res.json();
+  const raw = data.choices?.[0]?.message?.content || '{}';
+  try {
+    const match = raw.match(/\{[\s\S]*\}/);
+    return jsonRes(JSON.parse(match ? match[0] : raw));
+  } catch {
+    return jsonRes({ error: 'Failed to parse AI response. Raw: ' + raw.slice(0, 200) }, 500);
+  }
 }
 
 // ── Scheduled handler (cron + manual trigger) ─────────────────
@@ -1650,7 +1690,7 @@ Rate each answer's English on a 1–5 scale:
 4 ⭐⭐⭐⭐ Good — fluent and professional, occasional minor errors
 5 ⭐⭐⭐⭐⭐ Excellent — near-native, sophisticated vocabulary, polished tone
 
-Criteria: grammar accuracy, vocabulary range, sentence complexity, fluency, professional tone.
+Criteria: grammar accuracy, vocabulary range, sentence complexity, fluency, professional tone. Also produce a brief content summary of what the candidate said (not about language quality — just what they discussed).
 
 Respond with ONLY a valid JSON object — no commentary before or after:
 {
@@ -1658,7 +1698,8 @@ Respond with ONLY a valid JSON object — no commentary before or after:
     {
       "questionIndex": 0,
       "stars": 4,
-      "feedback": "One concise sentence summarising this answer's English quality."
+      "feedback": "One concise sentence on English quality.",
+      "summary": "1-2 sentence summary of what the candidate actually said in their answer."
     }
   ],
   "overall": {
@@ -2885,6 +2926,61 @@ async function sendBookingConfirmationEmail(booking, link) {
       saveToSentItems: true,
     }),
   });
+}
+
+async function saveProctoringLog(token, request) {
+  // No admin check — called by candidate page
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  const { log } = await request.json();
+  session.proctoringLog = Array.isArray(log) ? log : [];
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true });
+}
+
+async function sendShareEmail(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  const { emails, shareUrl, interviewTitle } = await request.json();
+  if (!emails?.length || !shareUrl) return jsonRes({ error: 'emails and shareUrl required' }, 400);
+
+  const interview = await kvGet(`interview:${session.interviewId}`);
+  const title = interviewTitle || interview?.title || 'Interview Review';
+  const graphToken = await getAccessToken();
+
+  const toRecipients = emails
+    .map(e => e.trim()).filter(e => e.includes('@'))
+    .map(e => ({ emailAddress: { address: e } }));
+
+  if (!toRecipients.length) return jsonRes({ error: 'No valid email addresses' }, 400);
+
+  const bodyRows = `
+    <p style="font-family:Arial,sans-serif;font-size:15px;color:#333;margin:0 0 16px">
+      You have been invited to review a candidate's recorded interview.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px">
+      <tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:2px 0;width:120px">Candidate</td><td style="font-family:Arial,sans-serif;font-size:13px;color:#333;font-weight:700">${session.candidateName}</td></tr>
+      <tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:2px 0">Interview</td><td style="font-family:Arial,sans-serif;font-size:13px;color:#333">${title}</td></tr>
+    </table>
+    ${emailButton(shareUrl, 'View Candidate Review')}
+    <p style="font-family:Arial,sans-serif;font-size:12px;color:#aaa;margin:20px 0 0;text-align:center">
+      This is a read-only link — no login required.
+    </p>`;
+
+  await fetch(`https://graph.microsoft.com/v1.0/users/${EMAIL_SENDER}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${graphToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: `Review request: ${session.candidateName} — ${title}`,
+        body: { contentType: 'HTML', content: emailWrap('#B01A18', `Candidate Review`, bodyRows) },
+        toRecipients,
+      },
+    }),
+  });
+
+  return jsonRes({ ok: true, sent: toRecipients.length });
 }
 
 async function sendBookingCancellationEmail(booking, link) {

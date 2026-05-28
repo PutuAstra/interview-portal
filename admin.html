@@ -114,6 +114,7 @@
     <div class="flex justify-between items-center mb-16">
       <h3>Questions</h3>
       <div class="flex gap-8">
+        <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('edit')">✨ AI Generate</button>
         <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('edit')">📋 Templates</button>
         <button class="btn btn-outline" onclick="addEditQuestion()">+ Add Question</button>
       </div>
@@ -210,6 +211,9 @@
           <button class="filter-chip"        id="fs-3" onclick="setStarFilter(3)">★★★</button>
           <button class="filter-chip"        id="fs-4" onclick="setStarFilter(4)">★★★★</button>
           <button class="filter-chip"        id="fs-5" onclick="setStarFilter(5)">★★★★★</button>
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+          <button id="compare-mode-btn" class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="toggleCompareMode()">⚖ Compare</button>
+          <button id="compare-launch-btn" class="btn btn-primary" style="display:none;font-size:12px;padding:5px 12px" onclick="launchCompare()">⚖ Compare 0 Candidates</button>
         </div>
       </div>
 
@@ -368,9 +372,82 @@
   </div>
 </div>
 
+<!-- Modal: AI Question Generator -->
+<div class="modal-overlay" id="modal-aigen">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <h2>✨ AI Question Generator</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-aigen')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Job Title *</label>
+      <input type="text" id="aigen-title" placeholder="e.g. J1 Intern, Sales Manager, Software Engineer" />
+    </div>
+    <div class="form-group">
+      <label>Job Description <span style="font-weight:400;color:var(--muted)">(optional — improves quality)</span></label>
+      <textarea id="aigen-desc" rows="3" placeholder="Paste a brief job description or key requirements…"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px">
+      <label style="font-size:13px;color:var(--text-2);white-space:nowrap">Number of questions:</label>
+      <select id="aigen-count" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="8">8</option>
+        <option value="10">10</option>
+      </select>
+      <button class="btn btn-primary" id="aigen-run-btn" onclick="runAIGen()">✨ Generate</button>
+    </div>
+    <div id="aigen-results"></div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-aigen')">Cancel</button>
+      <button class="btn btn-primary" id="aigen-add-btn" style="display:none" onclick="applyAIGenQuestions()">+ Add Selected to Interview</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Candidate Comparison -->
+<div class="modal-overlay" id="modal-compare">
+  <div class="modal" style="width:calc(100vw - 80px);max-width:1100px;height:calc(100vh - 100px);padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-header" style="padding:14px 20px;flex-shrink:0;border-bottom:1px solid var(--border)">
+      <h2>Candidate Comparison</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-compare')">✕</button>
+    </div>
+    <div id="compare-content" style="flex:1;min-height:0;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- Modal: Share Review Link -->
+<div class="modal-overlay" id="modal-share">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2>Share Review Link</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-share')">✕</button>
+    </div>
+    <p class="text-muted text-sm mb-16">This link lets hiring managers view the candidate's recorded answers without logging in.</p>
+    <div class="form-group">
+      <label>Share URL</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="share-link-input" readonly style="flex:1;background:var(--bg);font-size:12px;color:var(--muted)" />
+        <button class="btn btn-outline" onclick="copyShareLink()" style="white-space:nowrap">📋 Copy</button>
+      </div>
+    </div>
+    <hr class="divider" />
+    <div class="form-group">
+      <label>Email to Reviewers</label>
+      <input type="text" id="share-email-to" placeholder="reviewer@company.com, another@company.com" />
+      <p style="font-size:11px;color:var(--muted);margin-top:4px">Comma or space separated. They receive a direct email with the review link.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary" id="share-send-btn" onclick="sendShareEmailFromModal()">✉ Send</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-share')">Close</button>
+    </div>
+    <div id="share-send-result"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250528f"></script>
+<script src="admin.js?v=20250528g"></script>
 </body>
 </html>

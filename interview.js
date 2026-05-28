@@ -16,6 +16,8 @@ let recorder = null;
 let chunks = [];
 let recordingTimer = null;
 let timeLeft = 0;
+let proctoringLog = [];   // [{type, questionIndex, timestamp}]
+let _proctoringListenersAttached = false;
 
 // ── Setup / virtual bg state ───────────────────────────────────
 let bgMode = 'none';
@@ -997,8 +999,38 @@ function startCountdown() {
   beginThinkTime(startTTS);
 }
 
+function attachProctoringListeners() {
+  if (_proctoringListenersAttached) return;
+  _proctoringListenersAttached = true;
+
+  document.addEventListener('visibilitychange', _onVisibility);
+  window.addEventListener('blur', _onBlur);
+  document.addEventListener('copy', _onCopy);
+  document.addEventListener('paste', _onPaste);
+  document.addEventListener('contextmenu', _onRightClick);
+  document.addEventListener('keydown', _onKeyDown);
+}
+
+function _onVisibility() {
+  if (document.visibilityState === 'hidden') logProctoring('tab_hidden');
+}
+function _onBlur()       { logProctoring('window_blur'); }
+function _onCopy()       { logProctoring('copy_attempt'); }
+function _onPaste()      { logProctoring('paste_attempt'); }
+function _onRightClick() { logProctoring('right_click'); }
+function _onKeyDown(e) {
+  if ((e.ctrlKey || e.metaKey) && ['c','v','x','a'].includes(e.key.toLowerCase())) {
+    logProctoring('keyboard_shortcut', e.key.toUpperCase());
+  }
+}
+
+function logProctoring(type, detail) {
+  proctoringLog.push({ type, questionIndex: currentQ, timestamp: Date.now(), detail: detail || null });
+}
+
 function startRecording() {
   const q = interview.questions[currentQ];
+  attachProctoringListeners();
   chunks = [];
 
   recorder = new MediaRecorder(canvasStream || mediaStream, {
@@ -1142,6 +1174,16 @@ function retakeAnswer() {
 
 async function finishInterview() {
   main().innerHTML = `<div class="spinner" style="margin:auto"></div>`;
+  // Send proctoring log if there are any events
+  if (proctoringLog.length > 0) {
+    try {
+      await fetch(`${WORKER_URL}/api/session/${token}/proctoring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ log: proctoringLog }),
+      });
+    } catch {}
+  }
   try {
     await fetch(`${WORKER_URL}/api/session/${token}/complete`, { method: 'POST' });
   } catch {}
