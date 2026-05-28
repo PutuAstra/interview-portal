@@ -834,9 +834,10 @@ function startCountdown() {
   const qText = document.getElementById('question-text');
   if (qText) { qText.style.filter = 'none'; qText.style.userSelect = ''; }
   const hint = document.getElementById('question-hint');
-  if (hint) hint.style.display = 'none';
+  if (hint) hint.remove();
 
-  document.getElementById('record-btn').disabled = true;
+  const recordBtn = document.getElementById('record-btn');
+  if (recordBtn) recordBtn.disabled = true;
 
   const q = interview.questions[currentQ];
 
