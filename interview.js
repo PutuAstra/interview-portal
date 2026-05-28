@@ -112,7 +112,7 @@ function showIntro() {
   const mins = Math.ceil(totalDuration / 60);
 
   main().innerHTML = `
-    <div class="card" style="max-width:560px;width:100%;text-align:center">
+    <div class="card" style="max-width:720px;width:100%;text-align:center">
       <div style="font-size:40px;margin-bottom:16px">🎙️</div>
       <h1>${esc(interview.title)}</h1>
       <p class="mt-8">Hello, <strong>${esc(session.candidateName)}</strong> 👋</p>
@@ -143,7 +143,7 @@ function showIntro() {
 function showProfileUpload() {
   document.getElementById('topbar-progress').textContent = 'Step 1 of 2 — Your Profile';
   main().innerHTML = `
-    <div class="card" style="max-width:520px;width:100%">
+    <div class="card" style="max-width:680px;width:100%">
       <div style="text-align:center;margin-bottom:24px">
         <div style="font-size:36px;margin-bottom:8px">📋</div>
         <h2 style="margin:0">Your Profile</h2>
