@@ -1426,6 +1426,7 @@ function renderSessionRow(s, num) {
 
   const actionsCell = s.status === 'pending'
     ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Copy interview link" onclick="copySessionLink('${s.token}')">🔗</button>
+       <button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="${s.expiresAt ? 'Edit deadline' : 'Set deadline'}" onclick="openDeadlinePicker('${s.token}', this)">⏰</button>
        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${esc(s.candidateName)}')">Revoke</button>`
     : `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">Review</button>`;
 
@@ -1535,6 +1536,86 @@ async function revokeSession(token, name) {
     toast('Invitation revoked', 'success');
     await loadSessions(currentInterviewId);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Deadline picker popover ───────────────────────────────────
+
+function openDeadlinePicker(token, anchorEl) {
+  // Remove any existing picker
+  document.getElementById('deadline-popover')?.remove();
+
+  // Find current deadline value if any
+  const session = _allSessions.find(s => s.token === token);
+  const currentVal = session?.expiresAt
+    ? new Date(session.expiresAt).toISOString().split('T')[0]
+    : '';
+
+  const popover = document.createElement('div');
+  popover.id = 'deadline-popover';
+  popover.style.cssText = `
+    position:fixed;z-index:9999;
+    background:var(--card);border:1px solid var(--border);
+    border-radius:10px;padding:14px 16px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.4);
+    min-width:240px;
+  `;
+
+  popover.innerHTML = `
+    <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">⏰ Set Reminder Deadline</p>
+    <input type="date" id="deadline-input" value="${currentVal}"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+             padding:7px 10px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box" />
+    <p style="font-size:11px;color:var(--muted);margin:6px 0 12px">Candidate receives 48h &amp; 24h reminder emails automatically.</p>
+    <div class="flex gap-8">
+      <button class="btn btn-primary" style="flex:1;font-size:12px" id="deadline-save-btn">Save</button>
+      ${currentVal ? `<button class="btn btn-danger" style="font-size:12px" id="deadline-clear-btn">Clear</button>` : ''}
+      <button class="btn btn-outline" style="font-size:12px" id="deadline-cancel-btn">Cancel</button>
+    </div>
+  `;
+
+  document.body.appendChild(popover);
+
+  // Position near the anchor button
+  const rect = anchorEl.getBoundingClientRect();
+  const top = rect.bottom + 6;
+  const left = Math.min(rect.left, window.innerWidth - 270);
+  popover.style.top  = `${top}px`;
+  popover.style.left = `${left}px`;
+
+  document.getElementById('deadline-save-btn').onclick = async () => {
+    const val = document.getElementById('deadline-input').value;
+    if (!val) { toast('Pick a date first', 'error'); return; }
+    const expiresAt = new Date(val + 'T23:59:59').getTime();
+    await saveDeadline(token, expiresAt);
+    popover.remove();
+  };
+
+  if (currentVal) {
+    document.getElementById('deadline-clear-btn').onclick = async () => {
+      await saveDeadline(token, null);
+      popover.remove();
+    };
+  }
+
+  document.getElementById('deadline-cancel-btn').onclick = () => popover.remove();
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!popover.contains(e.target) && e.target !== anchorEl) {
+        popover.remove();
+        document.removeEventListener('click', handler);
+      }
+    });
+  }, 0);
+}
+
+async function saveDeadline(token, expiresAt) {
+  try {
+    await apiJSON('PATCH', `/api/session/${token}`, { expiresAt });
+    toast(expiresAt ? 'Deadline set — reminders scheduled' : 'Deadline cleared', 'success');
+    await loadSessions(currentInterviewId);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
 }
 
 // ── Review videos ─────────────────────────────────────────────

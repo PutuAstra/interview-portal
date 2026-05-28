@@ -20,7 +20,7 @@ const CTI_LOGO_URL = 'https://putuastra.github.io/interview-portal/logo.png';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
 };
 
@@ -70,6 +70,9 @@ async function route(request) {
   }
   if (seg[0] === 'session' && seg.length === 2 && m === 'DELETE') {
     return deleteSession(seg[1], request);
+  }
+  if (seg[0] === 'session' && seg.length === 2 && m === 'PATCH') {
+    return patchSession(seg[1], request);
   }
   if (seg[0] === 'session' && seg[2] === 'send-email' && m === 'POST') {
     return sendInterviewEmail(seg[1], request);
@@ -811,6 +814,25 @@ async function deleteSession(token, request) {
   const sessions = (await kvGet(`interview:${session.interviewId}:sessions`)) || [];
   await kvPut(`interview:${session.interviewId}:sessions`, sessions.filter(t => t !== token));
   return jsonRes({ ok: true });
+}
+
+async function patchSession(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+
+  const updates = await request.json();
+
+  // Allow updating: expiresAt (deadline), and reset reminder flags when deadline changes
+  if ('expiresAt' in updates) {
+    session.expiresAt = updates.expiresAt || null;
+    // Reset reminder flags so new deadline triggers fresh reminders
+    session.reminder48hSent = false;
+    session.reminder24hSent = false;
+  }
+
+  await kvPut(`session:${token}`, session);
+  return jsonRes(session);
 }
 
 async function completeSession(token) {
