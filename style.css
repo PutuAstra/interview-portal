@@ -1200,73 +1200,54 @@ tr:hover td { background: var(--card-2); }
     padding: 20px 16px 28px;
   }
 
-  /* ── Setup screen wrapper: lock to exactly one viewport, never scroll ── */
+  /* ── Setup screen wrapper ─────────────────────────────────── */
   .setup-screen-wrap {
     max-width: 100% !important;
     width: 100% !important;
-    height: calc(100vh - 46px);
-    height: calc(100dvh - 46px);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    padding: 8px 10px 10px;
+    padding: 12px 10px 24px;
   }
 
   /* Compact the "Setup & Preview" header so it doesn't eat vertical space */
-  .setup-head { flex-shrink: 0; margin-bottom: 6px !important; }
-  .setup-head h2 { font-size: 17px; line-height: 1.2; }
+  .setup-head { margin-bottom: 10px !important; }
+  .setup-head h2 { font-size: 18px; line-height: 1.2; }
   .setup-head p { font-size: 11px !important; margin-top: 2px !important; line-height: 1.3; }
 
-  /* Setup grid → flex column that fills the leftover height. Camera grows to
-     fill whatever space the (compact) controls leave, so nothing scrolls. */
+  /* Setup grid: SINGLE column on phone — camera on top, controls stacked
+     directly beneath it (clean portrait preview flow). */
   .setup-grid {
-    display: flex !important;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: 8px;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    align-items: stretch;
   }
 
-  /* Setup camera: height-driven 9:16 box that shrinks/grows to fit the leftover
-     space (flex). Centred, with dark-blue page gutters on the sides. */
+  /* Setup camera: tall 9:16 portrait box, height-driven and centred so it never
+     overflows the viewport. The whole frame is shown via object-fit:contain;
+     any letterbox/gutter shows the dark-blue camera-wrap background. */
   .setup-grid .camera-wrap {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
     aspect-ratio: 9 / 16 !important;
-    height: auto;
-    width: auto;
+    height: 62vh;
+    height: 62dvh;          /* definite height drives the box… */
+    width: auto;            /* …width derived from 9:16; dark-blue page gutters fill the sides */
     max-width: 100%;
     margin: 0 auto;
     background: var(--bg);  /* #0F172A dark blue letterbox/gutter fill */
   }
 
-  /* Controls row: the 3 utility panels sit beneath the camera, side by side,
-     fixed height (don't steal space from the camera). */
+  /* Controls row: the 3 utility panels sit beneath the camera, side by side. */
   .setup-grid > div:last-child {
-    flex: 0 0 auto;
     flex-direction: row !important;
-    flex-wrap: nowrap;
-    gap: 6px !important;
+    flex-wrap: wrap;
+    gap: 8px !important;
   }
   .setup-grid > div:last-child > .card {
     flex: 1 1 0;
     min-width: 0;
   }
 
-  /* Compact the three panels so they stay short */
-  .setup-grid .card { padding: 8px 8px 9px !important; }
-  .setup-section-label { font-size: 10px !important; margin-bottom: 5px !important; }
-  .setup-grid .card p { font-size: 9px !important; line-height: 1.25; }
-  .setup-grid .card .btn { font-size: 11px !important; padding: 7px 8px !important; }
-  .bg-opt, .bg-swatch { transform: scale(0.85); }
-  .setup-grid #bg-opts { gap: 5px !important; margin-bottom: 6px !important; }
-
-  /* Continue button row: compact, pinned at the bottom, never scrolls */
-  .setup-screen-wrap > div:last-child {
-    flex-shrink: 0;
-    margin-top: 8px !important;
-  }
-  .setup-screen-wrap > div:last-child .btn { padding: 11px 20px !important; }
+  /* Compact the controls so three panels fit a narrow screen */
+  .setup-grid .card { padding: 12px !important; }
+  .setup-section-label { font-size: 12px; }
+  .bg-opt, .bg-swatch { transform: scale(0.92); }
 
   /* ── Interview question card: full-screen portrait modal ──── */
   .question-card {
