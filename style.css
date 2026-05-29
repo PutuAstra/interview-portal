@@ -1244,10 +1244,14 @@ tr:hover td { background: var(--card-2); }
     min-width: 0;
   }
 
-  /* Compact the controls so three panels fit a narrow screen */
-  .setup-grid .card { padding: 12px !important; }
-  .setup-section-label { font-size: 12px; }
-  .bg-opt, .bg-swatch { transform: scale(0.92); }
+  /* Shrink the three panels (only the panels — layout untouched) */
+  .setup-grid .card { padding: 8px 8px 9px !important; }
+  .setup-grid .setup-section-label { font-size: 10px !important; margin-bottom: 5px !important; letter-spacing: 0.03em; }
+  .setup-grid .card p { font-size: 9px !important; line-height: 1.25; }
+  .setup-grid .card .btn { font-size: 11px !important; padding: 7px 8px !important; }
+  .setup-grid #bg-opts { gap: 5px !important; margin-bottom: 6px !important; }
+  .bg-opt { font-size: 11px !important; padding: 5px 9px !important; transform: scale(0.9); }
+  .bg-swatch { width: 26px !important; height: 26px !important; transform: scale(0.9); }
 
   /* ── Interview question card: full-screen portrait modal ──── */
   .question-card {
