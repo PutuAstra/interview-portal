@@ -1304,12 +1304,11 @@ tr:hover td { background: var(--card-2); }
     background: var(--bg); /* dark-blue letterbox/gutter fill */
   }
 
-  /* Show the ENTIRE camera frame — never crop or zoom. The canvas is the native
-     source aspect ratio; contain fits the whole frame into the 9:16 box and any
-     difference is filled by the dark-blue camera-wrap background. */
+  /* The canvas is cover-cropped to 9:16 in JS, matching the 9:16 box, so it
+     fills edge-to-edge with no bars. cover guards any sub-pixel rounding gap. */
   .camera-wrap canvas,
   .camera-wrap video {
-    object-fit: contain !important;
+    object-fit: cover !important;
   }
 
   /* Controls row: stack text + buttons vertically */
