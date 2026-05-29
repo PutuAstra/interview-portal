@@ -1224,10 +1224,12 @@ tr:hover td { background: var(--card-2); }
     gap: 0 !important;
   }
 
-  /* Setup camera: 9:16 portrait — matches the phone's native portrait
-     stream so the full frame shows (no zoom, no black bars) */
+  /* Setup camera: tall 9:16 portrait box. align-self:start keeps it locked to
+     9:16 so the grid's stretch (which sizes the right column) can never
+     distort it taller and re-introduce cropping. */
   .setup-grid .camera-wrap {
     aspect-ratio: 9 / 16 !important;
+    align-self: start;
     margin-bottom: 0;
   }
 
@@ -1295,10 +1297,11 @@ tr:hover td { background: var(--card-2); }
     margin-bottom: 0;
   }
 
-  /* canvas + video always cover-fill their container — zero black bars */
+  /* Show the FULL camera frame inside the portrait box — nothing cropped or
+     zoomed, watermark always visible. The box letterboxes (thin dark bars). */
   .camera-wrap canvas,
   .camera-wrap video {
-    object-fit: cover !important;
+    object-fit: contain !important;
   }
 
   /* Controls row: stack text + buttons vertically */

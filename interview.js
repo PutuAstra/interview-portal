@@ -523,22 +523,12 @@ async function showSetup() {
   bgCanvas = document.getElementById('bg-canvas');
   bgCtx = bgCanvas.getContext('2d');
   // Set canvas resolution from live video dimensions
-  // Portrait 9:16 canvas to match the phone's native portrait camera stream.
-  // When the canvas aspect matches the source, cover-crop shows the FULL frame
-  // (no zoom, no black bars). Height = long side of the source; width = 9/16.
+  // Use the camera's NATIVE resolution so the canvas holds the FULL frame with
+  // no cropping. The 9:16 display box letterboxes it via object-fit:contain, so
+  // nothing is zoomed or cut (the watermark stays fully visible).
   function setCanvasDims() {
-    const mob = window.innerWidth <= 700;
-    if (mob && bgVid.videoWidth && bgVid.videoHeight) {
-      const longSide = Math.max(bgVid.videoWidth, bgVid.videoHeight);
-      bgCanvas.height = longSide;
-      bgCanvas.width  = Math.round(longSide * 9 / 16);
-    } else if (mob) {
-      bgCanvas.width  = 360;
-      bgCanvas.height = 640;
-    } else {
-      bgCanvas.width  = bgVid.videoWidth  || 640;
-      bgCanvas.height = bgVid.videoHeight || 360;
-    }
+    bgCanvas.width  = bgVid.videoWidth  || 640;
+    bgCanvas.height = bgVid.videoHeight || 360;
   }
   bgVid.addEventListener('loadedmetadata', () => {
     setCanvasDims();
