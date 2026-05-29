@@ -480,8 +480,8 @@ async function showSetup() {
         <p class="text-muted text-sm mt-4">Check your camera, microphone, and background before starting</p>
       </div>
       <div class="setup-grid">
-        <div style="position:relative">
-          <canvas id="bg-canvas" style="width:100%;border-radius:12px;background:#111;display:block"></canvas>
+        <div class="camera-wrap" style="margin-bottom:0">
+          <canvas id="bg-canvas" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#111"></canvas>
         </div>
         <div style="display:flex;flex-direction:column;gap:14px">
 
@@ -521,13 +521,25 @@ async function showSetup() {
   bgCtx = bgCanvas.getContext('2d');
   // Set canvas resolution from live video dimensions
   bgVid.addEventListener('loadedmetadata', () => {
-    bgCanvas.width  = bgVid.videoWidth  || 640;
-    bgCanvas.height = bgVid.videoHeight || 360;
-    blurMaskCanvas  = null; // invalidate cached mask when resolution changes
+    const mob = window.innerWidth <= 700;
+    if (mob && bgVid.videoWidth && bgVid.videoHeight) {
+      // Portrait canvas: always use short-side as width, long-side as height
+      bgCanvas.width  = Math.min(bgVid.videoWidth, bgVid.videoHeight);
+      bgCanvas.height = Math.max(bgVid.videoWidth, bgVid.videoHeight);
+    } else {
+      bgCanvas.width  = bgVid.videoWidth  || 640;
+      bgCanvas.height = bgVid.videoHeight || 360;
+    }
+    blurMaskCanvas = null; // invalidate cached mask when resolution changes
   }, { once: true });
   const mobile = window.innerWidth <= 700;
-  bgCanvas.width  = bgVid.videoWidth  || (mobile ? 360 : 640);
-  bgCanvas.height = bgVid.videoHeight || (mobile ? 640 : 360);
+  if (mobile) {
+    bgCanvas.width  = bgVid.videoWidth  ? Math.min(bgVid.videoWidth, bgVid.videoHeight) : 360;
+    bgCanvas.height = bgVid.videoHeight ? Math.max(bgVid.videoWidth, bgVid.videoHeight) : 640;
+  } else {
+    bgCanvas.width  = bgVid.videoWidth  || 640;
+    bgCanvas.height = bgVid.videoHeight || 360;
+  }
 
   // Preload CTI logo for watermark
   if (!logoImg) {
@@ -675,6 +687,26 @@ function drawWithMask(vid, w, h) {
   bgCtx.drawImage(tmpCanvas, 0, 0, w, h);
 }
 
+// Cover-crop draw: fills cw×ch canvas with vid content, cropping excess (like object-fit:cover).
+// Prevents black bars when canvas aspect ratio differs from video aspect ratio.
+function coverCropDraw(ctx, vid, cw, ch) {
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  if (!vw || !vh) return;
+  const canvasAspect = cw / ch;
+  const videoAspect  = vw / vh;
+  let sx, sy, sw, sh;
+  if (videoAspect > canvasAspect) {
+    // Video wider than canvas: crop left/right sides
+    sh = vh; sw = Math.round(vh * canvasAspect);
+    sx = Math.round((vw - sw) / 2); sy = 0;
+  } else {
+    // Video taller than canvas: crop top/bottom
+    sw = vw; sh = Math.round(vw / canvasAspect);
+    sx = 0; sy = Math.round((vh - sh) / 2);
+  }
+  ctx.drawImage(vid, sx, sy, sw, sh, 0, 0, cw, ch);
+}
+
 function startBgLoop(vid) {
   function loop(ts) {
     if (!bgCanvas || !bgCtx) return;
@@ -682,7 +714,7 @@ function startBgLoop(vid) {
     if (!vid.videoWidth) { segLoopId = requestAnimationFrame(loop); return; }
 
     if (bgMode === 'none') {
-      bgCtx.drawImage(vid, 0, 0, w, h);
+      coverCropDraw(bgCtx, vid, w, h);
     } else if (bgMode === 'blur' && !segReady) {
       // AI not ready — portrait-oval fallback so blur option isn't completely dead
       applySimpleBlur(vid, w, h);
@@ -694,7 +726,7 @@ function startBgLoop(vid) {
       }
       drawWithMask(vid, w, h);
     } else {
-      bgCtx.drawImage(vid, 0, 0, w, h);
+      coverCropDraw(bgCtx, vid, w, h);
     }
     drawWatermark();
     segLoopId = requestAnimationFrame(loop);
