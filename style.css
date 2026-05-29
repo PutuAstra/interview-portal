@@ -1233,10 +1233,12 @@ tr:hover td { background: var(--card-2); }
     background: var(--bg);  /* #0F172A dark blue letterbox/gutter fill */
   }
 
-  /* Controls row: the 3 utility panels sit beneath the camera, side by side. */
+  /* Controls row: the 3 utility panels sit beneath the camera, side by side,
+     and stretch to a single shared height. */
   .setup-grid > div:last-child {
     flex-direction: row !important;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: stretch !important;   /* all 3 cards = same height */
     gap: 8px !important;
   }
   .setup-grid > div:last-child > .card {
@@ -1249,9 +1251,11 @@ tr:hover td { background: var(--card-2); }
   .setup-grid .setup-section-label { font-size: 9px !important; margin-bottom: 5px !important; letter-spacing: 0.02em; }
   .setup-grid .card p { font-size: 8px !important; line-height: 1.25; }
   .setup-grid .card .btn { font-size: 9px !important; padding: 6px 7px !important; }
-  .setup-grid #bg-opts { gap: 4px !important; margin-bottom: 6px !important; }
-  .bg-opt { font-size: 9px !important; padding: 4px 8px !important; transform: scale(0.9); }
-  .bg-swatch { width: 24px !important; height: 24px !important; transform: scale(0.9); }
+
+  /* Compact the Virtual Background controls so its card isn't the tall one */
+  .setup-grid #bg-opts { gap: 4px !important; margin-bottom: 0 !important; }
+  .bg-opt { font-size: 8px !important; padding: 3px 6px !important; transform: scale(0.9); }
+  .bg-swatch { width: 18px !important; height: 18px !important; border-width: 2px !important; transform: scale(0.9); }
 
   /* ── Interview question card: full-screen portrait modal ──── */
   .question-card {
