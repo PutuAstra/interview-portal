@@ -421,13 +421,15 @@ async function submitProfileUpload() {
 }
 
 function mobileVideoConstraints() {
-  // On phones request a 9:16 PORTRAIT stream. With the contain display + native
-  // canvas, a 9:16 frame fills the 9:16 box exactly — no letterbox bars and
-  // nothing cropped (watermark stays visible).
+  // On phones explicitly request a 9:16 PORTRAIT stream at the constraints layer
+  // rather than relying on default browser scaling. When the device honours it the
+  // source frame is already 9:16, so the canvas cover-crop is a no-op — no artificial
+  // zoom and no face-cropping. `ideal` (not `exact`) so cameras that can't deliver a
+  // perfect 9:16 sensor degrade gracefully instead of throwing OverconstrainedError.
   // Desktop keeps the standard 16:9 1280×720 landscape constraint.
   const mobile = window.innerWidth <= 700;
   return mobile
-    ? { facingMode: 'user', frameRate: { ideal: 30 }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9/16 } }
+    ? { facingMode: 'user', frameRate: { ideal: 30 }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 0.5625 } } // 9:16 strict portrait
     : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' };
 }
 
