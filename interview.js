@@ -499,7 +499,6 @@ async function showSetup() {
               <button class="bg-opt active" data-bg="none" onclick="setBg('none')">None</button>
               <button class="bg-opt"        data-bg="blur" onclick="setBg('blur')">Blur</button>
               <button class="bg-swatch" data-bg="white" onclick="setBg('white')" style="background:#f0ede8" title="Light"></button>
-              <button class="bg-swatch" data-bg="navy"  onclick="setBg('navy')"  style="background:#1a2744" title="Navy"></button>
               <button class="bg-swatch" data-bg="slate" onclick="setBg('slate')" style="background:#374151" title="Slate"></button>
             </div>
             <p id="seg-status" style="font-size:11px;color:var(--muted)">Loading AI segmentation…</p>
