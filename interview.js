@@ -580,7 +580,7 @@ async function loadSegmentation(vid) {
     segModel.onResults(handleSegResults);
     await segModel.initialize();
     segReady = true;
-    if (status) { status.textContent = '✓ AI ready — select a background above'; status.style.color = '#22c55e'; }
+    if (status) { status.textContent = ''; status.style.display = 'none'; }
   } catch (e) {
     console.warn('[VirtualBg]', e.message);
     // Blur works without AI (portrait-mode fallback); only colour swatches need AI
