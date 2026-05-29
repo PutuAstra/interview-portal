@@ -1207,33 +1207,37 @@ tr:hover td { background: var(--card-2); }
     padding: 12px 10px 24px;
   }
 
-  /* Setup grid: KEEP two columns on phone — camera left, controls right
-     (matches the layout the user wants). Camera gets the larger share. */
+  /* Setup grid: SINGLE column on phone — camera on top, controls stacked
+     directly beneath it (clean portrait preview flow). */
   .setup-grid {
-    grid-template-columns: 1.35fr 1fr;
-    gap: 10px;
-    align-items: stretch;   /* both columns share the (taller) camera height */
+    grid-template-columns: 1fr;
+    gap: 12px;
+    align-items: stretch;
   }
 
-  /* Right-hand controls column: fill the full camera height and spread the
-     3 panels so the top of the first and bottom of the last line up with
-     the camera's top and bottom edges. */
-  .setup-grid > div:last-child {
-    height: 100%;
-    justify-content: space-between !important;
-    gap: 0 !important;
-  }
-
-  /* Setup camera: tall 9:16 portrait box. align-self:start keeps it locked to
-     9:16 so the grid's stretch (which sizes the right column) can never
-     distort it taller and re-introduce cropping. */
+  /* Setup camera: tall 9:16 portrait box, height-driven and centred so it never
+     overflows the viewport. The whole frame is shown via object-fit:contain;
+     any letterbox/gutter shows the dark-blue camera-wrap background. */
   .setup-grid .camera-wrap {
     aspect-ratio: 9 / 16 !important;
-    align-self: start;
-    margin-bottom: 0;
+    max-height: 62dvh;
+    width: auto;            /* height-driven; dark-blue page gutters fill the sides */
+    margin: 0 auto;
+    background: var(--bg);  /* #0F172A dark blue letterbox/gutter fill */
   }
 
-  /* Compact the controls column so two columns fit a narrow screen */
+  /* Controls row: the 3 utility panels sit beneath the camera, side by side. */
+  .setup-grid > div:last-child {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  .setup-grid > div:last-child > .card {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* Compact the controls so three panels fit a narrow screen */
   .setup-grid .card { padding: 12px !important; }
   .setup-section-label { font-size: 12px; }
   .bg-opt, .bg-swatch { transform: scale(0.92); }
@@ -1295,14 +1299,15 @@ tr:hover td { background: var(--card-2); }
     margin: 0 auto;
     border-radius: 10px;
     margin-bottom: 0;
+    background: var(--bg); /* dark-blue letterbox/gutter fill */
   }
 
-  /* The canvas is already cover-cropped to 9:16 in JS, so fill the portrait box
-     edge-to-edge with no bars. (object-fit: cover is a no-op when the element
-     matches the box, but guards against any sub-pixel rounding gap.) */
+  /* Show the ENTIRE camera frame — never crop or zoom. The canvas is the native
+     source aspect ratio; contain fits the whole frame into the 9:16 box and any
+     difference is filled by the dark-blue camera-wrap background. */
   .camera-wrap canvas,
   .camera-wrap video {
-    object-fit: cover !important;
+    object-fit: contain !important;
   }
 
   /* Controls row: stack text + buttons vertically */

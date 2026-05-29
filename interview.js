@@ -37,8 +37,6 @@ let setupAudioCtx = null;
 const BG_FILLS = { white: '#f0ede8', navy: '#1a2744', slate: '#374151' };
 let logoImg = null;
 let blurMaskCanvas = null;  // cached ellipse mask for applySimpleBlur
-let cropCanvas = null;      // reusable off-screen canvas holding the cover-cropped (9:16) frame
-let cropCtx = null;
 let bgVid = null;           // persistent hidden video — lives on document.body, survives DOM swaps
 
 const token = new URLSearchParams(location.search).get('token');
@@ -487,7 +485,7 @@ async function showSetup() {
       </div>
       <div class="setup-grid">
         <div class="camera-wrap" style="margin-bottom:0">
-          <canvas id="bg-canvas" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#111"></canvas>
+          <canvas id="bg-canvas" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#0F172A"></canvas>
         </div>
         <div style="display:flex;flex-direction:column;gap:14px">
 
@@ -525,20 +523,13 @@ async function showSetup() {
 
   bgCanvas = document.getElementById('bg-canvas');
   bgCtx = bgCanvas.getContext('2d');
-  // Set canvas resolution from live video dimensions
-  // Mobile: 9:16 portrait canvas so it fills the 9:16 box with no bars. The
-  // draw loop cover-crops the (possibly wide) camera frame into this canvas and
-  // the watermark is drawn on top, inside the visible area. Desktop = native.
+  // Set canvas resolution to the NATIVE camera frame on every device. The canvas
+  // therefore always matches the source aspect ratio (no crop, no zoom, no
+  // distortion). CSS object-fit:contain then fits the whole frame into the 9:16
+  // display box, letterboxing any difference with the dark-blue camera-wrap bg.
   function setCanvasDims() {
-    const mob = window.innerWidth <= 700;
-    if (mob) {
-      const longSide = Math.max(bgVid.videoWidth || 0, bgVid.videoHeight || 0) || 1280;
-      bgCanvas.height = longSide;
-      bgCanvas.width  = Math.round(longSide * 9 / 16);
-    } else {
-      bgCanvas.width  = bgVid.videoWidth  || 640;
-      bgCanvas.height = bgVid.videoHeight || 360;
-    }
+    bgCanvas.width  = bgVid.videoWidth  || 640;
+    bgCanvas.height = bgVid.videoHeight || 360;
   }
   bgVid.addEventListener('loadedmetadata', () => {
     setCanvasDims();
@@ -692,55 +683,28 @@ function drawWithMask(vid, w, h) {
   bgCtx.drawImage(tmpCanvas, 0, 0, w, h);
 }
 
-// Cover-crop draw: fills cw×ch canvas with vid content, cropping excess (like object-fit:cover).
-// Prevents black bars when canvas aspect ratio differs from video aspect ratio.
-function coverCropDraw(ctx, vid, cw, ch) {
-  const vw = vid.videoWidth, vh = vid.videoHeight;
-  if (!vw || !vh) return;
-  const canvasAspect = cw / ch;
-  const videoAspect  = vw / vh;
-  let sx, sy, sw, sh;
-  if (videoAspect > canvasAspect) {
-    // Video wider than canvas: crop left/right sides
-    sh = vh; sw = Math.round(vh * canvasAspect);
-    sx = Math.round((vw - sw) / 2); sy = 0;
-  } else {
-    // Video taller than canvas: crop top/bottom
-    sw = vw; sh = Math.round(vw / canvasAspect);
-    sx = 0; sy = Math.round((vh - sh) / 2);
-  }
-  ctx.drawImage(vid, sx, sy, sw, sh, 0, 0, cw, ch);
-}
-
 function startBgLoop(vid) {
   function loop(ts) {
     if (!bgCanvas || !bgCtx) return;
     const w = bgCanvas.width, h = bgCanvas.height;
     if (!vid.videoWidth) { segLoopId = requestAnimationFrame(loop); return; }
 
-    // Cover-crop the (often wide) source into a w×h off-screen canvas ONCE per frame.
-    // Every downstream mode then draws this already-correct 9:16 frame 1:1, so there's
-    // no distortion in blur/segmentation and the watermark stays inside the visible area.
-    if (!cropCanvas) { cropCanvas = document.createElement('canvas'); cropCtx = cropCanvas.getContext('2d'); }
-    if (cropCanvas.width !== w) cropCanvas.width = w;
-    if (cropCanvas.height !== h) cropCanvas.height = h;
-    coverCropDraw(cropCtx, vid, w, h);
-    const src = cropCanvas;
-
+    // Canvas matches the native source aspect ratio, so draw the full frame 1:1 —
+    // nothing cropped, nothing stretched. CSS handles fitting it into the box.
     if (bgMode === 'none') {
-      bgCtx.drawImage(src, 0, 0, w, h);
+      bgCtx.drawImage(vid, 0, 0, w, h);
     } else if (bgMode === 'blur' && !segReady) {
       // AI not ready — portrait-oval fallback so blur option isn't completely dead
-      applySimpleBlur(src, w, h);
+      applySimpleBlur(vid, w, h);
     } else if (segReady) {
       // AI ready — handles both Blur and solid colours with proper person/BG separation
       if (ts - lastSendTs >= 66 && segModel) {
         lastSendTs = ts;
-        segModel.send({ image: src }).catch(() => {});
+        segModel.send({ image: vid }).catch(() => {});
       }
-      drawWithMask(src, w, h);
+      drawWithMask(vid, w, h);
     } else {
-      bgCtx.drawImage(src, 0, 0, w, h);
+      bgCtx.drawImage(vid, 0, 0, w, h);
     }
     drawWatermark();
     segLoopId = requestAnimationFrame(loop);
