@@ -39,6 +39,8 @@ let logoImg = null;
 let blurMaskCanvas = null;  // cached ellipse mask for applySimpleBlur
 let cropCanvas = null;      // off-screen canvas holding the 9:16 cover-cropped frame
 let cropCtx = null;
+let wakeLock = null;        // Screen Wake Lock sentinel (keeps phone awake)
+let wantWakeLock = false;   // true while we want the screen kept on (re-acquire on visibility)
 let bgVid = null;           // persistent hidden video — lives on document.body, survives DOM swaps
 
 const token = new URLSearchParams(location.search).get('token');
@@ -481,7 +483,7 @@ async function showSetup() {
 
   main().innerHTML = `
     <div class="setup-screen-wrap">
-      <div style="text-align:center;margin-bottom:20px">
+      <div class="setup-head" style="text-align:center;margin-bottom:20px">
         <h2>Setup &amp; Preview</h2>
         <p class="text-muted text-sm mt-4">Check your camera, microphone, and background before starting</p>
       </div>
@@ -554,6 +556,7 @@ async function showSetup() {
   startBgLoop(bgVid);
   startMicMeter();
   loadSegmentation(bgVid);
+  requestWakeLock(); // keep the phone screen on during setup & preview too
 }
 
 async function loadSegmentation(vid) {
@@ -859,6 +862,7 @@ function continueToInterview() {
 
 function showQuestion(index) {
   currentQ = index;
+  requestWakeLock(); // keep the phone screen on through think time + recording
   const q = interview.questions[index];
   const total = interview.questions.length;
   updateProgress(index, total);
@@ -1272,7 +1276,30 @@ function clearOverlay() {
 
 // ── Utilities ─────────────────────────────────────────────────
 
+// ── Screen Wake Lock — keep the phone awake during setup/think time/recording ──
+async function requestWakeLock() {
+  wantWakeLock = true;
+  try {
+    if ('wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      // The OS can drop the lock (tab hidden, etc.) — clear our handle so the
+      // visibilitychange handler knows to re-acquire it.
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (e) { /* e.g. low battery or unsupported — non-fatal */ }
+}
+function releaseWakeLock() {
+  wantWakeLock = false;
+  try { if (wakeLock) { wakeLock.release(); } } catch (e) {}
+  wakeLock = null;
+}
+// Locks are auto-released when the tab is backgrounded; re-acquire on return.
+document.addEventListener('visibilitychange', () => {
+  if (wantWakeLock && document.visibilityState === 'visible' && !wakeLock) requestWakeLock();
+});
+
 function stopStream() {
+  releaseWakeLock();
   if (segLoopId) { cancelAnimationFrame(segLoopId); segLoopId = null; }
   if (segModel) { try { segModel.close(); } catch (e) {} segModel = null; }
   bgCanvas = null; bgCtx = null; canvasStream = null;
