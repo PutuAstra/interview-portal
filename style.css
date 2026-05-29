@@ -1207,17 +1207,24 @@ tr:hover td { background: var(--card-2); }
     padding: 12px 10px 24px;
   }
 
-  /* Setup grid: single column, camera stacks above controls */
+  /* Setup grid: KEEP two columns on phone — camera left, controls right
+     (matches the layout the user wants). Camera gets the larger share. */
   .setup-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1.35fr 1fr;
     gap: 10px;
   }
 
-  /* Setup camera: 3:4 portrait — shows face + shoulders naturally */
+  /* Setup camera: 3:4 portrait — shows face + shoulders + background
+     naturally, not over-zoomed */
   .setup-grid .camera-wrap {
     aspect-ratio: 3 / 4 !important;
     margin-bottom: 0;
   }
+
+  /* Compact the controls column so two columns fit a narrow screen */
+  .setup-grid .card { padding: 12px !important; }
+  .setup-section-label { font-size: 12px; }
+  .bg-opt, .bg-swatch { transform: scale(0.92); }
 
   /* ── Interview question card: full-screen portrait modal ──── */
   .question-card {
