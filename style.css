@@ -1220,8 +1220,10 @@ tr:hover td { background: var(--card-2); }
      any letterbox/gutter shows the dark-blue camera-wrap background. */
   .setup-grid .camera-wrap {
     aspect-ratio: 9 / 16 !important;
-    max-height: 62dvh;
-    width: auto;            /* height-driven; dark-blue page gutters fill the sides */
+    height: 62vh;
+    height: 62dvh;          /* definite height drives the box… */
+    width: auto;            /* …width derived from 9:16; dark-blue page gutters fill the sides */
+    max-width: 100%;
     margin: 0 auto;
     background: var(--bg);  /* #0F172A dark blue letterbox/gutter fill */
   }
