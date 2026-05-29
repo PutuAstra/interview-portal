@@ -419,11 +419,14 @@ async function submitProfileUpload() {
 }
 
 function mobileVideoConstraints() {
-  // On phones (portrait), request 9:16 so the browser delivers portrait frames.
+  // On phones request a 3:4 PORTRAIT (not 9:16). A 9:16 stream is a narrow
+  // center-crop of the sensor → looks zoomed-in. 3:4 uses the camera's full
+  // vertical field of view, so you see head + shoulders naturally. The canvas
+  // then mild-crops the sides to fit the 9:16 display box.
   // Desktop keeps the standard 16:9 1280×720 landscape constraint.
   const mobile = window.innerWidth <= 700;
   return mobile
-    ? { facingMode: 'user', frameRate: { ideal: 30 }, aspectRatio: { ideal: 9/16 } }
+    ? { facingMode: 'user', frameRate: { ideal: 30 }, width: { ideal: 960 }, height: { ideal: 1280 } }
     : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' };
 }
 

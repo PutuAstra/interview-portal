@@ -1212,6 +1212,16 @@ tr:hover td { background: var(--card-2); }
   .setup-grid {
     grid-template-columns: 1.35fr 1fr;
     gap: 10px;
+    align-items: stretch;   /* both columns share the (taller) camera height */
+  }
+
+  /* Right-hand controls column: fill the full camera height and spread the
+     3 panels so the top of the first and bottom of the last line up with
+     the camera's top and bottom edges. */
+  .setup-grid > div:last-child {
+    height: 100%;
+    justify-content: space-between !important;
+    gap: 0 !important;
   }
 
   /* Setup camera: 9:16 portrait — matches the phone's native portrait
