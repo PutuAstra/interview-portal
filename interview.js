@@ -37,6 +37,8 @@ let setupAudioCtx = null;
 const BG_FILLS = { white: '#f0ede8', navy: '#1a2744', slate: '#374151' };
 let logoImg = null;
 let blurMaskCanvas = null;  // cached ellipse mask for applySimpleBlur
+let cropCanvas = null;      // reusable off-screen canvas holding the cover-cropped (9:16) frame
+let cropCtx = null;
 let bgVid = null;           // persistent hidden video — lives on document.body, survives DOM swaps
 
 const token = new URLSearchParams(location.search).get('token');
@@ -522,12 +524,19 @@ async function showSetup() {
   bgCanvas = document.getElementById('bg-canvas');
   bgCtx = bgCanvas.getContext('2d');
   // Set canvas resolution from live video dimensions
-  // Use the camera's NATIVE resolution so the canvas holds the FULL frame with
-  // no cropping. The 9:16 display box letterboxes it via object-fit:contain, so
-  // nothing is zoomed or cut (the watermark stays fully visible).
+  // Mobile: 9:16 portrait canvas so it fills the 9:16 box with no bars. The
+  // draw loop cover-crops the (possibly wide) camera frame into this canvas and
+  // the watermark is drawn on top, inside the visible area. Desktop = native.
   function setCanvasDims() {
-    bgCanvas.width  = bgVid.videoWidth  || 640;
-    bgCanvas.height = bgVid.videoHeight || 360;
+    const mob = window.innerWidth <= 700;
+    if (mob) {
+      const longSide = Math.max(bgVid.videoWidth || 0, bgVid.videoHeight || 0) || 1280;
+      bgCanvas.height = longSide;
+      bgCanvas.width  = Math.round(longSide * 9 / 16);
+    } else {
+      bgCanvas.width  = bgVid.videoWidth  || 640;
+      bgCanvas.height = bgVid.videoHeight || 360;
+    }
   }
   bgVid.addEventListener('loadedmetadata', () => {
     setCanvasDims();
@@ -707,20 +716,29 @@ function startBgLoop(vid) {
     const w = bgCanvas.width, h = bgCanvas.height;
     if (!vid.videoWidth) { segLoopId = requestAnimationFrame(loop); return; }
 
+    // Cover-crop the (often wide) source into a w×h off-screen canvas ONCE per frame.
+    // Every downstream mode then draws this already-correct 9:16 frame 1:1, so there's
+    // no distortion in blur/segmentation and the watermark stays inside the visible area.
+    if (!cropCanvas) { cropCanvas = document.createElement('canvas'); cropCtx = cropCanvas.getContext('2d'); }
+    if (cropCanvas.width !== w) cropCanvas.width = w;
+    if (cropCanvas.height !== h) cropCanvas.height = h;
+    coverCropDraw(cropCtx, vid, w, h);
+    const src = cropCanvas;
+
     if (bgMode === 'none') {
-      coverCropDraw(bgCtx, vid, w, h);
+      bgCtx.drawImage(src, 0, 0, w, h);
     } else if (bgMode === 'blur' && !segReady) {
       // AI not ready — portrait-oval fallback so blur option isn't completely dead
-      applySimpleBlur(vid, w, h);
+      applySimpleBlur(src, w, h);
     } else if (segReady) {
       // AI ready — handles both Blur and solid colours with proper person/BG separation
       if (ts - lastSendTs >= 66 && segModel) {
         lastSendTs = ts;
-        segModel.send({ image: vid }).catch(() => {});
+        segModel.send({ image: src }).catch(() => {});
       }
-      drawWithMask(vid, w, h);
+      drawWithMask(src, w, h);
     } else {
-      coverCropDraw(bgCtx, vid, w, h);
+      bgCtx.drawImage(src, 0, 0, w, h);
     }
     drawWatermark();
     segLoopId = requestAnimationFrame(loop);

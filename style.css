@@ -1297,11 +1297,12 @@ tr:hover td { background: var(--card-2); }
     margin-bottom: 0;
   }
 
-  /* Show the FULL camera frame inside the portrait box — nothing cropped or
-     zoomed, watermark always visible. The box letterboxes (thin dark bars). */
+  /* The canvas is already cover-cropped to 9:16 in JS, so fill the portrait box
+     edge-to-edge with no bars. (object-fit: cover is a no-op when the element
+     matches the box, but guards against any sub-pixel rounding gap.) */
   .camera-wrap canvas,
   .camera-wrap video {
-    object-fit: contain !important;
+    object-fit: cover !important;
   }
 
   /* Controls row: stack text + buttons vertically */
