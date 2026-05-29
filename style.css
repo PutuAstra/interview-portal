@@ -1214,10 +1214,10 @@ tr:hover td { background: var(--card-2); }
     gap: 10px;
   }
 
-  /* Setup camera: 3:4 portrait — shows face + shoulders + background
-     naturally, not over-zoomed */
+  /* Setup camera: 9:16 portrait — matches the phone's native portrait
+     stream so the full frame shows (no zoom, no black bars) */
   .setup-grid .camera-wrap {
-    aspect-ratio: 3 / 4 !important;
+    aspect-ratio: 9 / 16 !important;
     margin-bottom: 0;
   }
 
@@ -1276,10 +1276,10 @@ tr:hover td { background: var(--card-2); }
   .question-body .camera-wrap {
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    aspect-ratio: 3 / 4 !important;
+    aspect-ratio: 9 / 16 !important;
     max-height: 58vh;
     max-height: 58dvh;
-    width: 100%;
+    width: auto;          /* height-driven so the 9:16 box stays on screen */
     margin: 0 auto;
     border-radius: 10px;
     margin-bottom: 0;

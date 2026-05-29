@@ -520,17 +520,17 @@ async function showSetup() {
   bgCanvas = document.getElementById('bg-canvas');
   bgCtx = bgCanvas.getContext('2d');
   // Set canvas resolution from live video dimensions
-  // Portrait canvas at a gentle 3:4 ratio (not 9:16) so cover-cropping a
-  // landscape webcam doesn't over-zoom the face. Height = long side of the
-  // source; width = 3/4 of that.
+  // Portrait 9:16 canvas to match the phone's native portrait camera stream.
+  // When the canvas aspect matches the source, cover-crop shows the FULL frame
+  // (no zoom, no black bars). Height = long side of the source; width = 9/16.
   function setCanvasDims() {
     const mob = window.innerWidth <= 700;
     if (mob && bgVid.videoWidth && bgVid.videoHeight) {
       const longSide = Math.max(bgVid.videoWidth, bgVid.videoHeight);
       bgCanvas.height = longSide;
-      bgCanvas.width  = Math.round(longSide * 3 / 4);
+      bgCanvas.width  = Math.round(longSide * 9 / 16);
     } else if (mob) {
-      bgCanvas.width  = 480;
+      bgCanvas.width  = 360;
       bgCanvas.height = 640;
     } else {
       bgCanvas.width  = bgVid.videoWidth  || 640;
