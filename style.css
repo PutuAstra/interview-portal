@@ -1150,7 +1150,12 @@ tr:hover td { background: var(--card-2); }
 #photo-circle:hover { border-color: var(--accent) !important; }
 #resume-drop:hover  { border-color: var(--accent) !important; }
 
-/* ── Take page: setup screen responsive grid ────────────────── */
+/* ── Take page: setup screen desktop grid ───────────────────── */
+.setup-screen-wrap {
+  max-width: 1080px;
+  width: 100%;
+}
+
 .setup-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -1158,78 +1163,141 @@ tr:hover td { background: var(--card-2); }
   align-items: start;
 }
 
-/* ── Take page: mobile / small screen ───────────────────────── */
-@media (max-width: 700px) {
-  /* Push content to the top — no vertical centering on phones */
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE LAYOUT  —  phones only (≤ 640 px viewport)
+   Portrait-first: full-width modals, vertical stacking,
+   large camera, edge-to-edge buttons.
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* ── Topbar: compact ──────────────────────────────────────── */
+  .topbar       { padding: 0 12px; height: 46px; flex-shrink: 0; }
+  .topbar-brand { font-size: 13px; gap: 8px; }
+  .topbar-brand img { height: 26px !important; }
+
+  /* ── Full-viewport height chain ───────────────────────────── */
+  .take-container {
+    height: 100vh;
+    height: 100dvh;          /* dynamic: excludes browser address bar */
+    overflow: hidden;
+  }
+
   .take-main {
-    padding: 8px;
+    padding: 0 !important;
+    align-items: stretch !important;
     justify-content: flex-start !important;
-    align-items: stretch;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
-  /* Card fills screen edge-to-edge on phone */
-  .question-card {
+  /* ── Intro / error / thank-you cards (direct .card children) ─ */
+  .take-main > .card {
     max-width: 100% !important;
-    border-radius: 10px;
+    width: 100% !important;
+    border-radius: 0 !important;
+    border-left: none;
+    border-right: none;
+    padding: 20px 16px 28px;
   }
 
-  /* Setup grid: stack camera above controls */
+  /* ── Setup screen wrapper ─────────────────────────────────── */
+  .setup-screen-wrap {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 12px 10px 24px;
+  }
+
+  /* Setup grid: single column, camera stacks above controls */
   .setup-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
-  /* Camera: 9:16 portrait box matches phone front-camera native ratio.
-     object-fit:cover fills the box completely — no black bars ever. */
-  .camera-wrap {
-    aspect-ratio: 9/16;
+  /* Setup camera: 3:4 portrait — shows face + shoulders naturally */
+  .setup-grid .camera-wrap {
+    aspect-ratio: 3 / 4 !important;
+    margin-bottom: 0;
   }
 
+  /* ── Interview question card: full-screen portrait modal ──── */
+  .question-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    border-radius: 0 !important;
+    border-left: none;
+    border-right: none;
+    /* Stretch to fill take-main's flex column */
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    /* Minimum = viewport minus topbar */
+    min-height: calc(100vh - 46px);
+    min-height: calc(100dvh - 46px);
+  }
+
+  .question-header {
+    padding: 10px 14px;
+    flex-shrink: 0;
+  }
+
+  /* Body: flex column so the camera can grow to fill remaining space */
+  .question-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px 14px;
+    gap: 8px;
+    min-height: 0;       /* needed for flex children to shrink below content size */
+    overflow: hidden;
+  }
+
+  /* Progress bar */
+  .progress-bar-wrap { flex-shrink: 0; }
+
+  /* Question text: compact */
+  .question-text {
+    font-size: 15px;
+    margin-bottom: 0;
+    line-height: 1.4;
+  }
+
+  /* Camera in the interview body: grows to fill all available space */
+  .question-body .camera-wrap {
+    flex: 1 !important;
+    min-height: 160px;
+    aspect-ratio: unset !important;   /* flex height drives the box, not aspect-ratio */
+    border-radius: 10px;
+    margin-bottom: 0;
+  }
+
+  /* canvas + video always cover-fill their container — zero black bars */
   .camera-wrap canvas,
   .camera-wrap video {
     object-fit: cover !important;
   }
 
-  /* Question card: tighter inner padding */
-  .question-body {
-    padding: 14px 12px;
-  }
-
-  .question-header {
-    padding: 10px 12px;
-  }
-
-  .question-text {
-    font-size: 15px;
-    margin-bottom: 14px;
-  }
-
-  /* Controls bar: stack text + button vertically */
+  /* Controls row: stack text + buttons vertically */
   #controls {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* After-recording flex buttons row */
+  #controls .flex {
     flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  /* All primary action buttons fill full width on phone */
-  .take-main .btn-lg {
-    width: 100%;
-    justify-content: center;
-    padding: 14px 20px;
-    font-size: 15px;
-  }
-
-  /* Topbar: tighter on phones */
-  .topbar {
-    padding: 0 12px;
-    height: 46px;
-  }
-
-  .topbar-brand {
-    font-size: 13px;
     gap: 8px;
   }
 
-  .topbar-brand img {
-    height: 26px !important;
+  /* All primary action buttons → full width */
+  .take-main .btn-lg,
+  #controls .btn-lg,
+  #controls .btn-outline {
+    width: 100% !important;
+    justify-content: center;
+    padding: 14px 20px;
+    font-size: 15px;
+    text-align: center;
   }
 }

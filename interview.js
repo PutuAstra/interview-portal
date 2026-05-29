@@ -474,7 +474,7 @@ async function showSetup() {
   await bgVid.play();
 
   main().innerHTML = `
-    <div style="max-width:1080px;width:100%">
+    <div class="setup-screen-wrap">
       <div style="text-align:center;margin-bottom:20px">
         <h2>Setup &amp; Preview</h2>
         <p class="text-muted text-sm mt-4">Check your camera, microphone, and background before starting</p>
