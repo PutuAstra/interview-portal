@@ -14,6 +14,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css?v=20250529b" />
+  <script>
+    // PWA version guard — forces a hard reload when a new version is deployed.
+    // Runs before anything else so stale-cached pages never render.
+    (function() {
+      var BUILD = '20250529b';
+      var stored = sessionStorage.getItem('zh_build');
+      if (stored && stored !== BUILD) {
+        sessionStorage.setItem('zh_build', BUILD);
+        location.reload(true);
+        return;
+      }
+      sessionStorage.setItem('zh_build', BUILD);
+    })();
+  </script>
 </head>
 <body>
 
