@@ -1318,11 +1318,11 @@ tr:hover td { background: var(--card-2); }
     background: var(--bg); /* dark-blue letterbox/gutter fill */
   }
 
-  /* The canvas is cover-cropped to 9:16 in JS, matching the 9:16 box, so it
-     fills edge-to-edge with no bars. cover guards any sub-pixel rounding gap. */
+  /* Show the whole native (landscape) camera frame with NO crop/zoom; the dark
+     camera-wrap background fills the gutters above/below the fitted frame. */
   .camera-wrap canvas,
   .camera-wrap video {
-    object-fit: cover !important;
+    object-fit: contain !important;
   }
 
   /* Controls row: stack text + buttons vertically */

@@ -429,10 +429,11 @@ function mobileVideoConstraints() {
   // zoom and no face-cropping. `ideal` (not `exact`) so cameras that can't deliver a
   // perfect 9:16 sensor degrade gracefully instead of throwing OverconstrainedError.
   // Desktop keeps the standard 16:9 1280×720 landscape constraint.
-  const mobile = window.innerWidth <= 700;
-  return mobile
-    ? { facingMode: 'user', frameRate: { ideal: 30 }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 0.5625 } } // 9:16 strict portrait
-    : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' };
+  // Request the camera's NATIVE (landscape) frame on every device. Forcing a 9:16
+  // portrait at the constraints layer makes phones center-crop their landscape
+  // sensor — i.e. an artificial zoom into the face. Native frame + object-fit:contain
+  // shows the whole, un-zoomed picture.
+  return { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' };
 }
 
 async function requestCamera() {
@@ -526,19 +527,11 @@ async function showSetup() {
 
   bgCanvas = document.getElementById('bg-canvas');
   bgCtx = bgCanvas.getContext('2d');
-  // Mobile: 9:16 PORTRAIT canvas so the box fills with no bars and the recorded
-  // output is also 9:16. The draw loop cover-crops the (wide) camera frame into
-  // this canvas. Desktop keeps the native (landscape) frame.
+  // Canvas matches the camera's NATIVE frame on every device so the whole picture
+  // is captured with no crop/zoom. object-fit:contain then fits it into the box.
   function setCanvasDims() {
-    const mob = window.innerWidth <= 700;
-    if (mob) {
-      const longSide = Math.max(bgVid.videoWidth || 0, bgVid.videoHeight || 0) || 1280;
-      bgCanvas.height = longSide;
-      bgCanvas.width  = Math.round(longSide * 9 / 16);
-    } else {
-      bgCanvas.width  = bgVid.videoWidth  || 640;
-      bgCanvas.height = bgVid.videoHeight || 360;
-    }
+    bgCanvas.width  = bgVid.videoWidth  || 640;
+    bgCanvas.height = bgVid.videoHeight || 360;
   }
   bgVid.addEventListener('loadedmetadata', () => {
     setCanvasDims();
