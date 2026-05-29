@@ -1226,13 +1226,14 @@ tr:hover td { background: var(--card-2); }
     border-radius: 0 !important;
     border-left: none;
     border-right: none;
-    /* Stretch to fill take-main's flex column */
-    flex: 1;
     display: flex;
     flex-direction: column;
-    /* Minimum = viewport minus topbar */
-    min-height: calc(100vh - 46px);
-    min-height: calc(100dvh - 46px);
+    /* Lock to exactly one viewport (minus topbar) — never scroll */
+    height: calc(100vh - 46px);
+    height: calc(100dvh - 46px);
+    max-height: calc(100vh - 46px);
+    max-height: calc(100dvh - 46px);
+    overflow: hidden;
   }
 
   .question-header {
@@ -1261,11 +1262,18 @@ tr:hover td { background: var(--card-2); }
     line-height: 1.4;
   }
 
-  /* Camera in the interview body: grows to fill all available space */
+  /* Camera in the interview body: portrait box, shrinks to fit, never
+     forces a scroll. A moderate 3:4 ratio keeps cover-crop gentle so the
+     face isn't over-zoomed. It can shrink below 3:4 if vertical space is
+     tight (min-height:0), but is capped so it doesn't dominate. */
   .question-body .camera-wrap {
-    flex: 1 !important;
-    min-height: 160px;
-    aspect-ratio: unset !important;   /* flex height drives the box, not aspect-ratio */
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    aspect-ratio: 3 / 4 !important;
+    max-height: 58vh;
+    max-height: 58dvh;
+    width: 100%;
+    margin: 0 auto;
     border-radius: 10px;
     margin-bottom: 0;
   }

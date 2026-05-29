@@ -520,26 +520,28 @@ async function showSetup() {
   bgCanvas = document.getElementById('bg-canvas');
   bgCtx = bgCanvas.getContext('2d');
   // Set canvas resolution from live video dimensions
-  bgVid.addEventListener('loadedmetadata', () => {
+  // Portrait canvas at a gentle 3:4 ratio (not 9:16) so cover-cropping a
+  // landscape webcam doesn't over-zoom the face. Height = long side of the
+  // source; width = 3/4 of that.
+  function setCanvasDims() {
     const mob = window.innerWidth <= 700;
     if (mob && bgVid.videoWidth && bgVid.videoHeight) {
-      // Portrait canvas: always use short-side as width, long-side as height
-      bgCanvas.width  = Math.min(bgVid.videoWidth, bgVid.videoHeight);
-      bgCanvas.height = Math.max(bgVid.videoWidth, bgVid.videoHeight);
+      const longSide = Math.max(bgVid.videoWidth, bgVid.videoHeight);
+      bgCanvas.height = longSide;
+      bgCanvas.width  = Math.round(longSide * 3 / 4);
+    } else if (mob) {
+      bgCanvas.width  = 480;
+      bgCanvas.height = 640;
     } else {
       bgCanvas.width  = bgVid.videoWidth  || 640;
       bgCanvas.height = bgVid.videoHeight || 360;
     }
+  }
+  bgVid.addEventListener('loadedmetadata', () => {
+    setCanvasDims();
     blurMaskCanvas = null; // invalidate cached mask when resolution changes
   }, { once: true });
-  const mobile = window.innerWidth <= 700;
-  if (mobile) {
-    bgCanvas.width  = bgVid.videoWidth  ? Math.min(bgVid.videoWidth, bgVid.videoHeight) : 360;
-    bgCanvas.height = bgVid.videoHeight ? Math.max(bgVid.videoWidth, bgVid.videoHeight) : 640;
-  } else {
-    bgCanvas.width  = bgVid.videoWidth  || 640;
-    bgCanvas.height = bgVid.videoHeight || 360;
-  }
+  setCanvasDims();
 
   // Preload CTI logo for watermark
   if (!logoImg) {
