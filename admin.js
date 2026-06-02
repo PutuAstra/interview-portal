@@ -1682,7 +1682,7 @@ function renderSessionRow(s, num) {
 
   // Reminders apply to candidates who haven't finished yet (pending or in_progress).
   const remindBtn = (s.status === 'pending' || s.status === 'in_progress') && s.candidateEmail
-    ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${esc(s.candidateName)}', this)">📧</button>`
+    ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${esc(s.candidateName)}', this)">🔔</button>`
     : '';
 
   const actionsCell = (s.status === 'pending' || s.status === 'in_progress')
