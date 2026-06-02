@@ -268,6 +268,14 @@ function requireAdmin(request) {
   if (request.headers.get('X-Admin-Key') !== ADMIN_KEY) throw new Error('Unauthorized');
 }
 
+// HTML-escape any value interpolated into email/HTML markup so candidate- or
+// recruiter-supplied text (e.g. names, titles) can't inject markup.
+function htmlEsc(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function uid() {
   return crypto.randomUUID();
 }
@@ -467,13 +475,13 @@ async function sendReminderEmail(session) {
   const link = session.interviewLink || null;
 
   const html = emailWrap('#B01A18', 'CTI ZeusHire — Interview Reminder', `
-    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${htmlEsc(session.candidateName)}</strong>,</p>
     <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
       ${hasDeadline
         ? `This is a friendly reminder that your video interview is due in <strong>${label}</strong>.`
         : `This is a friendly reminder to complete your video interview.`}
     </p>
-    ${emailInfoBox('#B01A18', interviewTitle, hasDeadline ? `Deadline: ${deadline}` : '')}
+    ${emailInfoBox('#B01A18', htmlEsc(interviewTitle), hasDeadline ? `Deadline: ${deadline}` : '')}
     <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
       Please complete your interview before the deadline to be considered for this opportunity.
     </p>
@@ -699,7 +707,19 @@ async function getSession(token) {
     brandWelcomeMsg: settings.brandWelcomeMsg || '',
     brandLogoUrl:    settings.brandLogoUrl    || '',
   };
-  return jsonRes({ session, interview, branding });
+  // This endpoint is PUBLIC (token-only) and consumed by the candidate's browser.
+  // Expose ONLY the fields the candidate page needs — never recruiter-private data
+  // (candidateEmail, responses/driveItemIds, reviewDecision/Stars/notes, AI analysis,
+  // proctoring logs, reminder schedule, interviewLink, etc.).
+  const publicSession = {
+    token:              session.token,
+    status:             session.status,
+    candidateName:      session.candidateName,
+    expiresAt:          session.expiresAt || null,
+    profilePhotoItemId: session.profilePhotoItemId || null,
+    resumeItemId:       session.resumeItemId || null,
+  };
+  return jsonRes({ session: publicSession, interview, branding });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -814,9 +834,9 @@ async function sendInterviewEmail(token, request) {
   }
 
   const html = emailWrap('#B01A18', 'CTI ZeusHire', `
-    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${htmlEsc(session.candidateName)}</strong>,</p>
     <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been invited to complete a one-way video interview for the following position:</p>
-    ${emailInfoBox('#B01A18', interviewTitle)}
+    ${emailInfoBox('#B01A18', htmlEsc(interviewTitle))}
     <p style="margin:0 0 8px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">Please click the button below to begin. You can complete the interview at your own pace.</p>
     ${emailButton(link, 'Start Interview')}
     <p style="margin:20px 0 4px 0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif">Or copy this link into your browser:</p>
@@ -850,6 +870,8 @@ async function sendInterviewEmail(token, request) {
   return jsonRes({ ok: true });
 }
 
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB per answer
+
 async function uploadVideo(token, qIndex, request) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
@@ -857,6 +879,19 @@ async function uploadVideo(token, qIndex, request) {
 
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
+
+  // Validate the question index against this interview's question count.
+  const qCount = interview?.questions?.length || 0;
+  if (!Number.isInteger(qIndex) || qIndex < 0 || (qCount && qIndex >= qCount)) {
+    return jsonRes({ error: 'Invalid question index' }, 400);
+  }
+
+  // Reject oversized uploads early (header) so a token holder can't dump unbounded data.
+  const declared = parseInt(request.headers.get('Content-Length') || '0', 10);
+  if (declared && declared > MAX_VIDEO_BYTES) {
+    return jsonRes({ error: 'Video too large' }, 413);
+  }
+
   const safeName = session.candidateName.replace(/[^a-zA-Z0-9 _-]/g, '').trim();
   const shortToken = token.slice(0, 8);
 
@@ -864,6 +899,8 @@ async function uploadVideo(token, qIndex, request) {
   const filePath = `CTI Interviews/${interviewTitle}/${safeName} (${shortToken})/Q${qIndex + 1}.webm`;
 
   const blob = await request.arrayBuffer();
+  if (!blob.byteLength)                 return jsonRes({ error: 'Empty upload' }, 400);
+  if (blob.byteLength > MAX_VIDEO_BYTES) return jsonRes({ error: 'Video too large' }, 413);
 
   let driveItemId = null;
   let webUrl = null;
@@ -1835,6 +1872,8 @@ async function uploadProfilePhoto(token, request) {
     if (!file) return jsonRes({ error: 'No file in request' }, 400);
 
     const contentType = file.type || 'image/jpeg';
+    if (!contentType.startsWith('image/')) return jsonRes({ error: 'File must be an image' }, 400);
+    if (file.size && file.size > 10 * 1024 * 1024) return jsonRes({ error: 'Image too large (max 10 MB)' }, 413);
     const ext         = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
     const interview   = await kvGet(`interview:${session.interviewId}`);
     const safeName    = session.candidateName.replace(/[^a-zA-Z0-9 _-]/g, '').trim();

@@ -252,8 +252,8 @@ function renderInterviewCard(interview) {
           <p class="text-sm" style="margin-top:6px">${candidateLine}</p>
         </div>
         <div class="flex gap-8 items-center">
-          <button class="btn btn-primary" onclick="openSessions('${interview.id}', '${esc(interview.title)}', 'candidates')">Candidates</button>
-          <button class="btn btn-outline" onclick="openSessions('${interview.id}', '${esc(interview.title)}', 'invite')">Invite</button>
+          <button class="btn btn-primary" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'candidates')">Candidates</button>
+          <button class="btn btn-outline" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'invite')">Invite</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Edit" onclick="openEditInterview('${interview.id}')"><span style="display:inline-block;transform:rotate(45deg)">✏</span></button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:14px" title="Duplicate" onclick="cloneInterview('${interview.id}')">⧉</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:16px" title="Delete" onclick="deleteInterview('${interview.id}')">🗑</button>
@@ -1677,21 +1677,21 @@ function renderSessionRow(s, num) {
     : `<div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">${num}</div>`;
 
   const videosCell = responseCount > 0
-    ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:12px;color:var(--accent);white-space:nowrap" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">🎥 View ${responseCount}</button>`
+    ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:12px;color:var(--accent);white-space:nowrap" onclick="openReview('${s.token}', '${jsStr(s.candidateName)}')">🎥 View ${responseCount}</button>`
     : `<span class="text-muted" style="font-size:12px">—</span>`;
 
   // Reminders apply to candidates who haven't finished yet (pending or in_progress).
   const remindBtn = (s.status === 'pending' || s.status === 'in_progress') && s.candidateEmail
-    ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${esc(s.candidateName)}', this)">🔔</button>`
+    ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${jsStr(s.candidateName)}', this)">🔔</button>`
     : '';
 
   const actionsCell = (s.status === 'pending' || s.status === 'in_progress')
     ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Copy interview link" onclick="copySessionLink('${s.token}')">🔗</button>
        <button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="${s.expiresAt ? 'Edit deadline' : 'Set deadline'}" onclick="openDeadlinePicker('${s.token}', this)">⏰</button>
        ${remindBtn}
-       <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${esc(s.candidateName)}')">Revoke</button>`
+       <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${jsStr(s.candidateName)}')">Revoke</button>`
     : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
-       <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">Review</button>`;
+       <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${jsStr(s.candidateName)}')">Review</button>`;
 
   return `
     <div class="session-row">
@@ -2459,6 +2459,21 @@ function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Safe to drop into a SINGLE-QUOTED JS string that lives inside a double-quoted
+// HTML attribute, e.g. onclick="fn('<here>')". JS-escape backslash + single quote
+// FIRST (the JS-string layer), then HTML-escape (the attribute layer). HTML-encoding
+// the quote alone is NOT enough — the browser HTML-decodes the attribute before the
+// JS engine parses the string, so a raw ' would still break out and run script.
+function jsStr(str) {
+  return String(str ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ── Interview Script ──────────────────────────────────────────
 
 let _currentScriptClientId = null;
@@ -2633,7 +2648,7 @@ function renderScriptPositionRow(p, idx, total) {
       <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
         ${hasDoc
           ? `<button class="btn btn-outline" style="font-size:12px;padding:4px 12px"
-               onclick="viewScriptDoc('${p.id}','${esc(p.fileName || 'document')}')">View</button>
+               onclick="viewScriptDoc('${p.id}','${jsStr(p.fileName || 'document')}')">View</button>
              <button class="btn btn-ghost" style="font-size:13px;padding:4px 10px" title="Download"
                onclick="downloadScriptDoc('${p.id}')">↓</button>`
           : ''}
@@ -2916,7 +2931,7 @@ function renderBookingLinkCard(link) {
               style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--muted);font-size:11px;cursor:text"
               onclick="this.select()" />
             <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;flex-shrink:0"
-              onclick="navigator.clipboard.writeText('${esc(bookUrl)}');toast('Link copied!','success')">Copy</button>
+              onclick="navigator.clipboard.writeText('${jsStr(bookUrl)}');toast('Link copied!','success')">Copy</button>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end">
@@ -3569,9 +3584,9 @@ function renderLinkedCalRow(email) {
       <div style="width:8px;height:8px;border-radius:50%;background:#6264a7;flex-shrink:0"></div>
       <span style="font-size:13px;flex:1;word-break:break-all">${esc(email)}</span>
       <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;white-space:nowrap;color:#6264a7"
-        onclick="testCalendarConnection('${esc(email)}')">🔗 Test</button>
+        onclick="testCalendarConnection('${jsStr(email)}')">🔗 Test</button>
       <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--muted)"
-        onclick="removeLinkedCalendar('${esc(email)}')">✕ Remove</button>
+        onclick="removeLinkedCalendar('${jsStr(email)}')">✕ Remove</button>
     </div>
   `;
 }
