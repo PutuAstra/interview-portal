@@ -43,6 +43,20 @@ async function handle(request) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS });
   }
+
+  // Brute-force throttle: applies ONLY to requests that carry an X-Admin-Key header.
+  const providedKey = request.headers.get('X-Admin-Key');
+  if (providedKey !== null) {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (await authFailCount(ip) >= AUTH_FAIL_LIMIT) {
+      return jsonRes({ error: 'Too many failed attempts. Please try again later.' }, 429);
+    }
+    if (!constTimeEq(providedKey, ADMIN_KEY)) {
+      await recordAuthFail(ip);
+      // Fall through — requireAdmin in the route will return the 401.
+    }
+  }
+
   try {
     return await route(request);
   } catch (e) {
@@ -271,8 +285,40 @@ function jsonRes(data, status = 200) {
   });
 }
 
+// Constant-time string compare — avoids leaking the admin key via response timing.
+// Compares over the longer length and folds in a length mismatch so it can't
+// early-exit on the first differing/shorter character.
+function constTimeEq(a, b) {
+  a = String(a ?? ''); b = String(b ?? '');
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
 function requireAdmin(request) {
-  if (request.headers.get('X-Admin-Key') !== ADMIN_KEY) throw new Error('Unauthorized');
+  if (!constTimeEq(request.headers.get('X-Admin-Key'), ADMIN_KEY)) throw new Error('Unauthorized');
+}
+
+// ── Brute-force throttle for the admin key ────────────────────
+// Only counts requests that PRESENT an X-Admin-Key header that is WRONG, keyed by
+// client IP. Candidate/public traffic (no key) and correct logins are never touched,
+// so there are no false positives. After AUTH_FAIL_LIMIT wrong attempts within
+// AUTH_FAIL_WINDOW seconds, the IP is blocked from further admin attempts until the
+// window lapses. (KV is eventually-consistent — adequate for brute-force defence.)
+const AUTH_FAIL_LIMIT  = 10;
+const AUTH_FAIL_WINDOW = 900; // 15 minutes
+
+async function authFailCount(ip) {
+  const v = await INTERVIEW_DATA.get(`rl:authfail:${ip}`);
+  return v ? parseInt(v, 10) || 0 : 0;
+}
+async function recordAuthFail(ip) {
+  const n = (await authFailCount(ip)) + 1;
+  // TTL refreshes on each failure → block persists 15 min past the LAST attempt.
+  await INTERVIEW_DATA.put(`rl:authfail:${ip}`, String(n), { expirationTtl: AUTH_FAIL_WINDOW });
 }
 
 // HTML-escape any value interpolated into email/HTML markup so candidate- or
@@ -285,6 +331,13 @@ function htmlEsc(str) {
 
 function uid() {
   return crypto.randomUUID();
+}
+
+// True when a session has a deadline that has passed. Used to enforce expiry
+// SERVER-SIDE on candidate write endpoints (the client already shows an expired
+// screen, but that's cosmetic — the API must reject late writes too).
+function sessionExpired(session) {
+  return !!(session.expiresAt && Date.now() > session.expiresAt);
 }
 
 // ── Question Templates ────────────────────────────────────────
@@ -883,6 +936,7 @@ async function uploadVideo(token, qIndex, request) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   if (session.status === 'completed') return jsonRes({ error: 'Session already completed' }, 400);
+  if (sessionExpired(session)) return jsonRes({ error: 'This interview link has expired' }, 403);
 
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
@@ -984,6 +1038,9 @@ async function patchSession(token, request) {
 async function completeSession(token) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (sessionExpired(session) && session.status !== 'completed') {
+    return jsonRes({ error: 'This interview link has expired' }, 403);
+  }
   session.status = 'completed';
   session.completedAt = Date.now();
   await kvPut(`session:${token}`, session);
@@ -1872,6 +1929,7 @@ async function getAnalysis(token, request) {
 async function uploadProfilePhoto(token, request) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (sessionExpired(session)) return jsonRes({ error: 'This interview link has expired' }, 403);
 
   try {
     const formData    = await request.formData();
@@ -1901,6 +1959,7 @@ async function uploadProfilePhoto(token, request) {
 async function uploadResume(token, request) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (sessionExpired(session)) return jsonRes({ error: 'This interview link has expired' }, 403);
 
   try {
     const formData    = await request.formData();
