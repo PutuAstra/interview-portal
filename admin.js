@@ -1683,6 +1683,7 @@ function renderSessionRow(s, num) {
   const actionsCell = s.status === 'pending'
     ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Copy interview link" onclick="copySessionLink('${s.token}')">🔗</button>
        <button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="${s.expiresAt ? 'Edit deadline' : 'Set deadline'}" onclick="openDeadlinePicker('${s.token}', this)">⏰</button>
+       ${s.candidateEmail ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${esc(s.candidateName)}', this)">📧</button>` : ''}
        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${esc(s.candidateName)}')">Revoke</button>`
     : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">Review</button>`;
@@ -1861,6 +1862,20 @@ async function revokeSession(token, name) {
     toast('Invitation revoked', 'success');
     await loadSessions(currentInterviewId);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+async function remindSession(token, name, btn) {
+  if (!confirm(`Send a reminder email to ${name} now?`)) return;
+  const prev = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await apiJSON('POST', `/api/session/${token}/remind`);
+    toast(`Reminder sent to ${name}`, 'success');
+  } catch (e) {
+    toast('Could not send reminder: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prev; }
+  }
 }
 
 // ── Deadline picker popover ───────────────────────────────────

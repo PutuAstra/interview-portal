@@ -79,6 +79,9 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'send-email' && m === 'POST') {
     return sendInterviewEmail(seg[1], request);
   }
+  if (seg[0] === 'session' && seg[2] === 'remind' && m === 'POST') {
+    return remindSessionNow(seg[1], request);
+  }
   if (seg[0] === 'session' && seg[2] === 'upload' && m === 'POST') {
     return uploadVideo(seg[1], parseInt(seg[3]), request);
   }
@@ -428,16 +431,35 @@ async function handleScheduled() {
   return { ok: true, sentTotal, errors };
 }
 
+// Manual reminder: admin clicks "Remind now" for a single pending candidate.
+// Bypasses the schedule entirely (does not touch nextReminderAt).
+async function remindSessionNow(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session)                       return jsonRes({ error: 'Session not found' }, 404);
+  if (!session.candidateEmail)        return jsonRes({ error: 'No email address for this candidate' }, 400);
+  if (session.status !== 'pending')   return jsonRes({ error: 'Candidate has already completed the interview' }, 400);
+  try {
+    await sendReminderEmail(session);
+    return jsonRes({ ok: true });
+  } catch (e) {
+    return jsonRes({ error: e.message }, 502);
+  }
+}
+
 async function sendReminderEmail(session) {
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
-  const deadline = new Date(session.expiresAt).toLocaleDateString('en-US', {
+  // Deadline is optional (manual reminders may have none) — degrade gracefully.
+  const hasDeadline = !!session.expiresAt;
+  const deadline = hasDeadline ? new Date(session.expiresAt).toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  });
+  }) : null;
   // Compute how many days are left at send time
-  const msLeft   = session.expiresAt - Date.now();
-  const daysLeft = Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
-  const label    = daysLeft === 1 ? '1 Day' : `${daysLeft} Days`;
+  const daysLeft = hasDeadline
+    ? Math.max(1, Math.ceil((session.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)))
+    : null;
+  const label    = daysLeft === null ? null : (daysLeft === 1 ? '1 Day' : `${daysLeft} Days`);
 
   // Build the interview link
   // We don't know the exact domain here — store it on session if known, else omit
@@ -446,9 +468,11 @@ async function sendReminderEmail(session) {
   const html = emailWrap('#B01A18', 'CTI ZeusHire — Interview Reminder', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${session.candidateName}</strong>,</p>
     <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
-      This is a friendly reminder that your video interview is due in <strong>${label}</strong>.
+      ${hasDeadline
+        ? `This is a friendly reminder that your video interview is due in <strong>${label}</strong>.`
+        : `This is a friendly reminder to complete your video interview.`}
     </p>
-    ${emailInfoBox('#B01A18', interviewTitle, `Deadline: ${deadline}`)}
+    ${emailInfoBox('#B01A18', interviewTitle, hasDeadline ? `Deadline: ${deadline}` : '')}
     <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
       Please complete your interview before the deadline to be considered for this opportunity.
     </p>
@@ -473,7 +497,9 @@ async function sendReminderEmail(session) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Reminder: Complete your ${interviewTitle} interview — ${label} Left`,
+        subject: hasDeadline
+          ? `Reminder: Complete your ${interviewTitle} interview — ${label} Left`
+          : `Reminder: Complete your ${interviewTitle} interview`,
         body: { contentType: 'HTML', content: html },
         from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
