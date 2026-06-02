@@ -1680,10 +1680,15 @@ function renderSessionRow(s, num) {
     ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:12px;color:var(--accent);white-space:nowrap" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">🎥 View ${responseCount}</button>`
     : `<span class="text-muted" style="font-size:12px">—</span>`;
 
-  const actionsCell = s.status === 'pending'
+  // Reminders apply to candidates who haven't finished yet (pending or in_progress).
+  const remindBtn = (s.status === 'pending' || s.status === 'in_progress') && s.candidateEmail
+    ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${esc(s.candidateName)}', this)">📧</button>`
+    : '';
+
+  const actionsCell = (s.status === 'pending' || s.status === 'in_progress')
     ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Copy interview link" onclick="copySessionLink('${s.token}')">🔗</button>
        <button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="${s.expiresAt ? 'Edit deadline' : 'Set deadline'}" onclick="openDeadlinePicker('${s.token}', this)">⏰</button>
-       ${s.candidateEmail ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:13px" title="Send a reminder email now" onclick="remindSession('${s.token}', '${esc(s.candidateName)}', this)">📧</button>` : ''}
+       ${remindBtn}
        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${esc(s.candidateName)}')">Revoke</button>`
     : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${esc(s.candidateName)}')">Review</button>`;

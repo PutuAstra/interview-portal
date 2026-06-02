@@ -438,7 +438,8 @@ async function remindSessionNow(token, request) {
   const session = await kvGet(`session:${token}`);
   if (!session)                       return jsonRes({ error: 'Session not found' }, 404);
   if (!session.candidateEmail)        return jsonRes({ error: 'No email address for this candidate' }, 400);
-  if (session.status !== 'pending')   return jsonRes({ error: 'Candidate has already completed the interview' }, 400);
+  if (session.status !== 'pending' && session.status !== 'in_progress')
+    return jsonRes({ error: 'Candidate has already completed the interview' }, 400);
   try {
     await sendReminderEmail(session);
     return jsonRes({ ok: true });
