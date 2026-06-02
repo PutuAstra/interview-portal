@@ -20,10 +20,15 @@
 
 const CTI_LOGO_URL = 'https://putuastra.github.io/interview-portal/logo.png';
 
+// Restrict browser access to the app's own origin instead of "*". The admin and
+// candidate pages are both served from GitHub Pages. If you add a custom domain,
+// set ALLOWED_ORIGIN to it (or add per-request reflection over an allowlist).
+const ALLOWED_ORIGIN = 'https://putuastra.github.io';
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Vary': 'Origin',
 };
 
 addEventListener('fetch', event => {
@@ -41,9 +46,11 @@ async function handle(request) {
   try {
     return await route(request);
   } catch (e) {
-    const status = e.message === 'Unauthorized' ? 401 : 500;
-    if (status === 500) console.error('Worker unhandled error:', e.message, e.stack || '');
-    return jsonRes({ error: e.message }, status);
+    if (e.message === 'Unauthorized') return jsonRes({ error: 'Unauthorized' }, 401);
+    // Log the real error server-side; return a generic message so internal
+    // details / stack traces never reach the client.
+    console.error('Worker unhandled error:', e.message, e.stack || '');
+    return jsonRes({ error: 'Internal server error' }, 500);
   }
 }
 
