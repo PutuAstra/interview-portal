@@ -2384,7 +2384,7 @@ async function openReview(token, candidateName) {
 
     // ── External reviewer feedback (submitted via share links) ──
     const rf = session.reviewerFeedback || [];
-    const REC_LBL = { move_forward: '✓ Move forward', maybe: 'Maybe', pass: '✗ Pass' };
+    const REC_LBL = { move_forward: '✓ Move forward', maybe: 'Maybe', pass: "✗ Don't move forward" };
     const reviewerHTML = rf.length ? `
       <div style="margin-top:14px">
         <h4 style="margin:0 0 8px;font-size:13px">💬 Reviewer feedback (${rf.length})</h4>

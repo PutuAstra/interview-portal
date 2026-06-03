@@ -182,7 +182,7 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
       <div class="form-group" style="margin-bottom:12px">
         <label>Recommendation</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${[['move_forward','✓ Move forward'],['maybe','Maybe'],['pass','✗ Pass']].map(([v,l]) =>
+          ${[['move_forward','✓ Move forward'],['maybe','Maybe'],['pass','✗ Don\'t move forward']].map(([v,l]) =>
             `<button type="button" class="btn btn-outline rv-rec" data-v="${v}" onclick="setRvRec('${v}')">${l}</button>`).join('')}
         </div>
       </div>
