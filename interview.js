@@ -835,7 +835,22 @@ function testSpeakers() {
   }
 }
 
+// Unlock speechSynthesis on mobile. iOS Safari / Android Chrome silently drop the
+// FIRST speak() unless it happens inside a user gesture. Calling this from the tap
+// that starts the interview "primes" the engine so later auto-reads actually play.
+function primeTTS() {
+  if (!('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.getVoices();           // kick async voice loading
+    const u = new SpeechSynthesisUtterance(' ');  // silent priming utterance
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+    window.speechSynthesis.resume();
+  } catch (e) {}
+}
+
 function continueToInterview() {
+  primeTTS(); // unlock TTS within this user gesture so question reads aren't dropped on mobile
   // Stop mic meter
   cancelAnimationFrame(micMeterFrameId); micMeterFrameId = null;
   if (micAnalyser) { micAnalyser.disconnect(); micAnalyser = null; }
@@ -1009,34 +1024,63 @@ function startCountdown() {
         return null;
       }
 
+      // Advance to the countdown exactly once, no matter which path gets us there
+      // (normal end, error, silent drop, or safety timeout).
+      let advanced = false;
+      function advance() {
+        if (advanced) return;
+        advanced = true;
+        beginCountdown();
+      }
+
       function doSpeak(voice) {
         const numWords = ['one','two','three','four','five','six','seven','eight','nine','ten'];
         const qNum = numWords[currentQ] || String(currentQ + 1);
-        const utt = new SpeechSynthesisUtterance(
-          `Question number ${qNum}... ${q.text || ''}`
-        );
+        const text = `Question number ${qNum}... ${q.text || ''}`;
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+
+        const utt = new SpeechSynthesisUtterance(text);
         if (voice) utt.voice = voice;
-        utt.rate   = 0.88;
+        utt.rate   = 0.9;
         utt.pitch  = 0.95;
         utt.volume = 1;
-        utt.onend   = () => beginCountdown();
-        utt.onerror = () => beginCountdown();
-        window.speechSynthesis.speak(utt);
+        utt.onend   = advance;
+        utt.onerror = advance;
+
+        // cancel()→speak() back-to-back is dropped on some mobile browsers; defer a
+        // tick, then resume() in case the engine is paused.
+        setTimeout(() => {
+          try { window.speechSynthesis.speak(utt); window.speechSynthesis.resume(); }
+          catch (e) { advance(); }
+        }, 70);
+
+        // If the engine silently dropped the utterance (never starts speaking),
+        // don't leave the candidate stuck on "Reading question…".
+        setTimeout(() => {
+          if (advanced) return;
+          if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) advance();
+        }, 3000);
+
+        // Ultimate backstop in case onend never fires (generous read-time estimate).
+        const words = text.split(/\s+/).filter(Boolean).length;
+        setTimeout(advance, Math.min(30000, 5000 + words * 600));
       }
 
       const voices = window.speechSynthesis.getVoices();
       if (voices.length) {
         doSpeak(pickVoice(voices));
       } else {
-        window.speechSynthesis.onvoiceschanged = () => {
+        // Voices not ready yet (common on mobile). Speak as soon as they load — and
+        // if they never report, speak anyway with the default voice rather than SKIP.
+        let handled = false;
+        const go = () => {
+          if (handled) return;
+          handled = true;
           window.speechSynthesis.onvoiceschanged = null;
           doSpeak(pickVoice(window.speechSynthesis.getVoices()));
         };
-        setTimeout(() => {
-          if (document.getElementById('countdown-num')) return;
-          window.speechSynthesis.cancel();
-          beginCountdown();
-        }, 2000);
+        window.speechSynthesis.onvoiceschanged = go;
+        setTimeout(go, 1200);
       }
     } else {
       beginCountdown();
