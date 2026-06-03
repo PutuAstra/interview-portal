@@ -517,8 +517,96 @@ async function openCompareModal(tokens) {
 // ── Questions builder (one-way) ───────────────────────────────
 
 function addQuestion() {
-  questions.push({ text: '', duration: 120, thinkTime: 0, maxRetakes: 0 });
+  questions.push({ text: '', answerType: 'video', duration: 120, thinkTime: 0, maxRetakes: 0 });
   renderQuestions();
+}
+
+// Shared validation for both the create and edit builders.
+function validateQuestions(qs) {
+  if (qs.some(q => !q.text.trim())) return 'All questions need text';
+  for (let i = 0; i < qs.length; i++) {
+    if ((qs[i].answerType || 'video') === 'mcq') {
+      const opts = (qs[i].options || []).map(o => (o || '').trim()).filter(Boolean);
+      if (opts.length < 2) return `Question ${i + 1} (multiple choice) needs at least 2 options`;
+    }
+  }
+  return null;
+}
+
+// Generalized question-type helpers, shared by the create (questions) and edit
+// (editQuestions) builders via thin wrappers below.
+function _setQType(arr, render, i, type) {
+  arr[i].answerType = type;
+  if (type === 'mcq' && !Array.isArray(arr[i].options)) { arr[i].options = ['', '']; arr[i].correctIndex = null; }
+  render();
+}
+function _addOption(arr, render, i) { (arr[i].options = arr[i].options || []).push(''); render(); }
+function _removeOption(arr, render, i, j) {
+  arr[i].options.splice(j, 1);
+  if (arr[i].correctIndex === j) arr[i].correctIndex = null;
+  else if (arr[i].correctIndex > j) arr[i].correctIndex--;
+  render();
+}
+function setQType(i, t)     { _setQType(questions, renderQuestions, i, t); }
+function setQTypeE(i, t)    { _setQType(editQuestions, renderEditQuestions, i, t); }
+function addOption(i)       { _addOption(questions, renderQuestions, i); }
+function addOptionE(i)      { _addOption(editQuestions, renderEditQuestions, i); }
+function removeOption(i, j) { _removeOption(questions, renderQuestions, i, j); }
+function removeOptionE(i, j){ _removeOption(editQuestions, renderEditQuestions, i, j); }
+
+// Shared single-question editor HTML. ctx supplies the array name + handler
+// suffix so the same markup drives both builders.
+function questionEditorHTML(q, i, ctx) {
+  const A = ctx.arr, S = ctx.sfx; // e.g. 'questions' / '' or 'editQuestions' / 'E'
+  const type = q.answerType || 'video';
+  const typeSelect = `
+    <select onchange="setQType${S}(${i}, this.value)" title="Answer type">
+      ${[['video','🎥 Video answer'],['text','✍️ Text answer'],['mcq','☑️ Multiple choice']]
+        .map(([v,l]) => `<option value="${v}" ${type === v ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>`;
+  const thinkSelect = `
+    <select onchange="${A}[${i}].thinkTime = parseInt(this.value)" title="Think time before answering">
+      ${[0, 15, 30, 60, 90, 120].map(s =>
+        `<option value="${s}" ${(q.thinkTime || 0) === s ? 'selected' : ''}>${s === 0 ? 'No think time' : s + 's think time'}</option>`).join('')}
+    </select>`;
+  let typeControls = '';
+  if (type === 'video') {
+    typeControls = `
+      <select onchange="${A}[${i}].duration = parseInt(this.value)" title="Answer time limit">
+        ${[30, 60, 90, 120, 180, 240, 300].map(s =>
+          `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s < 60 ? s+'s' : (s/60)+'min'} limit</option>`).join('')}
+      </select>
+      <select onchange="${A}[${i}].maxRetakes = parseInt(this.value)" title="Max retakes allowed">
+        ${[0, 1, 2, 3].map(n =>
+          `<option value="${n}" ${(q.maxRetakes || 0) === n ? 'selected' : ''}>${n === 0 ? 'No retakes' : n + ' retake' + (n > 1 ? 's' : '')}</option>`).join('')}
+      </select>`;
+  }
+  const mcqEditor = type === 'mcq' ? `
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:11px;color:var(--muted)">Options — select ◯ to mark the correct answer (optional, enables auto-scoring):</div>
+      ${(q.options || []).map((opt, j) => `
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="radio" name="correct-${S}-${i}" ${q.correctIndex === j ? 'checked' : ''}
+            onchange="${A}[${i}].correctIndex = ${j}" title="Mark as correct" style="accent-color:var(--accent)" />
+          <input type="text" placeholder="Option ${j + 1}" value="${esc(opt)}" style="flex:1"
+            oninput="${A}[${i}].options[${j}] = this.value" />
+          <button class="btn btn-ghost" style="color:var(--red);padding:2px 8px" onclick="removeOption${S}(${i}, ${j})" ${(q.options || []).length <= 2 ? 'disabled' : ''}>✕</button>
+        </div>`).join('')}
+      <button class="btn btn-ghost" style="font-size:12px;align-self:flex-start" onclick="addOption${S}(${i})">+ Add option</button>
+    </div>` : '';
+
+  return `
+    <div class="question-item">
+      <div class="q-num">${i + 1}</div>
+      <div class="q-fields">
+        <input type="text" placeholder="Question text *" value="${esc(q.text)}"
+          oninput="${A}[${i}].text = this.value" />
+        <div class="q-selects">${typeSelect}${thinkSelect}${typeControls}</div>
+        ${mcqEditor}
+      </div>
+      <button class="btn btn-ghost" onclick="${ctx.move}(${i}, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="btn btn-ghost" onclick="${ctx.remove}(${i})" style="color:var(--red)">✕</button>
+    </div>`;
 }
 
 function removeQuestion(i) {
@@ -537,41 +625,16 @@ function moveQuestion(i, dir) {
 function renderQuestions() {
   const builder = document.getElementById('questions-builder');
   if (!builder) return;
-  builder.innerHTML = questions.map((q, i) => `
-    <div class="question-item">
-      <div class="q-num">${i + 1}</div>
-      <div class="q-fields">
-        <input type="text" placeholder="Question text *" value="${esc(q.text)}"
-          oninput="questions[${i}].text = this.value" />
-        <div class="q-selects">
-          <select onchange="questions[${i}].duration = parseInt(this.value)" title="Answer time limit">
-            ${[30, 60, 90, 120, 180, 240, 300].map(s =>
-              `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s < 60 ? s+'s' : (s/60)+'min'} limit</option>`
-            ).join('')}
-          </select>
-          <select onchange="questions[${i}].thinkTime = parseInt(this.value)" title="Think time before recording starts">
-            ${[0, 15, 30, 60, 90, 120].map(s =>
-              `<option value="${s}" ${(q.thinkTime || 0) === s ? 'selected' : ''}>${s === 0 ? 'No think time' : s + 's think time'}</option>`
-            ).join('')}
-          </select>
-          <select onchange="questions[${i}].maxRetakes = parseInt(this.value)" title="Max retakes allowed">
-            ${[0, 1, 2, 3].map(n =>
-              `<option value="${n}" ${(q.maxRetakes || 0) === n ? 'selected' : ''}>${n === 0 ? 'No retakes' : n + ' retake' + (n > 1 ? 's' : '')}</option>`
-            ).join('')}
-          </select>
-        </div>
-      </div>
-      <button class="btn btn-ghost" onclick="moveQuestion(${i}, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-      <button class="btn btn-ghost" onclick="removeQuestion(${i})" style="color:var(--red)">✕</button>
-    </div>
-  `).join('');
+  builder.innerHTML = questions.map((q, i) =>
+    questionEditorHTML(q, i, { arr: 'questions', sfx: '', move: 'moveQuestion', remove: 'removeQuestion' })
+  ).join('');
 }
 
 async function submitInterview() {
   const title = document.getElementById('new-title').value.trim();
   const description = document.getElementById('new-desc').value.trim();
   if (!title) return toast('Title is required', 'error');
-  if (questions.some(q => !q.text.trim())) return toast('All questions need text', 'error');
+  { const err = validateQuestions(questions); if (err) return toast(err, 'error'); }
   try {
     await apiJSON('POST', '/api/interviews', { title, description, questions });
     toast('Interview created!', 'success');
@@ -2216,9 +2279,16 @@ async function openReview(token, candidateName) {
 
     document.getElementById('review-interview-title').textContent = interview?.title || '';
 
-    // ── Load video URLs ──
-    const videoItems = session.responses?.length
-      ? await Promise.all(session.responses.map(async r => {
+    // ── Split responses: video vs written (text/MCQ) ──
+    const allResponses   = session.responses || [];
+    const videoResponses = allResponses.filter(r => (r.answerType || 'video') === 'video' && r.driveItemId);
+    const writtenResponses = allResponses
+      .filter(r => r.answerType === 'text' || r.answerType === 'mcq')
+      .sort((a, b) => a.questionIndex - b.questionIndex);
+
+    // ── Load video URLs (video responses only) ──
+    const videoItems = videoResponses.length
+      ? await Promise.all(videoResponses.map(async r => {
           const q = interview?.questions?.[r.questionIndex];
           const { downloadUrl, webUrl } = await fetch(
             `${WORKER_URL}/api/session/${token}/video/${r.questionIndex}`,
@@ -2227,6 +2297,28 @@ async function openReview(token, candidateName) {
           return { q, downloadUrl, webUrl, questionIndex: r.questionIndex };
         }))
       : [];
+
+    // ── Written / MCQ answers ──
+    const writtenHTML = writtenResponses.length ? `
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:${videoItems.length ? '16px' : '0'}">
+        ${writtenResponses.map(r => {
+          const q = interview?.questions?.[r.questionIndex];
+          const head = `<div style="font-size:11px;font-weight:700;color:var(--accent)">Q${r.questionIndex + 1} · ${r.answerType === 'mcq' ? '☑️ Multiple choice' : '✍️ Written'}</div>
+            <div style="font-size:12px;color:var(--text);margin:2px 0 8px;line-height:1.4">${q ? esc(q.text) : ''}</div>`;
+          let bodyHTML;
+          if (r.answerType === 'mcq') {
+            const badge = r.correct === true
+              ? '<span style="font-size:11px;font-weight:700;color:#16a34a;margin-left:8px">✓ Correct</span>'
+              : r.correct === false
+              ? '<span style="font-size:11px;font-weight:700;color:#dc2626;margin-left:8px">✗ Incorrect</span>'
+              : '';
+            bodyHTML = `<div style="font-size:14px;color:var(--text)">${esc(r.choiceText || '')}${badge}</div>`;
+          } else {
+            bodyHTML = `<div style="font-size:14px;color:var(--text);white-space:pre-wrap;line-height:1.55">${esc(r.text || '')}</div>`;
+          }
+          return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--bg)">${head}${bodyHTML}</div>`;
+        }).join('')}
+      </div>` : '';
 
     // ── LEFT column: videos (4-column grid) + English analysis ──
     const videosHTML = videoItems.length
@@ -2247,7 +2339,7 @@ async function openReview(token, candidateName) {
               ${renderQScorePicker(questionIndex, reviewData?.questionScores?.[questionIndex])}
             </div>`).join('')}
         </div>`
-      : `<div class="empty-state">No recordings yet</div>`;
+      : (writtenResponses.length ? '' : `<div class="empty-state">No responses yet</div>`);
 
     // Proctoring summary
     const pLog = session.proctoringLog || [];
@@ -2352,8 +2444,9 @@ async function openReview(token, candidateName) {
     content.innerHTML = `
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)">
         <div style="flex:1;overflow-y:auto;padding:20px 20px 12px">
-          <h3 style="margin:0 0 12px;font-size:14px">Recordings</h3>
+          <h3 style="margin:0 0 12px;font-size:14px">Responses</h3>
           ${videosHTML}
+          ${writtenHTML}
           ${proctoringHTML}
         </div>
         <div style="flex-shrink:0;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
@@ -2484,41 +2577,16 @@ function moveEditQuestion(i, dir) {
 
 function renderEditQuestions() {
   const builder = document.getElementById('edit-questions-builder');
-  builder.innerHTML = editQuestions.map((q, i) => `
-    <div class="question-item">
-      <div class="q-num">${i + 1}</div>
-      <div class="q-fields">
-        <input type="text" placeholder="Question text *" value="${esc(q.text)}"
-          oninput="editQuestions[${i}].text = this.value" />
-        <div class="q-selects">
-          <select onchange="editQuestions[${i}].duration = parseInt(this.value)" title="Answer time limit">
-            ${[30, 60, 90, 120, 180, 240, 300].map(s =>
-              `<option value="${s}" ${q.duration === s ? 'selected' : ''}>${s < 60 ? s+'s' : (s/60)+'min'} limit</option>`
-            ).join('')}
-          </select>
-          <select onchange="editQuestions[${i}].thinkTime = parseInt(this.value)" title="Think time before recording starts">
-            ${[0, 15, 30, 60, 90, 120].map(s =>
-              `<option value="${s}" ${(q.thinkTime || 0) === s ? 'selected' : ''}>${s === 0 ? 'No think time' : s + 's think time'}</option>`
-            ).join('')}
-          </select>
-          <select onchange="editQuestions[${i}].maxRetakes = parseInt(this.value)" title="Max retakes allowed">
-            ${[0, 1, 2, 3].map(n =>
-              `<option value="${n}" ${(q.maxRetakes || 0) === n ? 'selected' : ''}>${n === 0 ? 'No retakes' : n + ' retake' + (n > 1 ? 's' : '')}</option>`
-            ).join('')}
-          </select>
-        </div>
-      </div>
-      <button class="btn btn-ghost" onclick="moveEditQuestion(${i}, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-      <button class="btn btn-ghost" onclick="removeEditQuestion(${i})" style="color:var(--red)">✕</button>
-    </div>
-  `).join('');
+  builder.innerHTML = editQuestions.map((q, i) =>
+    questionEditorHTML(q, i, { arr: 'editQuestions', sfx: 'E', move: 'moveEditQuestion', remove: 'removeEditQuestion' })
+  ).join('');
 }
 
 async function submitEditInterview() {
   const title = document.getElementById('edit-title').value.trim();
   const description = document.getElementById('edit-desc').value.trim();
   if (!title) return toast('Title is required', 'error');
-  if (editQuestions.some(q => !q.text.trim())) return toast('All questions need text', 'error');
+  { const err = validateQuestions(editQuestions); if (err) return toast(err, 'error'); }
   try {
     await apiJSON('PUT', `/api/interview/${editInterviewId}`, { title, description, questions: editQuestions });
     toast('Interview updated!', 'success');

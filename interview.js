@@ -919,6 +919,10 @@ function showQuestion(index) {
   const total = interview.questions.length;
   updateProgress(index, total);
 
+  // Text / multiple-choice questions skip the camera + recording pipeline entirely.
+  const atype = q.answerType || 'video';
+  if (atype === 'text' || atype === 'mcq') { return showWrittenQuestion(index, q, total); }
+
   main().innerHTML = `
     <div class="question-card" style="max-width:900px;width:100%">
       <div class="question-header">
@@ -973,6 +977,91 @@ function showQuestion(index) {
 function updateProgress(index, total) {
   document.getElementById('topbar-progress').textContent =
     `Question ${index + 1} of ${total}`;
+}
+
+// ── Written / multiple-choice answer flow ─────────────────────
+function showWrittenQuestion(index, q, total) {
+  attachProctoringListeners(); // copy/paste/blur still logged for written answers
+  const isMcq = q.answerType === 'mcq';
+  const options = q.options || [];
+
+  const inputHTML = isMcq
+    ? `<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+        ${options.map((opt, j) => `
+          <label class="mcq-option" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer">
+            <input type="radio" name="mcq-answer" value="${j}" style="accent-color:var(--accent);width:18px;height:18px" onchange="document.getElementById('submit-written').disabled=false" />
+            <span>${esc(opt)}</span>
+          </label>`).join('')}
+       </div>`
+    : `<textarea id="written-answer" placeholder="Type your answer here…" oninput="document.getElementById('submit-written').disabled = !this.value.trim()"
+         onpaste="return _blockPaste(event)"
+         style="width:100%;min-height:160px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:15px;font-family:inherit;resize:vertical"></textarea>
+       <p class="text-muted text-sm" style="margin-top:6px">✍️ Type your own answer — pasting is disabled.</p>`;
+
+  main().innerHTML = `
+    <div class="question-card" style="max-width:760px;width:100%">
+      <div class="question-header">
+        <span class="text-muted text-sm">Question ${index + 1} of ${total}</span>
+        <span class="text-sm" style="color:var(--text-2)">${isMcq ? 'Multiple choice' : 'Written answer'}</span>
+      </div>
+      <div class="question-body">
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${(index / total) * 100}%"></div>
+        </div>
+        <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Question ${index + 1}</p>
+        <p class="question-text">${esc(q.text)}</p>
+        ${inputHTML}
+        <div class="flex justify-between items-center mt-16">
+          <span class="text-muted text-sm"></span>
+          <button class="btn btn-primary btn-lg" id="submit-written" onclick="submitWrittenAnswer(${index})" disabled>Submit Answer →</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _blockPaste(e) {
+  e.preventDefault();
+  logProctoring('paste_attempt', 'blocked');
+  return false;
+}
+
+async function submitWrittenAnswer(index) {
+  const q = interview.questions[index];
+  const isMcq = q.answerType === 'mcq';
+  let payload;
+  if (isMcq) {
+    const sel = document.querySelector('input[name="mcq-answer"]:checked');
+    if (!sel) return;
+    payload = { answerType: 'mcq', choiceIndex: parseInt(sel.value, 10) };
+  } else {
+    const text = (document.getElementById('written-answer')?.value || '').trim();
+    if (!text) return;
+    payload = { answerType: 'text', text };
+  }
+
+  const btn = document.getElementById('submit-written');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const res = await fetch(`${WORKER_URL}/api/session/${token}/answer/${index}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('save failed');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Answer →'; }
+    return alert('Could not save your answer. Check your connection and try again.');
+  }
+
+  const isLast = index === interview.questions.length - 1;
+  main().innerHTML = `
+    <div class="question-card" style="max-width:760px;width:100%;text-align:center;padding:48px 32px">
+      <div style="font-size:40px">✓</div>
+      <p class="mt-8" style="color:var(--green);font-weight:600">Answer saved</p>
+      <button class="btn btn-primary btn-lg mt-16" onclick="${isLast ? 'finishInterview()' : `showQuestion(${index + 1})`}">
+        ${isLast ? 'Finish Interview' : 'Next Question →'}
+      </button>
+    </div>`;
 }
 
 // ── Recording flow ────────────────────────────────────────────

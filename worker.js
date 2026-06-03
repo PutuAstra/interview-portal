@@ -128,6 +128,9 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'upload' && m === 'POST') {
     return uploadVideo(seg[1], parseInt(seg[3]), request);
   }
+  if (seg[0] === 'session' && seg[2] === 'answer' && m === 'POST') {
+    return submitWrittenAnswer(seg[1], parseInt(seg[3]), request);
+  }
   if (seg[0] === 'session' && seg[2] === 'complete' && m === 'POST') {
     return completeSession(seg[1]);
   }
@@ -817,7 +820,13 @@ async function getSession(token, request) {
     profilePhotoItemId: session.profilePhotoItemId || null,
     resumeItemId:       session.resumeItemId || null,
   };
-  return jsonRes({ session: publicSession, interview, branding });
+  // Strip the MCQ answer key (correctIndex) from questions so candidates can't
+  // read it in DevTools. The Worker still has the real key for auto-scoring.
+  const publicInterview = interview ? {
+    ...interview,
+    questions: (interview.questions || []).map(({ correctIndex, ...q }) => q),
+  } : interview;
+  return jsonRes({ session: publicSession, interview: publicInterview, branding });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1025,6 +1034,47 @@ async function uploadVideo(token, qIndex, request) {
   await kvPut(`session:${token}`, session);
 
   return jsonRes({ ok: true, webUrl });
+}
+
+// Store a written (text) or multiple-choice answer. Public (token-only), mirrors
+// uploadVideo's guards. MCQ answers are auto-scored against the question's
+// correctIndex when one was set.
+async function submitWrittenAnswer(token, qIndex, request) {
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (session.status === 'completed') return jsonRes({ error: 'Session already completed' }, 400);
+  if (sessionExpired(session)) return jsonRes({ error: 'This interview link has expired' }, 403);
+
+  const interview = await kvGet(`interview:${session.interviewId}`);
+  const q = interview?.questions?.[qIndex];
+  if (!q) return jsonRes({ error: 'Invalid question index' }, 400);
+  const atype = q.answerType || 'video';
+  if (atype !== 'text' && atype !== 'mcq') return jsonRes({ error: 'Question does not accept a written answer' }, 400);
+
+  const body = await request.json().catch(() => ({}));
+  const entry = { questionIndex: qIndex, answerType: atype, answeredAt: Date.now() };
+
+  if (atype === 'text') {
+    const text = (body.text || '').toString().slice(0, 5000).trim();
+    if (!text) return jsonRes({ error: 'Empty answer' }, 400);
+    entry.text = text;
+  } else {
+    const opts = q.options || [];
+    const ci = Number.isInteger(body.choiceIndex) ? body.choiceIndex : -1;
+    if (ci < 0 || ci >= opts.length) return jsonRes({ error: 'Invalid choice' }, 400);
+    entry.choiceIndex = ci;
+    entry.choiceText  = opts[ci];
+    entry.correct     = (q.correctIndex == null) ? null : (ci === q.correctIndex);
+  }
+
+  session.responses = session.responses || [];
+  const existing = session.responses.find(r => r.questionIndex === qIndex);
+  if (existing) Object.assign(existing, entry);
+  else session.responses.push(entry);
+  if (session.status === 'pending') session.status = 'in_progress';
+  await kvPut(`session:${token}`, session);
+
+  return jsonRes({ ok: true });
 }
 
 async function deleteSession(token, request) {
