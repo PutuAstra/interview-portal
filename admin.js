@@ -1855,6 +1855,11 @@ function renderSessionRow(s, num) {
   const showIntegrity = (s.status === 'completed' || (s.responses && s.responses.length));
   const integrityHTML = showIntegrity ? `${integrityChip(integrityScore(s.proctoringLog))} ` : '';
   const aiHTML = aiChip(s);
+  // Reviewer-feedback notification chip — click to jump straight into the review.
+  const fbCount = (s.reviewerFeedback || []).length;
+  const fbHTML = fbCount
+    ? `<span onclick="event.stopPropagation();openReview('${s.token}','${jsStr(s.candidateName)}')" title="${fbCount} reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(99,100,167,0.45);color:#a7a8d8;background:rgba(99,100,167,0.15);white-space:nowrap">💬 ${fbCount} feedback</span>`
+    : '';
 
   return `
     <div class="session-row">
@@ -1864,7 +1869,7 @@ function renderSessionRow(s, num) {
         <div style="min-width:0">
           <div style="display:flex;align-items:center;gap:8px;min-width:0">
             <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</span>
-            ${(integrityHTML || aiHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0">${integrityHTML}${aiHTML}</span>` : ''}
+            ${(integrityHTML || aiHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center">${integrityHTML}${aiHTML}${fbHTML}</span>` : ''}
           </div>
           <div class="text-muted" style="font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
         </div>
