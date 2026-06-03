@@ -1147,6 +1147,14 @@ function attachProctoringListeners() {
   document.addEventListener('paste', _onPaste);
   document.addEventListener('contextmenu', _onRightClick);
   document.addEventListener('keydown', _onKeyDown);
+  window.addEventListener('beforeunload', _onBeforeUnload);
+}
+
+function _onBeforeUnload(e) {
+  // Deter leaving/reloading mid-interview and record the attempt (sent if they stay).
+  logProctoring('navigation_attempt');
+  e.preventDefault();
+  e.returnValue = '';
 }
 
 function _onVisibility() {

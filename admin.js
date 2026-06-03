@@ -1660,6 +1660,31 @@ const DECISION_LABEL = {
   not_moving_forward: '✗ Not Moving Forward',
 };
 
+// ── Proctoring integrity score ────────────────────────────────
+// Turn the raw proctoring event log into a 0–100 integrity score by deducting
+// weighted penalties per event type. Higher = cleaner. Surfaced as a chip in the
+// candidate row and a panel in the review modal.
+const PROCTORING_WEIGHTS = {
+  tab_hidden:        15,  // left the interview tab — strongest signal
+  window_blur:       10,  // clicked away from the window
+  paste_attempt:     20,  // pasting an answer (likely ChatGPT)
+  keyboard_shortcut: 12,  // Ctrl/Cmd+C/V/X/A
+  copy_attempt:       6,
+  right_click:        3,
+  navigation_attempt: 8,  // tried to leave/reload the page
+};
+function integrityScore(pLog) {
+  if (!pLog || !pLog.length) return 100;
+  let penalty = 0;
+  pLog.forEach(e => { penalty += (PROCTORING_WEIGHTS[e.type] ?? 5); });
+  return Math.max(0, 100 - penalty);
+}
+function integrityChip(score) {
+  const color = score >= 85 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
+  const label = score >= 85 ? 'Clean' : score >= 60 ? 'Review' : 'Flagged';
+  return `<span title="Proctoring integrity score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${color}55;color:${color};background:${color}14;white-space:nowrap">🛡 ${score} · ${label}</span>`;
+}
+
 function renderSessionRow(s, num) {
   const invitedDate = s.createdAt
     ? new Date(s.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1693,6 +1718,10 @@ function renderSessionRow(s, num) {
     : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${jsStr(s.candidateName)}')">Review</button>`;
 
+  // Integrity chip — only meaningful once they've actually taken the interview
+  const showIntegrity = (s.status === 'completed' || (s.responses && s.responses.length));
+  const integrityHTML = showIntegrity ? ` ${integrityChip(integrityScore(s.proctoringLog))}` : '';
+
   return `
     <div class="session-row">
       <div style="display:flex;align-items:center;justify-content:center;align-self:center">${compareCell}</div>
@@ -1701,6 +1730,7 @@ function renderSessionRow(s, num) {
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
           <div class="text-muted" style="font-size:11px;margin-top:1px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
+          <div style="margin-top:3px">${integrityHTML}</div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;justify-content:center">
@@ -2173,11 +2203,14 @@ async function openReview(token, candidateName) {
             `<span style="background:rgba(220,38,38,0.1);color:#dc2626;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid rgba(220,38,38,0.2)">${flagLabels[k]||k}: ${v}×</span>`
           ).join(' ');
           return `<div style="margin-top:10px;padding:10px 14px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:8px">
-            <div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:6px">⚠️ Proctoring flags (${pLog.length} events)</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:12px;font-weight:700;color:#dc2626">⚠️ Proctoring flags (${pLog.length} events)</span>
+              ${integrityChip(integrityScore(pLog))}
+            </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${items}</div>
           </div>`;
         })()
-      : `<div style="margin-top:10px;font-size:11px;color:var(--muted)">✅ No proctoring flags</div>`;
+      : `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)">✅ No proctoring flags ${integrityChip(100)}</div>`;
 
     const analysisSection = cachedAnalysis?.notFound
       ? `<div style="margin-top:8px;text-align:center">
