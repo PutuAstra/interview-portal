@@ -1867,7 +1867,7 @@ function renderSessionRow(s, num) {
     const correct = mcqScorable.filter(r => r.correct === true).length;
     const p = correct / mcqScorable.length;
     const c = p >= 0.8 ? '#16a34a' : p >= 0.5 ? '#d97706' : '#dc2626';
-    mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length}</span>`;
+    mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length} · ${Math.round(p * 100)}%</span>`;
   }
 
   let fbHTML = '';
