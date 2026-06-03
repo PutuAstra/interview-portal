@@ -208,7 +208,7 @@ async function renderPage({ session, interview, review, mode, shareToken: tok })
       <div class="form-group" style="margin-bottom:12px">
         <label>Overall rating</label>
         <div id="rv-stars" style="display:flex;gap:6px;font-size:28px;line-height:1">
-          ${[1,2,3,4,5].map(n => `<span class="rv-star" data-v="${n}" onclick="setRvStars(${n})" style="cursor:pointer;color:var(--border)">★</span>`).join('')}
+          ${[1,2,3,4,5].map(n => `<span class="rv-star" data-v="${n}" onclick="setRvStars(${n})" onmouseenter="hoverRv(${n})" onmouseleave="hoverRv(_rvStars)" style="cursor:pointer;color:var(--border);transition:color 0.1s">★</span>`).join('')}
         </div>
       </div>
       <div class="form-group" style="margin-bottom:12px">
@@ -228,9 +228,12 @@ async function renderPage({ session, interview, review, mode, shareToken: tok })
 }
 
 let _rvStars = 0, _rvRec = '';
+function hoverRv(n) {
+  document.querySelectorAll('#rv-stars .rv-star').forEach((s, i) => { s.style.color = i < n ? '#f59e0b' : 'var(--border)'; });
+}
 function setRvStars(n) {
   _rvStars = n;
-  document.querySelectorAll('#rv-stars .rv-star').forEach((s, i) => { s.style.color = i < n ? '#f59e0b' : 'var(--border)'; });
+  hoverRv(n);
 }
 function setRvRec(v) {
   _rvRec = v;
