@@ -1002,7 +1002,7 @@ function showWrittenQuestion(index, q, total) {
     <div class="question-card" style="max-width:760px;width:100%">
       <div class="question-header">
         <span class="text-muted text-sm">Question ${index + 1} of ${total}</span>
-        <span class="text-sm" style="color:var(--text-2)">${isMcq ? 'Multiple choice' : 'Written answer'}</span>
+        <span class="text-sm" style="color:var(--text-2)">📝 Assessment · ${isMcq ? 'Multiple choice' : 'Text'}</span>
       </div>
       <div class="question-body">
         <div class="progress-bar-wrap">

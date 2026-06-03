@@ -561,7 +561,7 @@ function questionEditorHTML(q, i, ctx) {
   const type = q.answerType || 'video';
   const typeSelect = `
     <select onchange="setQType${S}(${i}, this.value)" title="Answer type">
-      ${[['video','🎥 Video answer'],['text','✍️ Text answer'],['mcq','☑️ Multiple choice']]
+      ${[['video','🎥 Video answer (interview)'],['text','✍️ Text (assessment)'],['mcq','☑️ Multiple choice (assessment)']]
         .map(([v,l]) => `<option value="${v}" ${type === v ? 'selected' : ''}>${l}</option>`).join('')}
     </select>`;
   const thinkSelect = `
@@ -2303,7 +2303,7 @@ async function openReview(token, candidateName) {
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:${videoItems.length ? '16px' : '0'}">
         ${writtenResponses.map(r => {
           const q = interview?.questions?.[r.questionIndex];
-          const head = `<div style="font-size:11px;font-weight:700;color:var(--accent)">Q${r.questionIndex + 1} · ${r.answerType === 'mcq' ? '☑️ Multiple choice' : '✍️ Written'}</div>
+          const head = `<div style="font-size:11px;font-weight:700;color:var(--accent)">Q${r.questionIndex + 1} · Assessment · ${r.answerType === 'mcq' ? '☑️ Multiple choice' : '✍️ Text'}</div>
             <div style="font-size:12px;color:var(--text);margin:2px 0 8px;line-height:1.4">${q ? esc(q.text) : ''}</div>`;
           let bodyHTML;
           if (r.answerType === 'mcq') {
