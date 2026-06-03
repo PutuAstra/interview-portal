@@ -185,7 +185,7 @@ function renderOWCreatePage() {
           </div>
         </div>
         <!-- Scrollable body -->
-        <div style="flex:1;min-height:0;overflow-y:auto;padding:0 24px 4px">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:14px 24px;border-top:1px solid var(--border);background:rgba(0,0,0,0.12)">
           <div id="questions-builder"></div>
         </div>
         <!-- Fixed footer -->
