@@ -364,6 +364,19 @@ function sessionExpired(session) {
   return !!(session.expiresAt && Date.now() > session.expiresAt);
 }
 
+// Migration helper: sessions created while the site was on GitHub Pages stored
+// their interview link as a putuastra.github.io URL. After the move to the
+// Cloudflare static-asset Worker, rewrite those to the new host so reminder
+// emails never point at the (now disabled) GitHub Pages site. Safe to remove
+// once no legacy github.io links remain.
+const LEGACY_LINK_BASE    = 'https://putuastra.github.io/interview-portal';
+const CANONICAL_LINK_BASE = 'https://interview-portal.putuastrawijaya.workers.dev';
+function migrateLink(url) {
+  return (url && url.startsWith(LEGACY_LINK_BASE))
+    ? CANONICAL_LINK_BASE + url.slice(LEGACY_LINK_BASE.length)
+    : url;
+}
+
 // ── Question Templates ────────────────────────────────────────
 
 const QUESTION_TEMPLATES_DATA = [
@@ -554,9 +567,15 @@ async function sendReminderEmail(session) {
     : null;
   const label    = daysLeft === null ? null : (daysLeft === 1 ? '1 Day' : `${daysLeft} Days`);
 
-  // Build the interview link
-  // We don't know the exact domain here — store it on session if known, else omit
-  const link = session.interviewLink || null;
+  // Build the interview link. Rewrite any legacy github.io link to the new host
+  // and persist it, so this and future reminders use the live URL.
+  let link = session.interviewLink || null;
+  const migrated = migrateLink(link);
+  if (migrated !== link) {
+    link = migrated;
+    session.interviewLink = link;
+    try { await kvPut(`session:${session.token}`, session); } catch (e) {}
+  }
 
   const html = emailWrap('#B01A18', 'CTI ZeusHire — Interview Reminder', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${htmlEsc(session.candidateName)}</strong>,</p>
