@@ -169,7 +169,7 @@ async function renderPage({ session, interview, review, mode, shareToken: tok })
       <div>
         <h1 style="margin:0;font-size:22px">${esc(session.candidateName)}</h1>
         ${session.candidateEmail ? `<p class="text-muted text-sm mt-4">${esc(session.candidateEmail)}</p>` : ''}
-        <p class="text-muted text-sm" style="margin-top:6px">${esc(interview?.title || 'Interview')} &nbsp;·&nbsp; Submitted ${completedDate}</p>
+        ${!isClient ? `<p class="text-muted text-sm" style="margin-top:6px">${esc(interview?.title || 'Interview')} &nbsp;·&nbsp; Submitted ${completedDate}</p>` : ''}
       </div>
       ${!isClient ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
         ${decisionHTML}
