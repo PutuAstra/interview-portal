@@ -185,6 +185,7 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'share' && m === 'POST') return createShareLink(seg[1], request);
   if (seg[0] === 'share'   && seg.length === 2    && m === 'GET')  return getShare(seg[1]);
   if (seg[0] === 'share'   && seg[2] === 'video'  && m === 'GET')  return getShareVideo(seg[1], parseInt(seg[3]));
+  if (seg[0] === 'share'   && seg[2] === 'resume-url' && m === 'GET') return getShareResume(seg[1]);
   if (seg[0] === 'share'   && seg[2] === 'feedback' && m === 'POST') return submitShareFeedback(seg[1], request);
 
   // Interview Script management
@@ -2523,20 +2524,38 @@ async function createShareLink(token, request) {
   requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
-  // Reuse existing share token if already created
-  let shareToken = session.shareToken;
+
+  const body = await request.json().catch(() => ({}));
+  const mode = body.mode === 'client' ? 'client' : 'coworker';
+
+  session.shareTokens = session.shareTokens || {};
+  // Migrate any legacy single shareToken into the coworker slot.
+  if (session.shareToken && !session.shareTokens.coworker) {
+    session.shareTokens.coworker = session.shareToken;
+    await kvPut(`share:${session.shareToken}`, { token, mode: 'coworker' });
+  }
+
+  let shareToken = session.shareTokens[mode];
   if (!shareToken) {
     shareToken = uid();
-    session.shareToken = shareToken;
-    await kvPut(`session:${token}`, session);
-    await kvPut(`share:${shareToken}`, token);
+    session.shareTokens[mode] = shareToken;
+    await kvPut(`share:${shareToken}`, { token, mode });
   }
-  return jsonRes({ shareToken });
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ shareToken, mode });
+}
+
+// Resolve a share record (object {token,mode} or legacy plain token string).
+function parseShareRec(rec) {
+  if (!rec) return null;
+  if (typeof rec === 'string') return { token: rec, mode: 'coworker' };
+  return { token: rec.token, mode: rec.mode || 'coworker' };
 }
 
 async function getShare(shareToken) {
-  const token = await kvGet(`share:${shareToken}`);
-  if (!token) return jsonRes({ error: 'Share link not found' }, 404);
+  const share = parseShareRec(await kvGet(`share:${shareToken}`));
+  if (!share) return jsonRes({ error: 'Share link not found' }, 404);
+  const token = share.token, mode = share.mode;
   const session   = await kvGet(`session:${token}`);
   if (!session)   return jsonRes({ error: 'Session not found' }, 404);
   const interview = await kvGet(`interview:${session.interviewId}`);
@@ -2550,14 +2569,24 @@ async function getShare(shareToken) {
   };
   // Don't expose other reviewers' feedback to a reviewer (avoid biasing them).
   const { reviewerFeedback, ...pubSession } = session;
-  return jsonRes({ session: pubSession, interview, review: review || null, shareToken, branding });
+
+  // CLIENT mode (upsell): videos + résumé only — strip recruiter notes/decision
+  // and the candidate's email so the client can't bypass the recruiter.
+  if (mode === 'client') {
+    delete pubSession.candidateEmail;
+    return jsonRes({ session: pubSession, interview, review: null, mode, shareToken, branding });
+  }
+  // CO-WORKER mode: full review (notes/decision) + feedback form.
+  return jsonRes({ session: pubSession, interview, review: review || null, mode, shareToken, branding });
 }
 
 // Reviewers (via a share link) submit their own rating/recommendation/comments
 // for the recruiter to consider. Appended to the session; multiple reviewers OK.
 async function submitShareFeedback(shareToken, request) {
-  const token = await kvGet(`share:${shareToken}`);
-  if (!token) return jsonRes({ error: 'Share link not found' }, 404);
+  const share = parseShareRec(await kvGet(`share:${shareToken}`));
+  if (!share) return jsonRes({ error: 'Share link not found' }, 404);
+  if (share.mode === 'client') return jsonRes({ error: 'Feedback not enabled for this link' }, 403);
+  const token = share.token;
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
@@ -2575,10 +2604,32 @@ async function submitShareFeedback(shareToken, request) {
   return jsonRes({ ok: true });
 }
 
+async function getShareResume(shareToken) {
+  const share = parseShareRec(await kvGet(`share:${shareToken}`));
+  if (!share) return jsonRes({ error: 'Share link not found' }, 404);
+  const session = await kvGet(`session:${share.token}`);
+  if (!session?.resumeItemId) return jsonRes({ notFound: true });
+  try {
+    const accessToken = await getAccessToken();
+    const res  = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    const item = await res.json();
+    return jsonRes({
+      downloadUrl: item['@microsoft.graph.downloadUrl'] || null,
+      fileName:    session.resumeFileName || 'resume.pdf',
+      ext:         session.resumeExt      || 'pdf',
+    });
+  } catch (e) {
+    return jsonRes({ error: e.message }, 500);
+  }
+}
+
 async function getShareVideo(shareToken, qIndex) {
-  const token = await kvGet(`share:${shareToken}`);
-  if (!token) return jsonRes({ error: 'Share link not found' }, 404);
-  const session = await kvGet(`session:${token}`);
+  const share = parseShareRec(await kvGet(`share:${shareToken}`));
+  if (!share) return jsonRes({ error: 'Share link not found' }, 404);
+  const session = await kvGet(`session:${share.token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const response = session.responses?.find(r => r.questionIndex === qIndex);
   if (!response?.driveItemId) return jsonRes({ error: 'Video not found' }, 404);

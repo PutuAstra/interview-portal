@@ -90,19 +90,41 @@ function applyBranding(b) {
   document.title = name + ' — Candidate Review';
 }
 
-async function renderPage({ session, interview, review, shareToken: tok }) {
+async function renderPage({ session, interview, review, mode, shareToken: tok }) {
   const el = document.getElementById('share-body');
+  const isClient = mode === 'client';
 
-  // ── Fetch all video URLs in parallel ──
-  const responses = session.responses || [];
-  const videoItems = responses.length
-    ? await Promise.all(responses.map(async r => {
-        const q = interview?.questions?.[r.questionIndex];
-        const data = await fetch(`${WORKER_URL}/api/share/${tok}/video/${r.questionIndex}`)
-          .then(res => res.json()).catch(() => ({}));
-        return { q, downloadUrl: data.downloadUrl, questionIndex: r.questionIndex };
-      }))
-    : [];
+  // ── Fetch all video URLs + résumé in parallel ──
+  const responses = (session.responses || []).filter(r => (r.answerType || 'video') === 'video');
+  const [videoItems, resume] = await Promise.all([
+    responses.length
+      ? Promise.all(responses.map(async r => {
+          const q = interview?.questions?.[r.questionIndex];
+          const data = await fetch(`${WORKER_URL}/api/share/${tok}/video/${r.questionIndex}`)
+            .then(res => res.json()).catch(() => ({}));
+          return { q, downloadUrl: data.downloadUrl, questionIndex: r.questionIndex };
+        }))
+      : Promise.resolve([]),
+    fetch(`${WORKER_URL}/api/share/${tok}/resume-url`).then(res => res.json()).catch(() => ({ notFound: true })),
+  ]);
+
+  // ── Résumé viewer (both modes now include it) ──
+  let resumeHTML = '';
+  if (resume && resume.downloadUrl) {
+    const rext = (resume.ext || 'pdf').toLowerCase();
+    const enc = encodeURIComponent(resume.downloadUrl);
+    const viewerSrc = (rext === 'doc' || rext === 'docx')
+      ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
+      : `https://docs.google.com/viewer?url=${enc}&embedded=true`;
+    resumeHTML = `
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0;font-size:14px">Résumé / CV</h3>
+          <a href="${resume.downloadUrl}" target="_blank" class="btn btn-ghost" style="font-size:11px;padding:2px 8px">Download ↗</a>
+        </div>
+        <iframe src="${viewerSrc}" style="width:100%;height:520px;border:1px solid var(--border);border-radius:8px" frameborder="0" allowfullscreen></iframe>
+      </div>`;
+  }
 
   const qScores = review?.questionScores || {};
 
@@ -118,11 +140,11 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
               <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:3px">Q${questionIndex + 1}</div>
               <div style="font-size:12px;color:var(--text);line-height:1.4">${q ? esc(q.text) : 'Question ' + (questionIndex + 1)}</div>
             </div>
-            <div class="score-stars">
+            ${!isClient ? `<div class="score-stars">
               ${Array.from({length:5}, (_,i) =>
                 `<span style="color:${i < (qScores[questionIndex]||0) ? '#f59e0b' : 'var(--border)'}">★</span>`
               ).join('')}
-            </div>
+            </div>` : ''}
           </div>`).join('')}
       </div>`
     : `<div class="empty-state">No recordings available.</div>`;
@@ -149,20 +171,23 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
         ${session.candidateEmail ? `<p class="text-muted text-sm mt-4">${esc(session.candidateEmail)}</p>` : ''}
         <p class="text-muted text-sm" style="margin-top:6px">${esc(interview?.title || 'Interview')} &nbsp;·&nbsp; Submitted ${completedDate}</p>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+      ${!isClient ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
         ${decisionHTML}
         <div style="display:flex;align-items:center;gap:4px">${overallStarsHTML}</div>
-      </div>
+      </div>` : ''}
     </div>
 
     <!-- Videos -->
     <div class="card" style="margin-bottom:20px">
       <h3 style="margin:0 0 14px;font-size:14px">Recorded Answers</h3>
       ${videosHTML}
-      ${videoItems.length && Object.keys(qScores).length
+      ${!isClient && videoItems.length && Object.keys(qScores).length
         ? `<p class="text-muted text-sm" style="margin-top:10px">⭐ Stars shown below each video are the recruiter's per-question scores.</p>`
         : ''}
     </div>
+
+    <!-- Résumé / CV -->
+    ${resumeHTML}
 
     <!-- Review notes -->
     ${review?.notes ? `
@@ -171,7 +196,8 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
       <p style="font-size:13px;color:var(--text-2);line-height:1.6;white-space:pre-wrap">${esc(review.notes)}</p>
     </div>` : ''}
 
-    <!-- Reviewer feedback -->
+    <!-- Reviewer feedback (co-worker review only) -->
+    ${isClient ? '' : `
     <div class="card" id="rv-card" style="margin-top:20px">
       <h3 style="margin:0 0 4px;font-size:14px">Your Feedback</h3>
       <p class="text-muted text-sm" style="margin:0 0 14px">Share your assessment with the recruiting team. The evaluation above is the recruiter's and stays read-only.</p>
@@ -197,7 +223,7 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
         <textarea id="rv-comment" placeholder="Your notes for the recruiter…" style="min-height:96px"></textarea>
       </div>
       <button class="btn btn-primary" id="rv-submit" onclick="submitFeedback()">Submit Feedback</button>
-    </div>
+    </div>`}
   `;
 }
 

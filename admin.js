@@ -1955,18 +1955,42 @@ function copyLink() {
 }
 
 async function shareSession(token) {
+  const modal = document.getElementById('modal-share');
+  modal.dataset.token = token;
+  modal.dataset.mode = 'coworker';
+  document.getElementById('share-email-to').value = '';
+  document.getElementById('share-send-result').innerHTML = '';
+  setShareModeUI('coworker');
+  openModal('modal-share');
+  await generateShareLink();
+}
+
+function setShareMode(mode) {
+  document.getElementById('modal-share').dataset.mode = mode;
+  setShareModeUI(mode);
+  generateShareLink();
+}
+
+function setShareModeUI(mode) {
+  document.getElementById('share-mode-coworker').classList.toggle('active', mode === 'coworker');
+  document.getElementById('share-mode-client').classList.toggle('active', mode === 'client');
+  document.getElementById('share-mode-hint').textContent = mode === 'client'
+    ? 'Client view: video answers + résumé only. No recruiter notes, no feedback form; candidate email hidden.'
+    : 'Co-worker view: full review (notes + per-question scores) plus a feedback form for their input.';
+}
+
+async function generateShareLink() {
+  const modal = document.getElementById('modal-share');
+  const token = modal.dataset.token, mode = modal.dataset.mode || 'coworker';
+  const input = document.getElementById('share-link-input');
+  input.value = 'Generating…';
   try {
-    const { shareToken } = await apiJSON('POST', `/api/session/${token}/share`);
+    const { shareToken } = await apiJSON('POST', `/api/session/${token}/share`, { mode });
     const url = buildShareUrl(shareToken);
-    // Store for use in dialog
-    const modal = document.getElementById('modal-share');
-    modal.dataset.token = token;
     modal.dataset.shareUrl = url;
-    document.getElementById('share-link-input').value = url;
-    document.getElementById('share-email-to').value = '';
-    document.getElementById('share-send-result').innerHTML = '';
-    openModal('modal-share');
+    input.value = url;
   } catch (e) {
+    input.value = '';
     toast('Could not create share link: ' + e.message, 'error');
   }
 }

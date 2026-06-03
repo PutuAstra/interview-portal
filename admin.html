@@ -440,7 +440,15 @@
       <h2>Share Review Link</h2>
       <button class="btn btn-ghost" onclick="closeModal('modal-share')">✕</button>
     </div>
-    <p class="text-muted text-sm mb-16">This link lets hiring managers view the candidate's recorded answers without logging in.</p>
+    <p class="text-muted text-sm mb-16">Generate a link to the candidate's recorded answers — no login required for the recipient.</p>
+    <div class="form-group">
+      <label>Who is this link for?</label>
+      <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px;gap:2px">
+        <button class="invite-mode-btn active" id="share-mode-coworker" onclick="setShareMode('coworker')">Co-worker review</button>
+        <button class="invite-mode-btn" id="share-mode-client" onclick="setShareMode('client')">Client (video + CV)</button>
+      </div>
+      <p id="share-mode-hint" style="font-size:11px;color:var(--muted);margin-top:6px"></p>
+    </div>
     <div class="form-group">
       <label>Share URL</label>
       <div style="display:flex;gap:8px">
@@ -465,6 +473,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250528y"></script>
+<script src="admin.js?v=20250528z"></script>
 </body>
 </html>
