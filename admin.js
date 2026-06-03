@@ -2934,7 +2934,7 @@ function renderBookingLinkCard(link) {
             onclick="openBookingInviteModal('${link.token}')">Invite to Book</button>
           <div style="display:flex;flex-direction:row;gap:4px;justify-content:flex-end;margin-top:auto">
             <button class="btn btn-ghost" style="padding:4px 8px;font-size:15px" title="Edit"
-              onclick="editBookingLink('${link.token}')"><span style="display:inline-block;transform:rotate(45deg)">✏</span></button>
+              onclick="editBookingLink('${link.token}')"><span style="display:inline-block;transform:scaleX(-1) rotate(45deg)">✏</span></button>
             <button class="btn btn-ghost" style="padding:2px 4px;background:transparent;border:none" title="${link.active ? 'Deactivate' : 'Activate'}"
               onclick="toggleBookingLink('${link.token}',${!link.active})">
               ${link.active
