@@ -165,16 +165,16 @@ function renderOWCreatePage() {
       <h2 class="mb-16" style="flex-shrink:0">New One-Way Interview</h2>
       <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0;overflow:hidden">
         <!-- Fixed top -->
-        <div style="flex-shrink:0;padding:24px 24px 0">
-          <div class="form-group">
+        <div style="flex-shrink:0;padding:16px 24px 0">
+          <div class="form-group" style="margin-bottom:10px">
             <label>Interview Title *</label>
             <input type="text" id="new-title" placeholder="e.g. J1 Intern Initial Screening" />
           </div>
-          <div class="form-group">
+          <div class="form-group" style="margin-bottom:10px">
             <label>Description (shown to candidate)</label>
-            <textarea id="new-desc" placeholder="Brief instructions for the candidate..."></textarea>
+            <textarea id="new-desc" placeholder="Brief instructions for the candidate..." style="min-height:52px;height:52px"></textarea>
           </div>
-          <hr class="divider" />
+          <hr class="divider" style="margin:10px 0" />
           <div class="flex justify-between items-center" style="margin-bottom:12px">
             <h3>Questions</h3>
             <div class="flex gap-8">

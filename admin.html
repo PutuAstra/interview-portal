@@ -99,20 +99,20 @@
 <div class="modal-overlay" id="modal-edit">
   <div class="modal" style="max-width:620px;padding:0;overflow:hidden;display:flex;flex-direction:column">
     <!-- Fixed top: header + title + description + Questions toolbar -->
-    <div style="flex-shrink:0;padding:24px 28px 0">
-      <div class="modal-header">
+    <div style="flex-shrink:0;padding:16px 28px 0">
+      <div class="modal-header" style="margin-bottom:14px">
         <h2>Edit Interview</h2>
         <button class="btn btn-ghost" onclick="closeModal('modal-edit')">✕</button>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:10px">
         <label>Interview Title *</label>
         <input type="text" id="edit-title" placeholder="e.g. J1 Intern Initial Screening" />
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:10px">
         <label>Description (shown to candidate)</label>
-        <textarea id="edit-desc" placeholder="Brief instructions for the candidate..."></textarea>
+        <textarea id="edit-desc" placeholder="Brief instructions for the candidate..." style="min-height:52px;height:52px"></textarea>
       </div>
-      <hr class="divider" />
+      <hr class="divider" style="margin:10px 0" />
       <div class="flex justify-between items-center" style="margin-bottom:12px">
         <h3>Questions</h3>
         <div class="flex gap-8">
@@ -465,6 +465,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250528u"></script>
+<script src="admin.js?v=20250528v"></script>
 </body>
 </html>
