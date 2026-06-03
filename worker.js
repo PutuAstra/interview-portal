@@ -1897,9 +1897,12 @@ Respond with ONLY a valid JSON object — no commentary before or after:
   "overall": {
     "stars": 4,
     "level": "Good",
+    "recommendation": "consider",
     "summary": "2–3 sentence professional summary of the candidate's overall English proficiency."
   }
-}`;
+}
+
+For "recommendation", output exactly one of: "strong" (clear move-forward), "consider" (borderline), or "weak" (likely not a fit) — based on overall English proficiency and the substance of the answers.`;
 
   // Use Anthropic Claude for analysis
   // Strip ALL non-printable characters from the key (handles invisible paste artifacts)
@@ -1952,6 +1955,17 @@ Respond with ONLY a valid JSON object — no commentary before or after:
 
   // Cache in KV
   await kvPut(`session:${token}:analysis`, analysis);
+
+  // Persist a compact AI score on the SESSION so the candidate list can rank/sort
+  // and badge candidates without re-opening each analysis blob.
+  try {
+    session.aiScore          = analysis.overall?.stars ?? null;
+    session.aiLevel          = analysis.overall?.level || '';
+    session.aiRecommendation = analysis.overall?.recommendation || '';
+    session.aiAnalyzedAt     = analysis.analyzedAt;
+    await kvPut(`session:${token}`, session);
+  } catch (e) {}
+
   return jsonRes(analysis);
 }
 

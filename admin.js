@@ -1612,6 +1612,16 @@ function filterAndRenderSessions() {
       const ta = a.createdAt || 0, tb = b.createdAt || 0;
       return _sessionSortDir === 'desc' ? tb - ta : ta - tb;
     });
+  } else if (_sessionSortCol === 'ai') {
+    list.sort((a, b) => {
+      // Unscored candidates always sink to the bottom regardless of direction.
+      const sa = a.aiScore == null ? -1 : a.aiScore;
+      const sb = b.aiScore == null ? -1 : b.aiScore;
+      if (sa === -1 && sb === -1) return 0;
+      if (sa === -1) return 1;
+      if (sb === -1) return -1;
+      return _sessionSortDir === 'desc' ? sb - sa : sa - sb;
+    });
   }
 
   // Sync sort indicators
@@ -1630,7 +1640,18 @@ function filterAndRenderSessions() {
     el.innerHTML = `<div class="empty-state">${_allSessions.length ? 'No candidates match your filter.' : 'No candidates yet. Use the Invite tab to generate a link.'}</div>`;
     return;
   }
-  el.innerHTML = list.map((s, i) => renderSessionRow(s, i + 1)).join('');
+
+  // AI ranking toolbar — shown once there are completed candidates to score/rank.
+  const completed   = _allSessions.filter(s => s.status === 'completed' && (s.responses || []).length);
+  const unscored    = completed.filter(s => s.aiScore == null).length;
+  const aiArrow     = _sessionSortCol === 'ai' ? (_sessionSortDir === 'desc' ? '↓' : '↑') : '⇅';
+  const toolbar = completed.length ? `
+    <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" style="font-size:12px" onclick="sortByAI()">🤖 Sort by AI score <span>${aiArrow}</span></button>
+      <button class="btn btn-outline" style="font-size:12px" id="score-all-btn" onclick="scoreAllCandidates()"${unscored ? '' : ' disabled'}>${unscored ? `🤖 Score all (${unscored})` : '✓ All scored'}</button>
+    </div>` : '';
+
+  el.innerHTML = toolbar + list.map((s, i) => renderSessionRow(s, i + 1)).join('');
   // Lazy-load profile photos for candidates who uploaded one
   list.filter(s => s.profilePhotoItemId).forEach(s => loadAvatarPhoto(s.token));
 }
@@ -1649,6 +1670,38 @@ async function loadAvatarPhoto(token) {
       el.innerHTML = `<img src="${data.downloadUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
     }
   } catch { /* silently skip */ }
+}
+
+function sortByAI() {
+  if (_sessionSortCol === 'ai') {
+    _sessionSortDir = _sessionSortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _sessionSortCol = 'ai'; _sessionSortDir = 'desc';
+  }
+  filterAndRenderSessions();
+}
+
+// Bulk-score every completed, not-yet-analyzed candidate, then rank by AI score.
+// Sequential on purpose — each analysis transcribes + calls Claude (~20–40s) and we
+// don't want to blow Anthropic/Groq rate limits or the Worker's subrequest cap.
+async function scoreAllCandidates() {
+  const targets = _allSessions.filter(s =>
+    s.status === 'completed' && (s.responses || []).length && s.aiScore == null);
+  if (!targets.length) { toast('All candidates already scored', 'success'); return; }
+  if (!confirm(`Score ${targets.length} candidate${targets.length !== 1 ? 's' : ''} with AI? This transcribes + analyzes each (~20–40s each).`)) return;
+
+  const btn = document.getElementById('score-all-btn');
+  if (btn) btn.disabled = true;
+  let done = 0, failed = 0;
+  for (const s of targets) {
+    if (btn) btn.textContent = `🤖 Scoring ${done + failed + 1}/${targets.length}…`;
+    try { await apiJSON('POST', `/api/session/${s.token}/analyze`); done++; }
+    catch (e) { failed++; }
+  }
+  toast(`Scored ${done} candidate${done !== 1 ? 's' : ''}${failed ? `, ${failed} failed` : ''}`, failed ? 'error' : 'success');
+  await loadSessions(currentInterviewId);
+  _sessionSortCol = 'ai'; _sessionSortDir = 'desc';
+  filterAndRenderSessions();
 }
 
 const DECISION_STYLE = {
@@ -1685,6 +1738,16 @@ function integrityChip(score) {
   return `<span title="Proctoring integrity score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${color}55;color:${color};background:${color}14;white-space:nowrap">🛡 ${score} · ${label}</span>`;
 }
 
+// AI fit-score chip — populated after English-proficiency analysis runs.
+const AI_REC_LABEL = { strong: 'Strong', consider: 'Consider', weak: 'Weak' };
+function aiChip(s) {
+  if (s.aiScore == null) return '';
+  const rec = s.aiRecommendation || '';
+  const color = rec === 'strong' ? '#16a34a' : rec === 'weak' ? '#dc2626' : '#d97706';
+  const recTxt = AI_REC_LABEL[rec] ? ' · ' + AI_REC_LABEL[rec] : '';
+  return `<span title="AI fit score (English proficiency)" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${color}55;color:${color};background:${color}14;white-space:nowrap">🤖 ${s.aiScore}/5${recTxt}</span>`;
+}
+
 function renderSessionRow(s, num) {
   const invitedDate = s.createdAt
     ? new Date(s.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1718,9 +1781,10 @@ function renderSessionRow(s, num) {
     : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${jsStr(s.candidateName)}')">Review</button>`;
 
-  // Integrity chip — only meaningful once they've actually taken the interview
+  // Integrity + AI-score chips — only meaningful once they've taken the interview
   const showIntegrity = (s.status === 'completed' || (s.responses && s.responses.length));
-  const integrityHTML = showIntegrity ? ` ${integrityChip(integrityScore(s.proctoringLog))}` : '';
+  const integrityHTML = showIntegrity ? `${integrityChip(integrityScore(s.proctoringLog))} ` : '';
+  const aiHTML = aiChip(s);
 
   return `
     <div class="session-row">
@@ -1730,7 +1794,7 @@ function renderSessionRow(s, num) {
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
           <div class="text-muted" style="font-size:11px;margin-top:1px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
-          <div style="margin-top:3px">${integrityHTML}</div>
+          <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">${integrityHTML}${aiHTML}</div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;justify-content:center">
