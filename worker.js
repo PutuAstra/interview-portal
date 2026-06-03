@@ -20,16 +20,27 @@
 
 const CTI_LOGO_URL = 'https://putuastra.github.io/interview-portal/logo.png';
 
-// Restrict browser access to the app's own origin instead of "*". The admin and
-// candidate pages are both served from GitHub Pages. If you add a custom domain,
-// set ALLOWED_ORIGIN to it (or add per-request reflection over an allowlist).
-const ALLOWED_ORIGIN = 'https://putuastra.github.io';
-const CORS = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+// Restrict browser access to the app's own origins instead of "*". The request's
+// Origin is reflected back ONLY if it's in this allowlist (otherwise the default,
+// first entry, is sent and the browser blocks the cross-origin read). Keep both the
+// GitHub Pages and Cloudflare Pages origins here during the migration; once GitHub
+// Pages is disabled, drop the github.io entry.
+const ALLOWED_ORIGINS = [
+  'https://putuastra.github.io',
+  'https://interview-portal.pages.dev',
+];
+const CORS_BASE = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
   'Vary': 'Origin',
 };
+// Default headers used by jsonRes; handle() overrides the origin per-request.
+const CORS = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS[0], ...CORS_BASE };
+
+function pickOrigin(request) {
+  const origin = request.headers.get('Origin');
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
 
 addEventListener('fetch', event => {
   event.respondWith(handle(event.request));
@@ -39,9 +50,16 @@ addEventListener('scheduled', event => {
   event.waitUntil(handleScheduled());
 });
 
+function applyOrigin(res, origin) {
+  res.headers.set('Access-Control-Allow-Origin', origin);
+  return res;
+}
+
 async function handle(request) {
+  const allowOrigin = pickOrigin(request);
+
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS });
+    return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowOrigin, ...CORS_BASE } });
   }
 
   // Brute-force throttle: applies ONLY to requests that carry an X-Admin-Key header.
@@ -49,7 +67,7 @@ async function handle(request) {
   if (providedKey !== null) {
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
     if (await authFailCount(ip) >= AUTH_FAIL_LIMIT) {
-      return jsonRes({ error: 'Too many failed attempts. Please try again later.' }, 429);
+      return applyOrigin(jsonRes({ error: 'Too many failed attempts. Please try again later.' }, 429), allowOrigin);
     }
     if (!constTimeEq(providedKey, ADMIN_KEY)) {
       await recordAuthFail(ip);
@@ -57,15 +75,20 @@ async function handle(request) {
     }
   }
 
+  let res;
   try {
-    return await route(request);
+    res = await route(request);
   } catch (e) {
-    if (e.message === 'Unauthorized') return jsonRes({ error: 'Unauthorized' }, 401);
-    // Log the real error server-side; return a generic message so internal
-    // details / stack traces never reach the client.
-    console.error('Worker unhandled error:', e.message, e.stack || '');
-    return jsonRes({ error: 'Internal server error' }, 500);
+    if (e.message === 'Unauthorized') {
+      res = jsonRes({ error: 'Unauthorized' }, 401);
+    } else {
+      // Log the real error server-side; return a generic message so internal
+      // details / stack traces never reach the client.
+      console.error('Worker unhandled error:', e.message, e.stack || '');
+      res = jsonRes({ error: 'Internal server error' }, 500);
+    }
   }
+  return applyOrigin(res, allowOrigin);
 }
 
 // ── Router ────────────────────────────────────────────────────
