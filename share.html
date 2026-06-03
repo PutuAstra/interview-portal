@@ -23,6 +23,11 @@
     .decision-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
     .decision-fwd { background: rgba(22,163,74,0.12); color: #16a34a; border: 1px solid rgba(22,163,74,0.25); }
     .decision-rej { background: rgba(220,38,38,0.10); color: #dc2626; border: 1px solid rgba(220,38,38,0.2); }
+    /* Semantic hover + selected colors for the recommendation buttons */
+    .rv-rec { transition: background 0.12s, border-color 0.12s, color 0.12s; }
+    .rv-rec-fwd:hover,   .rv-rec-fwd.sel   { background: #16a34a; border-color: #16a34a; color: #fff; }
+    .rv-rec-maybe:hover, .rv-rec-maybe.sel { background: #d97706; border-color: #d97706; color: #fff; }
+    .rv-rec-pass:hover,  .rv-rec-pass.sel  { background: #dc2626; border-color: #dc2626; color: #fff; }
   </style>
 </head>
 <body>
@@ -182,8 +187,8 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
       <div class="form-group" style="margin-bottom:12px">
         <label>Recommendation</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${[['move_forward','✓ Move forward'],['maybe','Maybe'],['pass','✗ Don\'t move forward']].map(([v,l]) =>
-            `<button type="button" class="btn btn-outline rv-rec" data-v="${v}" onclick="setRvRec('${v}')">${l}</button>`).join('')}
+          ${[['move_forward','✓ Move forward','rv-rec-fwd'],['maybe','Maybe','rv-rec-maybe'],['pass','✗ Don\'t move forward','rv-rec-pass']].map(([v,l,c]) =>
+            `<button type="button" class="btn btn-outline rv-rec ${c}" data-v="${v}" onclick="setRvRec('${v}')">${l}</button>`).join('')}
         </div>
       </div>
       <div class="form-group" style="margin-bottom:14px">
@@ -202,11 +207,7 @@ function setRvStars(n) {
 }
 function setRvRec(v) {
   _rvRec = v;
-  document.querySelectorAll('.rv-rec').forEach(b => {
-    const on = b.dataset.v === v;
-    b.classList.toggle('btn-primary', on);
-    b.classList.toggle('btn-outline', !on);
-  });
+  document.querySelectorAll('.rv-rec').forEach(b => b.classList.toggle('sel', b.dataset.v === v));
 }
 async function submitFeedback() {
   const name    = (document.getElementById('rv-name').value || '').trim();
