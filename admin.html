@@ -97,30 +97,37 @@
 
 <!-- Modal: Edit Interview -->
 <div class="modal-overlay" id="modal-edit">
-  <div class="modal" style="max-width:620px">
-    <div class="modal-header">
-      <h2>Edit Interview</h2>
-      <button class="btn btn-ghost" onclick="closeModal('modal-edit')">✕</button>
-    </div>
-    <div class="form-group">
-      <label>Interview Title *</label>
-      <input type="text" id="edit-title" placeholder="e.g. J1 Intern Initial Screening" />
-    </div>
-    <div class="form-group">
-      <label>Description (shown to candidate)</label>
-      <textarea id="edit-desc" placeholder="Brief instructions for the candidate..."></textarea>
-    </div>
-    <hr class="divider" />
-    <div class="flex justify-between items-center" style="position:sticky;top:-1px;background:var(--card);z-index:3;padding:8px 0 12px">
-      <h3>Questions</h3>
-      <div class="flex gap-8">
-        <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('edit')">✨ AI Generate</button>
-        <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('edit')">📋 Templates</button>
-        <button class="btn btn-outline" onclick="addEditQuestion()">+ Add Question</button>
+  <div class="modal" style="max-width:620px;padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <!-- Fixed top: header + title + description + Questions toolbar -->
+    <div style="flex-shrink:0;padding:24px 28px 0">
+      <div class="modal-header">
+        <h2>Edit Interview</h2>
+        <button class="btn btn-ghost" onclick="closeModal('modal-edit')">✕</button>
+      </div>
+      <div class="form-group">
+        <label>Interview Title *</label>
+        <input type="text" id="edit-title" placeholder="e.g. J1 Intern Initial Screening" />
+      </div>
+      <div class="form-group">
+        <label>Description (shown to candidate)</label>
+        <textarea id="edit-desc" placeholder="Brief instructions for the candidate..."></textarea>
+      </div>
+      <hr class="divider" />
+      <div class="flex justify-between items-center" style="margin-bottom:12px">
+        <h3>Questions</h3>
+        <div class="flex gap-8">
+          <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('edit')">✨ AI Generate</button>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('edit')">📋 Templates</button>
+          <button class="btn btn-outline" onclick="addEditQuestion()">+ Add Question</button>
+        </div>
       </div>
     </div>
-    <div id="edit-questions-builder"></div>
-    <div class="flex gap-8" style="position:sticky;bottom:-1px;background:var(--card);z-index:3;padding:12px 0;margin-top:16px;border-top:1px solid var(--border)">
+    <!-- Scrollable body: only the questions -->
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:0 28px 4px">
+      <div id="edit-questions-builder"></div>
+    </div>
+    <!-- Fixed footer -->
+    <div class="flex gap-8" style="flex-shrink:0;padding:14px 28px;border-top:1px solid var(--border)">
       <button class="btn btn-primary" onclick="submitEditInterview()">Save Changes</button>
       <button class="btn btn-outline" onclick="closeModal('modal-edit')">Cancel</button>
     </div>
@@ -458,6 +465,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250528t"></script>
+<script src="admin.js?v=20250528u"></script>
 </body>
 </html>

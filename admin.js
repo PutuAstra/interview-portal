@@ -161,28 +161,35 @@ function renderOWCreatePage() {
   questions = [{ text: '', answerType: 'video', duration: 120, thinkTime: 0, maxRetakes: 0 }];
   const main = document.getElementById('admin-main');
   main.innerHTML = `
-    <div style="max-width:680px">
-      <h2 class="mb-16">New One-Way Interview</h2>
-      <div class="card">
-        <div class="form-group">
-          <label>Interview Title *</label>
-          <input type="text" id="new-title" placeholder="e.g. J1 Intern Initial Screening" />
-        </div>
-        <div class="form-group">
-          <label>Description (shown to candidate)</label>
-          <textarea id="new-desc" placeholder="Brief instructions for the candidate..."></textarea>
-        </div>
-        <hr class="divider" />
-        <div class="flex justify-between items-center" style="position:sticky;top:-1px;background:var(--card);z-index:3;padding:8px 0 12px">
-          <h3>Questions</h3>
-          <div class="flex gap-8">
-            <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('create')">✨ AI Generate</button>
-            <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('create')">📋 Templates</button>
-            <button class="btn btn-outline" onclick="addQuestion()">+ Add Question</button>
+    <div style="max-width:680px;width:100%;flex:1;min-height:0;display:flex;flex-direction:column">
+      <h2 class="mb-16" style="flex-shrink:0">New One-Way Interview</h2>
+      <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0;overflow:hidden">
+        <!-- Fixed top -->
+        <div style="flex-shrink:0;padding:24px 24px 0">
+          <div class="form-group">
+            <label>Interview Title *</label>
+            <input type="text" id="new-title" placeholder="e.g. J1 Intern Initial Screening" />
+          </div>
+          <div class="form-group">
+            <label>Description (shown to candidate)</label>
+            <textarea id="new-desc" placeholder="Brief instructions for the candidate..."></textarea>
+          </div>
+          <hr class="divider" />
+          <div class="flex justify-between items-center" style="margin-bottom:12px">
+            <h3>Questions</h3>
+            <div class="flex gap-8">
+              <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('create')">✨ AI Generate</button>
+              <button class="btn btn-ghost" style="font-size:12px" onclick="openTemplateModal('create')">📋 Templates</button>
+              <button class="btn btn-outline" onclick="addQuestion()">+ Add Question</button>
+            </div>
           </div>
         </div>
-        <div id="questions-builder"></div>
-        <div class="flex gap-8" style="position:sticky;bottom:-1px;background:var(--card);z-index:3;padding:12px 0;margin-top:16px;border-top:1px solid var(--border)">
+        <!-- Scrollable body -->
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:0 24px 4px">
+          <div id="questions-builder"></div>
+        </div>
+        <!-- Fixed footer -->
+        <div class="flex gap-8" style="flex-shrink:0;padding:14px 24px;border-top:1px solid var(--border)">
           <button class="btn btn-primary" onclick="submitInterview()">Create Interview</button>
           <button class="btn btn-outline" onclick="gotoPage('ow-list')">Cancel</button>
         </div>
