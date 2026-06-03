@@ -254,7 +254,7 @@ function renderInterviewCard(interview) {
         <div class="flex gap-8 items-center">
           <button class="btn btn-primary" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'candidates')">Candidates</button>
           <button class="btn btn-outline" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'invite')">Invite</button>
-          <button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Edit" onclick="openEditInterview('${interview.id}')"><span style="display:inline-block;transform:rotate(45deg)">✏</span></button>
+          <button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Edit" onclick="openEditInterview('${interview.id}')"><span style="display:inline-block;transform:scaleX(-1) rotate(45deg)">✏</span></button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:14px" title="Duplicate" onclick="cloneInterview('${interview.id}')">⧉</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:16px" title="Delete" onclick="deleteInterview('${interview.id}')">🗑</button>
         </div>
