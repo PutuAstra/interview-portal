@@ -1768,15 +1768,16 @@ async function generateLink() {
   }
 }
 
+// Build a URL to a sibling page (take/share/book) regardless of whether the admin
+// page is served as /admin (extension-less, on Cloudflare) or /admin.html. Strip
+// the current page's last path segment to get the directory, then append the file.
+function siteFileUrl(file, query) {
+  const dir = window.location.pathname.replace(/[^/]*$/, ''); // "/admin" -> "/", "/x/admin.html" -> "/x/"
+  return `${window.location.origin}${dir}${file}${query}`;
+}
+
 function buildTakeUrl(token) {
-  const origin = window.location.origin;
-  let path = window.location.pathname; // e.g. /j1-dashboard/interview/admin.html
-  if (path.includes('admin.html')) {
-    path = path.replace('admin.html', 'take.html');
-  } else {
-    path = path.replace(/\/?$/, '/') + 'take.html';
-  }
-  return `${origin}${path}?token=${token}`;
+  return siteFileUrl('take.html', `?token=${token}`);
 }
 
 function copySessionLink(token) {
@@ -1837,11 +1838,7 @@ async function sendShareEmailFromModal() {
 }
 
 function buildShareUrl(shareToken) {
-  const origin = window.location.origin;
-  let path = window.location.pathname;
-  if (path.includes('admin.html')) path = path.replace('admin.html', 'share.html');
-  else path = path.replace(/\/?$/, '/') + 'share.html';
-  return `${origin}${path}?s=${shareToken}`;
+  return siteFileUrl('share.html', `?s=${shareToken}`);
 }
 
 async function sendLinkEmail(token, link, email) {
@@ -2889,11 +2886,7 @@ async function loadBookingLinks() {
 }
 
 function buildBookUrl(token) {
-  const origin = window.location.origin;
-  let path = window.location.pathname;
-  if (path.includes('admin.html')) path = path.replace('admin.html', 'book.html');
-  else path = path.replace(/\/?$/, '/') + 'book.html';
-  return `${origin}${path}?t=${token}`;
+  return siteFileUrl('book.html', `?t=${token}`);
 }
 
 function renderBookingLinkCard(link) {
