@@ -1860,6 +1860,16 @@ function renderSessionRow(s, num) {
   const fb = s.reviewerFeedback || [];
   const seenAt = s.feedbackSeenAt || 0;
   const unseen = fb.filter(f => (f.submittedAt || 0) > seenAt).length;
+  // Auto-scored MCQ assessment chip (correct / total scorable).
+  const mcqScorable = (s.responses || []).filter(r => r.answerType === 'mcq' && (r.correct === true || r.correct === false));
+  let mcqHTML = '';
+  if (mcqScorable.length) {
+    const correct = mcqScorable.filter(r => r.correct === true).length;
+    const p = correct / mcqScorable.length;
+    const c = p >= 0.8 ? '#16a34a' : p >= 0.5 ? '#d97706' : '#dc2626';
+    mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length}</span>`;
+  }
+
   let fbHTML = '';
   if (fb.length) {
     const onclick = `onclick="event.stopPropagation();openReview('${s.token}','${jsStr(s.candidateName)}')"`;
@@ -1876,7 +1886,7 @@ function renderSessionRow(s, num) {
         <div style="min-width:0">
           <div style="display:flex;align-items:center;gap:8px;min-width:0">
             <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</span>
-            ${(integrityHTML || aiHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center">${integrityHTML}${aiHTML}${fbHTML}</span>` : ''}
+            ${(integrityHTML || aiHTML || mcqHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center">${integrityHTML}${aiHTML}${mcqHTML}${fbHTML}</span>` : ''}
           </div>
           <div class="text-muted" style="font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
         </div>
@@ -2350,9 +2360,21 @@ async function openReview(token, candidateName) {
         }))
       : [];
 
+    // ── Auto-scored MCQ assessment summary (correct / total scorable) ──
+    const scorable = writtenResponses.filter(r => r.answerType === 'mcq' && (r.correct === true || r.correct === false));
+    const mcqCorrect = scorable.filter(r => r.correct === true).length;
+    const pct = scorable.length ? Math.round((mcqCorrect / scorable.length) * 100) : 0;
+    const scoreColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
+    const assessmentScoreHTML = scorable.length ? `
+      <div style="display:flex;align-items:center;gap:10px;margin:${videoItems.length ? '16px' : '0'} 0 10px;padding:10px 14px;border:1px solid ${scoreColor}55;background:${scoreColor}14;border-radius:8px">
+        <span style="font-size:18px;font-weight:800;color:${scoreColor}">${mcqCorrect}/${scorable.length}</span>
+        <span style="font-size:12px;color:var(--text-2)">multiple-choice correct · ${pct}%</span>
+      </div>` : '';
+
     // ── Written / MCQ answers ──
     const writtenHTML = writtenResponses.length ? `
-      <div style="display:flex;flex-direction:column;gap:10px;margin-top:${videoItems.length ? '16px' : '0'}">
+      ${assessmentScoreHTML}
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:${(videoItems.length && !scorable.length) ? '16px' : '0'}">
         ${writtenResponses.map(r => {
           const q = interview?.questions?.[r.questionIndex];
           const head = `<div style="font-size:11px;font-weight:700;color:var(--accent)">Q${r.questionIndex + 1} · Assessment · ${r.answerType === 'mcq' ? '☑️ Multiple choice' : '✍️ Text'}</div>
