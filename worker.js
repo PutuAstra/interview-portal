@@ -26,8 +26,9 @@ const CTI_LOGO_URL = 'https://putuastra.github.io/interview-portal/logo.png';
 // GitHub Pages and Cloudflare Pages origins here during the migration; once GitHub
 // Pages is disabled, drop the github.io entry.
 const ALLOWED_ORIGINS = [
-  'https://putuastra.github.io',
-  'https://interview-portal.pages.dev',
+  'https://putuastra.github.io',                          // legacy GitHub Pages (drop after migration)
+  'https://interview-portal.putuastrawijaya.workers.dev', // Cloudflare static-asset Worker (new home)
+  'https://interview-portal.pages.dev',                   // (only if a Pages project is used instead)
 ];
 const CORS_BASE = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
