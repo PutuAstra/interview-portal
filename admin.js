@@ -158,7 +158,7 @@ async function renderOWListPage() {
 // ── One-Way: Create page ──────────────────────────────────────
 
 function renderOWCreatePage() {
-  questions = [{ text: '', duration: 120, thinkTime: 0, maxRetakes: 0 }];
+  questions = [{ text: '', answerType: 'video', duration: 120, thinkTime: 0, maxRetakes: 0 }];
   const main = document.getElementById('admin-main');
   main.innerHTML = `
     <div style="max-width:680px">
@@ -173,7 +173,7 @@ function renderOWCreatePage() {
           <textarea id="new-desc" placeholder="Brief instructions for the candidate..."></textarea>
         </div>
         <hr class="divider" />
-        <div class="flex justify-between items-center mb-16">
+        <div class="flex justify-between items-center" style="position:sticky;top:-1px;background:var(--card);z-index:3;padding:8px 0 12px">
           <h3>Questions</h3>
           <div class="flex gap-8">
             <button class="btn btn-ghost" style="font-size:12px" onclick="openAIGenModal('create')">✨ AI Generate</button>
@@ -182,7 +182,7 @@ function renderOWCreatePage() {
           </div>
         </div>
         <div id="questions-builder"></div>
-        <div class="mt-24 flex gap-8">
+        <div class="flex gap-8" style="position:sticky;bottom:-1px;background:var(--card);z-index:3;padding:12px 0;margin-top:16px;border-top:1px solid var(--border)">
           <button class="btn btn-primary" onclick="submitInterview()">Create Interview</button>
           <button class="btn btn-outline" onclick="gotoPage('ow-list')">Cancel</button>
         </div>
