@@ -426,6 +426,11 @@ tr:hover td { background: var(--card-2); }
   width: 100%;
   max-width: 540px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  /* Scroll internally when content (e.g. many questions) exceeds the viewport.
+     Full-screen modals override overflow:hidden inline and manage their own scroll. */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
 }
 
 .modal-header {
