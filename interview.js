@@ -31,6 +31,8 @@ let lastSegMask = null;   // stores latest segmentation mask for use in draw loo
 let tmpCanvas = null;     // reusable off-screen canvas (avoid creating per-frame)
 let tmpCtx = null;
 let canvasStream = null;
+let micStream = null;       // recording mic — acquired just before recording, released during reads
+let micAcquiring = null;    // in-flight acquireMic() promise (dedupe concurrent calls)
 let micAnalyser = null;
 let micMeterFrameId = null;
 let setupAudioCtx = null;
@@ -849,6 +851,46 @@ function primeTTS() {
   } catch (e) {}
 }
 
+// Re-acquire the microphone just before recording. We deliberately keep the mic
+// RELEASED while a question is read aloud, because an open mic forces the phone
+// into "call mode" — which routes the question audio to a quiet channel the
+// hardware volume buttons don't control. Permission is already granted at setup,
+// so this does not re-prompt. Deduped via micAcquiring so warming up during the
+// countdown and awaiting at record start share one getUserMedia call.
+async function acquireMic() {
+  if (micStream && micStream.getAudioTracks().some(t => t.readyState === 'live')) return;
+  if (micAcquiring) return micAcquiring;
+  micAcquiring = (async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+      });
+      micStream = s;
+      if (canvasStream) {
+        canvasStream.getAudioTracks().forEach(t => { try { canvasStream.removeTrack(t); } catch (e) {} });
+        s.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+      }
+    } catch (e) {
+      micStream = null;
+    } finally {
+      micAcquiring = null;
+    }
+  })();
+  return micAcquiring;
+}
+
+// Release the recording mic so the page leaves "call mode" → the next question
+// read plays at full media volume on mobile (and the volume buttons work).
+function releaseMic() {
+  if (canvasStream) {
+    canvasStream.getAudioTracks().forEach(t => { try { t.stop(); canvasStream.removeTrack(t); } catch (e) {} });
+  }
+  if (micStream) {
+    micStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+    micStream = null;
+  }
+}
+
 function continueToInterview() {
   primeTTS(); // unlock TTS within this user gesture so question reads aren't dropped on mobile
   // Stop mic meter
@@ -862,13 +904,16 @@ function continueToInterview() {
   // canvases that are actively rendered in the page compositor. Off-screen
   // or detached canvases produce no frames regardless of JS draw calls.
   canvasStream = bgCanvas.captureStream(30);
-  mediaStream.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+  // Do NOT attach the mic here. Release the setup mic so the first question read
+  // plays at full volume; the mic is re-acquired in beginCountdown/startRecording.
+  mediaStream.getAudioTracks().forEach(t => { try { t.stop(); } catch (e) {} });
 
   showQuestion(0);
 }
 
 function showQuestion(index) {
   currentQ = index;
+  releaseMic(); // mic off during think-time + question read → read plays at full volume on mobile
   requestWakeLock(); // keep the phone screen on through think time + recording
   const q = interview.questions[index];
   const total = interview.questions.length;
@@ -946,6 +991,7 @@ function startCountdown() {
 
   // ── Step 3: 3-2-1 countdown → start recording ────────────────
   function beginCountdown() {
+    acquireMic(); // warm up the mic during the 3-2-1 so recording starts instantly
     let count = 3;
     showOverlay(`
       <div class="countdown-overlay" id="countdown-overlay">
@@ -1120,8 +1166,9 @@ function logProctoring(type, detail) {
   proctoringLog.push({ type, questionIndex: currentQ, timestamp: Date.now(), detail: detail || null });
 }
 
-function startRecording() {
+async function startRecording() {
   const q = interview.questions[currentQ];
+  await acquireMic(); // guarantee the mic is live & attached to canvasStream before capturing
   attachProctoringListeners();
   chunks = [];
 
@@ -1342,6 +1389,7 @@ function stopStream() {
   blurMaskCanvas = null;
   if (bgVid) { bgVid.srcObject = null; bgVid.remove(); bgVid = null; }
   mediaStream?.getTracks().forEach(t => t.stop());
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
 }
 
 function formatTime(seconds) {
