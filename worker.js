@@ -111,7 +111,7 @@ async function route(request) {
     if (m === 'POST') return createSession(seg[1], request);
   }
   if (seg[0] === 'session' && seg.length === 2 && m === 'GET') {
-    return getSession(seg[1]);
+    return getSession(seg[1], request);
   }
   if (seg[0] === 'session' && seg.length === 2 && m === 'DELETE') {
     return deleteSession(seg[1], request);
@@ -786,7 +786,7 @@ async function listSessions(interviewId, request) {
   return jsonRes(sessions.filter(Boolean));
 }
 
-async function getSession(token) {
+async function getSession(token, request) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const interview = await kvGet(`interview:${session.interviewId}`);
@@ -797,10 +797,18 @@ async function getSession(token) {
     brandWelcomeMsg: settings.brandWelcomeMsg || '',
     brandLogoUrl:    settings.brandLogoUrl    || '',
   };
-  // This endpoint is PUBLIC (token-only) and consumed by the candidate's browser.
-  // Expose ONLY the fields the candidate page needs — never recruiter-private data
-  // (candidateEmail, responses/driveItemIds, reviewDecision/Stars/notes, AI analysis,
-  // proctoring logs, reminder schedule, interviewLink, etc.).
+
+  // Admins (valid X-Admin-Key) get the FULL session — the review modal needs
+  // responses, review decision, analysis, etc.
+  const isAdmin = request && constTimeEq(request.headers.get('X-Admin-Key'), ADMIN_KEY);
+  if (isAdmin) {
+    return jsonRes({ session, interview, branding });
+  }
+
+  // PUBLIC (token-only, candidate browser): expose ONLY the fields the candidate
+  // page needs — never recruiter-private data (candidateEmail, responses/driveItemIds,
+  // reviewDecision/Stars/notes, AI analysis, proctoring logs, reminder schedule,
+  // interviewLink, etc.).
   const publicSession = {
     token:              session.token,
     status:             session.status,
