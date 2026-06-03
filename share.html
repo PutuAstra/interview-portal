@@ -25,9 +25,10 @@
     .decision-rej { background: rgba(220,38,38,0.10); color: #dc2626; border: 1px solid rgba(220,38,38,0.2); }
     /* Semantic hover + selected colors for the recommendation buttons */
     .rv-rec { transition: background 0.12s, border-color 0.12s, color 0.12s; }
-    .rv-rec-fwd:hover,   .rv-rec-fwd.sel   { background: #16a34a; border-color: #16a34a; color: #fff; }
-    .rv-rec-maybe:hover, .rv-rec-maybe.sel { background: #d97706; border-color: #d97706; color: #fff; }
-    .rv-rec-pass:hover,  .rv-rec-pass.sel  { background: #dc2626; border-color: #dc2626; color: #fff; }
+    /* .btn. prefix raises specificity above base .btn-outline:hover:not(:disabled) */
+    .btn.rv-rec-fwd:hover,   .btn.rv-rec-fwd.sel   { background: #16a34a; border-color: #16a34a; color: #fff; }
+    .btn.rv-rec-maybe:hover, .btn.rv-rec-maybe.sel { background: #d97706; border-color: #d97706; color: #fff; }
+    .btn.rv-rec-pass:hover,  .btn.rv-rec-pass.sel  { background: #dc2626; border-color: #dc2626; color: #fff; }
   </style>
 </head>
 <body>
