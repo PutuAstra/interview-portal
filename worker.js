@@ -179,6 +179,7 @@ async function route(request) {
   // One-way: recruiter review outcome
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'POST') return saveSessionReview(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'GET')  return getSessionReview(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'seen-feedback' && m === 'POST') return markFeedbackSeen(seg[1], request);
 
   // One-way: shareable review links (admin creates, public reads)
   if (seg[0] === 'session' && seg[2] === 'share' && seg[3] === 'email' && m === 'POST') return sendShareEmail(seg[1], request);
@@ -2578,6 +2579,17 @@ async function getShare(shareToken) {
   }
   // CO-WORKER mode: full review (notes/decision) + feedback form.
   return jsonRes({ session: pubSession, interview, review: review || null, mode, shareToken, branding });
+}
+
+// Recruiter opened the review — stamp "last seen" so reviewer feedback submitted
+// before now is no longer flagged as new on the candidate list.
+async function markFeedbackSeen(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  session.feedbackSeenAt = Date.now();
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true });
 }
 
 // Reviewers (via a share link) submit their own rating/recommendation/comments

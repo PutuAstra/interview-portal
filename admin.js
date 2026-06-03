@@ -1856,10 +1856,17 @@ function renderSessionRow(s, num) {
   const integrityHTML = showIntegrity ? `${integrityChip(integrityScore(s.proctoringLog))} ` : '';
   const aiHTML = aiChip(s);
   // Reviewer-feedback notification chip — click to jump straight into the review.
-  const fbCount = (s.reviewerFeedback || []).length;
-  const fbHTML = fbCount
-    ? `<span onclick="event.stopPropagation();openReview('${s.token}','${jsStr(s.candidateName)}')" title="${fbCount} reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(99,100,167,0.45);color:#a7a8d8;background:rgba(99,100,167,0.15);white-space:nowrap">💬 ${fbCount} feedback</span>`
-    : '';
+  // "New" = feedback submitted after the recruiter last opened this review.
+  const fb = s.reviewerFeedback || [];
+  const seenAt = s.feedbackSeenAt || 0;
+  const unseen = fb.filter(f => (f.submittedAt || 0) > seenAt).length;
+  let fbHTML = '';
+  if (fb.length) {
+    const onclick = `onclick="event.stopPropagation();openReview('${s.token}','${jsStr(s.candidateName)}')"`;
+    fbHTML = unseen
+      ? `<span ${onclick} title="${unseen} new reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 8px;border-radius:10px;border:1px solid #6264a7;color:#fff;background:#6264a7;white-space:nowrap">🔔 ${unseen} new feedback</span>`
+      : `<span ${onclick} title="${fb.length} reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(99,100,167,0.4);color:#a7a8d8;background:rgba(99,100,167,0.12);white-space:nowrap">💬 ${fb.length} feedback</span>`;
+  }
 
   return `
     <div class="session-row">
@@ -2316,6 +2323,13 @@ async function openReview(token, candidateName) {
     ]);
 
     document.getElementById('review-interview-title').textContent = interview?.title || '';
+
+    // Mark reviewer feedback as seen (clears the "new" chip on the list).
+    if ((session.reviewerFeedback || []).length) {
+      apiJSON('POST', `/api/session/${token}/seen-feedback`).catch(() => {});
+      const local = _allSessions.find(x => x.token === token);
+      if (local) { local.feedbackSeenAt = Date.now(); filterAndRenderSessions(); }
+    }
 
     // ── Split responses: video vs written (text/MCQ) ──
     const allResponses   = session.responses || [];
