@@ -113,9 +113,18 @@ function applyBranding(b) {
   }
 }
 
+// Resume is only relevant when there's a video interview to review. Assessment-only
+// interviews (all text/MCQ) skip the resume step — photo only.
+function interviewNeedsResume() {
+  return (interview?.questions || []).some(q => (q.answerType || 'video') === 'video');
+}
+function profileComplete() {
+  return !!session.profilePhotoItemId && (!interviewNeedsResume() || !!session.resumeItemId);
+}
+
 function showIntro() {
-  const totalDuration = interview.questions.reduce((s, q) => s + q.duration, 0);
-  const mins = Math.ceil(totalDuration / 60);
+  const totalDuration = interview.questions.reduce((s, q) => s + (q.duration || 0), 0);
+  const mins = Math.max(1, Math.ceil(totalDuration / 60));
 
   main().innerHTML = `
     <div class="card" style="max-width:720px;width:100%;text-align:center">
@@ -138,8 +147,8 @@ function showIntro() {
       </div>
 
       <button class="btn btn-primary btn-lg mt-24"
-        onclick="${session.profilePhotoItemId && session.resumeItemId ? 'showSetup()' : 'showProfileUpload()'}">
-        ${session.profilePhotoItemId && session.resumeItemId ? 'Setup &amp; Preview' : 'Continue →'}
+        onclick="${profileComplete() ? 'showSetup()' : 'showProfileUpload()'}">
+        ${profileComplete() ? 'Setup &amp; Preview' : 'Continue →'}
       </button>
     </div>`;
 }
@@ -153,7 +162,7 @@ function showProfileUpload() {
       <div style="text-align:center;margin-bottom:24px">
         <div style="font-size:36px;margin-bottom:8px">📋</div>
         <h2 style="margin:0">Your Profile</h2>
-        <p class="text-muted text-sm mt-8">Upload your photo and resume before starting the interview</p>
+        <p class="text-muted text-sm mt-8">Upload your photo${interviewNeedsResume() ? ' and resume' : ''} before starting</p>
       </div>
 
       <!-- Profile photo -->
@@ -169,7 +178,8 @@ function showProfileUpload() {
         <p class="text-muted" style="font-size:11px;margin-top:8px">JPG, PNG · max 5 MB</p>
       </div>
 
-      <!-- Resume -->
+      <!-- Resume (only for interviews containing video questions) -->
+      ${interviewNeedsResume() ? `
       <div style="margin-bottom:28px">
         <p style="font-size:13px;font-weight:600;margin-bottom:10px">Resume / CV <span style="color:var(--red)">*</span></p>
         <div id="resume-drop"
@@ -185,7 +195,7 @@ function showProfileUpload() {
         </div>
         <input type="file" id="resume-file-input" accept=".pdf,.doc,.docx" style="display:none"
           onchange="handleResumeFile(this.files[0])" />
-      </div>
+      </div>` : ''}
 
       <button class="btn btn-primary btn-lg" style="width:100%" onclick="submitProfileUpload()">
         Continue to Setup →
@@ -372,10 +382,11 @@ async function submitProfileUpload() {
   const photoBlob   = window._croppedPhotoBlob;   // set by crop confirm
   const resumeInput = document.getElementById('resume-file-input');
   const resumeFile  = resumeInput?.files?.[0];
+  const needResume  = interviewNeedsResume();
 
   if (!photoBlob)  return toast('Please upload and crop your profile photo', 'error');
-  if (!resumeFile) return toast('Please upload your resume', 'error');
-  if (resumeFile.size > 10 * 1024 * 1024) return toast('Resume must be under 10 MB', 'error');
+  if (needResume && !resumeFile) return toast('Please upload your resume', 'error');
+  if (resumeFile && resumeFile.size > 10 * 1024 * 1024) return toast('Resume must be under 10 MB', 'error');
 
   main().innerHTML = `
     <div class="card" style="max-width:400px;width:100%;text-align:center;padding:48px 32px">
@@ -397,20 +408,22 @@ async function submitProfileUpload() {
       throw new Error(err.error || `Photo upload failed (${photoRes.status})`);
     }
 
-    // Upload resume via FormData
-    const resumeForm = new FormData();
-    resumeForm.append('file', resumeFile, resumeFile.name);
-    const resumeRes = await fetch(`${WORKER_URL}/api/session/${token}/upload-resume`, {
-      method: 'POST',
-      body: resumeForm,
-    });
-    if (!resumeRes.ok) {
-      const err = await resumeRes.json().catch(() => ({}));
-      throw new Error(err.error || `Resume upload failed (${resumeRes.status})`);
+    // Upload resume via FormData (only when required + provided)
+    if (resumeFile) {
+      const resumeForm = new FormData();
+      resumeForm.append('file', resumeFile, resumeFile.name);
+      const resumeRes = await fetch(`${WORKER_URL}/api/session/${token}/upload-resume`, {
+        method: 'POST',
+        body: resumeForm,
+      });
+      if (!resumeRes.ok) {
+        const err = await resumeRes.json().catch(() => ({}));
+        throw new Error(err.error || `Resume upload failed (${resumeRes.status})`);
+      }
+      session.resumeItemId = true;
     }
 
     session.profilePhotoItemId = true;
-    session.resumeItemId = true;
     window._croppedPhotoBlob = null;
 
     showSetup();
