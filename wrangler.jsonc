@@ -8,6 +8,11 @@
   "assets": {
     "directory": "."
   },
+  // Keep the main workers.dev URL, but DISABLE per-version preview URLs:
+  // preview hostnames would serve admin.html outside the Cloudflare Access
+  // policy (which is scoped to the production hostname) — i.e. an auth bypass.
+  "workers_dev": true,
+  "preview_urls": false,
   "compatibility_flags": [
     "nodejs_compat"
   ]
