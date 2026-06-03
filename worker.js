@@ -18,7 +18,7 @@
 //  No R2 bucket needed.
 // ─────────────────────────────────────────────────────────────
 
-const CTI_LOGO_URL = 'https://putuastra.github.io/interview-portal/logo.png';
+const CTI_LOGO_URL = 'https://interview-portal.putuastrawijaya.workers.dev/logo.png';
 
 // Restrict browser access to the app's own origins instead of "*". The request's
 // Origin is reflected back ONLY if it's in this allowlist (otherwise the default,
