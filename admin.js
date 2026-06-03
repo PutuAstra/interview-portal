@@ -1862,9 +1862,11 @@ function renderSessionRow(s, num) {
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
         <div id="av-${s.token}" class="candidate-avatar">${avatarContent}</div>
         <div style="min-width:0">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
-          <div class="text-muted" style="font-size:11px;margin-top:1px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
-          <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">${integrityHTML}${aiHTML}</div>
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</span>
+            ${(integrityHTML || aiHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0">${integrityHTML}${aiHTML}</span>` : ''}
+          </div>
+          <div class="text-muted" style="font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;justify-content:center">
