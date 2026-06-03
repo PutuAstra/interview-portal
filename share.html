@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" href="cti-logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20250528a" />
+  <link rel="stylesheet" href="style.css?v=20250528b" />
   <style>
     .share-container { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
     .share-topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -34,7 +34,7 @@
       <img src="cti-logo.png" alt="CTI" style="height:30px;width:auto" />
       <span id="topbar-brand-name">CTI ZeusHire</span>
     </div>
-    <span class="badge-read-only">👁 Read-Only Review</span>
+    <span class="badge-read-only">👁 Reviewer Access</span>
   </div>
 
   <div class="share-body" id="share-body">
@@ -165,11 +165,73 @@ async function renderPage({ session, interview, review, shareToken: tok }) {
       <p style="font-size:13px;color:var(--text-2);line-height:1.6;white-space:pre-wrap">${esc(review.notes)}</p>
     </div>` : ''}
 
-    <!-- Read-only notice -->
-    <p class="text-muted" style="font-size:11px;margin-top:20px;text-align:center">
-      This is a read-only review link. Only the recruiting team can update the evaluation.
-    </p>
+    <!-- Reviewer feedback -->
+    <div class="card" id="rv-card" style="margin-top:20px">
+      <h3 style="margin:0 0 4px;font-size:14px">Your Feedback</h3>
+      <p class="text-muted text-sm" style="margin:0 0 14px">Share your assessment with the recruiting team. The evaluation above is the recruiter's and stays read-only.</p>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Your name *</label>
+        <input type="text" id="rv-name" placeholder="e.g. Jane Doe — Hiring Manager" />
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Overall rating</label>
+        <div id="rv-stars" style="display:flex;gap:6px;font-size:28px;line-height:1">
+          ${[1,2,3,4,5].map(n => `<span class="rv-star" data-v="${n}" onclick="setRvStars(${n})" style="cursor:pointer;color:var(--border)">★</span>`).join('')}
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Recommendation</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${[['move_forward','✓ Move forward'],['maybe','Maybe'],['pass','✗ Pass']].map(([v,l]) =>
+            `<button type="button" class="btn btn-outline rv-rec" data-v="${v}" onclick="setRvRec('${v}')">${l}</button>`).join('')}
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label>Comments</label>
+        <textarea id="rv-comment" placeholder="Your notes for the recruiter…" style="min-height:96px"></textarea>
+      </div>
+      <button class="btn btn-primary" id="rv-submit" onclick="submitFeedback()">Submit Feedback</button>
+    </div>
   `;
+}
+
+let _rvStars = 0, _rvRec = '';
+function setRvStars(n) {
+  _rvStars = n;
+  document.querySelectorAll('#rv-stars .rv-star').forEach((s, i) => { s.style.color = i < n ? '#f59e0b' : 'var(--border)'; });
+}
+function setRvRec(v) {
+  _rvRec = v;
+  document.querySelectorAll('.rv-rec').forEach(b => {
+    const on = b.dataset.v === v;
+    b.classList.toggle('btn-primary', on);
+    b.classList.toggle('btn-outline', !on);
+  });
+}
+async function submitFeedback() {
+  const name    = (document.getElementById('rv-name').value || '').trim();
+  const comment = (document.getElementById('rv-comment').value || '').trim();
+  if (!name) return alert('Please enter your name.');
+  if (!_rvStars && !_rvRec && !comment) return alert('Please add a rating, recommendation, or a comment.');
+  const btn = document.getElementById('rv-submit');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    const res = await fetch(`${WORKER_URL}/api/share/${shareToken}/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewerName: name, stars: _rvStars, recommendation: _rvRec, comment }),
+    });
+    if (!res.ok) throw new Error('failed');
+    document.getElementById('rv-card').innerHTML = `
+      <div style="text-align:center;padding:24px 12px">
+        <div style="font-size:40px">✅</div>
+        <h3 style="margin:8px 0 4px;font-size:15px">Thank you, ${esc(name)}!</h3>
+        <p class="text-muted text-sm">Your feedback has been sent to the recruiting team.</p>
+      </div>`;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Submit Feedback';
+    alert('Could not submit your feedback. Please try again.');
+  }
 }
 
 boot();

@@ -185,6 +185,7 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'share' && m === 'POST') return createShareLink(seg[1], request);
   if (seg[0] === 'share'   && seg.length === 2    && m === 'GET')  return getShare(seg[1]);
   if (seg[0] === 'share'   && seg[2] === 'video'  && m === 'GET')  return getShareVideo(seg[1], parseInt(seg[3]));
+  if (seg[0] === 'share'   && seg[2] === 'feedback' && m === 'POST') return submitShareFeedback(seg[1], request);
 
   // Interview Script management
   if (seg[0] === 'script' && seg[1] === 'clients' && seg.length === 2) {
@@ -2547,7 +2548,31 @@ async function getShare(shareToken) {
     brandWelcomeMsg: settings.brandWelcomeMsg || '',
     brandLogoUrl:    settings.brandLogoUrl    || '',
   };
-  return jsonRes({ session, interview, review: review || null, shareToken, branding });
+  // Don't expose other reviewers' feedback to a reviewer (avoid biasing them).
+  const { reviewerFeedback, ...pubSession } = session;
+  return jsonRes({ session: pubSession, interview, review: review || null, shareToken, branding });
+}
+
+// Reviewers (via a share link) submit their own rating/recommendation/comments
+// for the recruiter to consider. Appended to the session; multiple reviewers OK.
+async function submitShareFeedback(shareToken, request) {
+  const token = await kvGet(`share:${shareToken}`);
+  if (!token) return jsonRes({ error: 'Share link not found' }, 404);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+
+  const body = await request.json().catch(() => ({}));
+  const reviewerName = (body.reviewerName || '').toString().slice(0, 120).trim();
+  if (!reviewerName) return jsonRes({ error: 'Reviewer name required' }, 400);
+  const stars = (Number.isInteger(body.stars) && body.stars >= 0 && body.stars <= 5) ? body.stars : 0;
+  const recommendation = ['move_forward', 'maybe', 'pass'].includes(body.recommendation) ? body.recommendation : '';
+  const comment = (body.comment || '').toString().slice(0, 4000).trim();
+  if (!stars && !recommendation && !comment) return jsonRes({ error: 'Empty feedback' }, 400);
+
+  session.reviewerFeedback = session.reviewerFeedback || [];
+  session.reviewerFeedback.push({ reviewerName, stars, recommendation, comment, submittedAt: Date.now() });
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true });
 }
 
 async function getShareVideo(shareToken, qIndex) {

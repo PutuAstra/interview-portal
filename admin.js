@@ -2382,6 +2382,26 @@ async function openReview(token, candidateName) {
          </div>`
       : renderAnalysisPanel(cachedAnalysis, token);
 
+    // ── External reviewer feedback (submitted via share links) ──
+    const rf = session.reviewerFeedback || [];
+    const REC_LBL = { move_forward: '✓ Move forward', maybe: 'Maybe', pass: '✗ Pass' };
+    const reviewerHTML = rf.length ? `
+      <div style="margin-top:14px">
+        <h4 style="margin:0 0 8px;font-size:13px">💬 Reviewer feedback (${rf.length})</h4>
+        ${rf.slice().sort((a,b) => (b.submittedAt||0)-(a.submittedAt||0)).map(f => `
+          <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--bg)">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <strong style="font-size:13px">${esc(f.reviewerName || 'Reviewer')}</strong>
+              <span style="font-size:11px;color:var(--muted)">${f.submittedAt ? new Date(f.submittedAt).toLocaleDateString() : ''}</span>
+            </div>
+            ${(f.stars || f.recommendation) ? `<div style="margin-top:4px;font-size:14px">
+              ${f.stars ? `<span style="color:#f59e0b">${'★'.repeat(f.stars)}</span><span style="color:var(--border)">${'★'.repeat(5 - f.stars)}</span>` : ''}
+              ${f.recommendation ? `<span style="font-size:11px;color:var(--muted);margin-left:8px">${REC_LBL[f.recommendation] || ''}</span>` : ''}
+            </div>` : ''}
+            ${f.comment ? `<p style="font-size:13px;color:var(--text-2);margin:6px 0 0;white-space:pre-wrap;line-height:1.5">${esc(f.comment)}</p>` : ''}
+          </div>`).join('')}
+      </div>` : '';
+
     // ── RIGHT column: resume + review outcome ──
     let resumeSection = '';
     if (resumeData?.downloadUrl) {
@@ -2454,6 +2474,7 @@ async function openReview(token, candidateName) {
           <h3 style="margin:0 0 12px;font-size:14px">Responses</h3>
           ${videosHTML}
           ${writtenHTML}
+          ${reviewerHTML}
           ${proctoringHTML}
         </div>
         <div style="flex-shrink:0;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
