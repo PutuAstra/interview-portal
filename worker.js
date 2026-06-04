@@ -191,6 +191,7 @@ async function route(request) {
 
   // ── Premium Talent Library ──
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'taken' && m === 'POST') return markPremiumTaken(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'available' && m === 'POST') return markPremiumAvailable(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && m === 'POST')   return addToPremium(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && m === 'DELETE') return removeFromPremium(seg[1], request);
   if (seg[0] === 'premium' && seg.length === 1 && m === 'GET')        return listPremium(request);
@@ -2746,6 +2747,17 @@ async function markPremiumTaken(token, request) {
   if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
   session.premium.status = 'Taken';
   session.premium.takenAt = Date.now();
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true });
+}
+
+// Admin reverts a Taken candidate back to Available (e.g. hire fell through).
+async function markPremiumAvailable(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
+  session.premium.status = 'Available';
+  session.premium.takenAt = null;
   await kvPut(`session:${token}`, session);
   return jsonRes({ ok: true });
 }

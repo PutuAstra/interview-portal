@@ -226,7 +226,9 @@ function renderPremiumCard(p) {
       ${interestHTML}
       <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
         <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="openReview('${p.token}','${jsStr(p.candidateName)}')">Review</button>
-        ${avail ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Taken</button>` : ''}
+        ${avail
+          ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Taken</button>`
+          : `<button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="premiumMarkAvailable('${p.token}','${jsStr(p.candidateName)}')">↩ Back to Available</button>`}
         <button class="btn btn-ghost btn-rm" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
       </div>
     </div>`;
@@ -237,6 +239,14 @@ async function premiumMarkTaken(token, name) {
   try {
     await apiJSON('POST', `/api/session/${token}/premium/taken`);
     toast('Marked as Taken', 'success');
+    loadPremium();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function premiumMarkAvailable(token, name) {
+  try {
+    await apiJSON('POST', `/api/session/${token}/premium/available`);
+    toast(`${name} is back to Available`, 'success');
     loadPremium();
   } catch (e) { toast(e.message, 'error'); }
 }
