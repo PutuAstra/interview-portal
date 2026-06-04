@@ -2025,6 +2025,11 @@ function renderSessionRow(s, num) {
     mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length} · ${Math.round(p * 100)}%</span>`;
   }
 
+  // Premium Library chip.
+  const premHTML = s.premium
+    ? `<span title="In Premium Library (${esc(s.premium.status)}) — ${esc(s.premium.category)} / ${esc(s.premium.department)} / ${esc(s.premium.role)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(245,158,11,0.5);color:#f59e0b;background:rgba(245,158,11,0.12);white-space:nowrap">⭐ Premium${s.premium.status === 'Taken' ? ' · Taken' : ''}</span>`
+    : '';
+
   let fbHTML = '';
   if (fb.length) {
     const onclick = `onclick="event.stopPropagation();openReview('${s.token}','${jsStr(s.candidateName)}')"`;
@@ -2041,7 +2046,7 @@ function renderSessionRow(s, num) {
         <div style="min-width:0">
           <div style="display:flex;align-items:center;gap:8px;min-width:0">
             <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</span>
-            ${(integrityHTML || aiHTML || mcqHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center">${integrityHTML}${aiHTML}${mcqHTML}${fbHTML}</span>` : ''}
+            ${(integrityHTML || aiHTML || mcqHTML || premHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center">${integrityHTML}${aiHTML}${mcqHTML}${premHTML}${fbHTML}</span>` : ''}
           </div>
           <div class="text-muted" style="font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
         </div>
