@@ -475,7 +475,7 @@ async function requestCamera() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: mobileVideoConstraints(),
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 44100 }
     });
     showQuestion(0);
   } catch (e) {
@@ -493,7 +493,7 @@ async function showSetup() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: mobileVideoConstraints(),
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 44100 }
     });
   } catch (e) {
     return showError(e.name === 'NotAllowedError'
@@ -896,7 +896,7 @@ async function acquireMic() {
   micAcquiring = (async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 44100 }
       });
       micStream = s;
       if (canvasStream) {
