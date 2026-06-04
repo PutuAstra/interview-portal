@@ -2035,7 +2035,7 @@ function renderSessionRow(s, num) {
        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="revokeSession('${s.token}', '${jsStr(s.candidateName)}')">Revoke</button>`
     : `<button class="btn btn-ghost" style="padding:4px 8px;font-size:12px" title="Copy shareable review link" onclick="shareSession('${s.token}')">🔗 Share</button>
        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="openReview('${s.token}', '${jsStr(s.candidateName)}')">Review</button>
-       <button class="btn btn-ghost btn-rm" style="padding:4px 8px;font-size:14px;color:var(--red)" title="Delete candidate" onclick="deleteCompletedSession('${s.token}', '${jsStr(s.candidateName)}')">🗑</button>`;
+       <button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Delete candidate" onclick="deleteCompletedSession('${s.token}', '${jsStr(s.candidateName)}')">🗑</button>`;
 
   // Integrity + AI-score chips — only meaningful once they've taken the interview
   const showIntegrity = (s.status === 'completed' || (s.responses && s.responses.length));
