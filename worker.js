@@ -2148,7 +2148,8 @@ async function drivePreviewUrl(itemId, accessToken) {
   try {
     const r = await fetch(
       `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${itemId}/preview`,
-      { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
+      { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chromeless: true }) }
     );
     if (!r.ok) return null;
     const j = await r.json();
