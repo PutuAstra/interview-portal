@@ -1109,13 +1109,20 @@ async function deleteSession(token, request) {
   requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
-  if (session.status === 'completed') return jsonRes({ error: 'Cannot revoke a completed session' }, 400);
+  // "Revoke" (pending) is blocked on completed; explicit ?force=1 (admin Delete) allows it.
+  const force = new URL(request.url).searchParams.get('force') === '1';
+  if (session.status === 'completed' && !force) return jsonRes({ error: 'Cannot revoke a completed session' }, 400);
 
   await INTERVIEW_DATA.delete(`session:${token}`);
   await INTERVIEW_DATA.delete(`session:${token}:analysis`);
   await INTERVIEW_DATA.delete(`session:${token}:review`);
   const sessions = (await kvGet(`interview:${session.interviewId}:sessions`)) || [];
   await kvPut(`interview:${session.interviewId}:sessions`, sessions.filter(t => t !== token));
+  // Drop from the Premium Talent index too, if listed.
+  if (session.premium) {
+    const plist = ((await kvGet('premium:list')) || []).filter(t => t !== token);
+    await kvPut('premium:list', plist);
+  }
   return jsonRes({ ok: true });
 }
 
