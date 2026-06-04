@@ -4549,9 +4549,20 @@ async function submitCreateBookingLink() {
 // ── Employer Branding ─────────────────────────────────────────
 
 let _brandingSettings = {};
+let _brandingUnlocked = false;
+const BRANDING_PASSWORD = '123456';
 
 async function renderBrandingPage() {
   const main = document.getElementById('admin-main');
+  // Soft password gate (deters casual changes by users sharing the admin login).
+  if (!_brandingUnlocked) {
+    const pw = prompt('Enter the password to access Employer Branding:');
+    if (pw !== BRANDING_PASSWORD) {
+      main.innerHTML = `<div class="empty-state" style="margin-top:80px">🔒 Incorrect password — Employer Branding is locked.<br><button class="btn btn-outline" style="margin-top:14px" onclick="renderBrandingPage()">Try again</button></div>`;
+      return;
+    }
+    _brandingUnlocked = true;
+  }
   main.innerHTML = `<div class="spinner" style="margin:80px auto"></div>`;
   try {
     _brandingSettings = await apiJSON('GET', '/api/recruiter/settings').catch(() => ({}));
