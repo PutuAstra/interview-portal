@@ -66,7 +66,7 @@
       </button>
       <div class="sidebar-children">
         <button class="sidebar-item sidebar-child" data-page="ow-list" onclick="gotoPage('ow-list')">One-Way Interview</button>
-        <button class="sidebar-item sidebar-child" data-page="premium" onclick="gotoPage('premium')">⭐ Premium Candidates</button>
+        <button class="sidebar-item sidebar-child" data-page="premium" onclick="gotoPage('premium')">⭐ Premium Talent</button>
         <button class="sidebar-item sidebar-child" data-page="tw-list" onclick="gotoPage('tw-list')">Two-Way Interview</button>
         <button class="sidebar-item sidebar-child" data-page="booking" onclick="gotoPage('booking')">Booking Interview</button>
       </div>
@@ -471,11 +471,11 @@
   </div>
 </div>
 
-<!-- Modal: Add to Premium Library -->
+<!-- Modal: Add to Premium Talent -->
 <div class="modal-overlay" id="modal-premium">
   <div class="modal" style="max-width:440px">
     <div class="modal-header">
-      <h2>⭐ Add to Premium Library</h2>
+      <h2>⭐ Add to Premium Talent</h2>
       <button class="btn btn-ghost" onclick="closeModal('modal-premium')">✕</button>
     </div>
     <p class="text-muted text-sm mb-16">Classify this top-rated candidate so clients can browse and filter them.</p>
@@ -493,7 +493,7 @@
       <datalist id="prem-roles-list"></datalist>
     </div>
     <div class="mt-16 flex gap-8">
-      <button class="btn btn-primary" id="prem-save-btn" onclick="savePremium()">⭐ Add to Premium Library</button>
+      <button class="btn btn-primary" id="prem-save-btn" onclick="savePremium()">⭐ Add to Premium Talent</button>
       <button class="btn btn-outline" onclick="closeModal('modal-premium')">Cancel</button>
     </div>
   </div>
@@ -506,7 +506,7 @@
       <h2>🔗 Client Library Links</h2>
       <button class="btn btn-ghost" onclick="closeModal('modal-clientlinks')">✕</button>
     </div>
-    <p class="text-muted text-sm mb-16">Each link lets a client browse only <strong>Available</strong> premium candidates (filter by category/department/role) and mark <strong>Interested</strong>. No login required.</p>
+    <p class="text-muted text-sm mb-16">Each link lets a client browse only <strong>Available</strong> premium talent (filter by category/department/role) and mark <strong>Interested</strong>. No login required.</p>
     <div class="form-group">
       <label>New client link</label>
       <input type="text" id="clientlink-label" placeholder="Label — e.g. Royal Caribbean — Jakarta" style="width:100%;margin-bottom:8px;box-sizing:border-box" />
@@ -523,6 +523,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250529i"></script>
+<script src="admin.js?v=20250529j"></script>
 </body>
 </html>

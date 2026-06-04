@@ -189,7 +189,7 @@ async function route(request) {
   if (seg[0] === 'share'   && seg[2] === 'resume-url' && m === 'GET') return getShareResume(seg[1]);
   if (seg[0] === 'share'   && seg[2] === 'feedback' && m === 'POST') return submitShareFeedback(seg[1], request);
 
-  // ── Premium Candidates Library ──
+  // ── Premium Talent Library ──
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'taken' && m === 'POST') return markPremiumTaken(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && m === 'POST')   return addToPremium(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && m === 'DELETE') return removeFromPremium(seg[1], request);
@@ -2683,7 +2683,7 @@ async function getShareVideo(shareToken, qIndex) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Premium Candidates Library
+//  Premium Talent Library
 // ─────────────────────────────────────────────────────────────
 
 // Resolve a OneDrive item's temporary download URL.
@@ -2697,7 +2697,7 @@ async function driveDownloadUrl(itemId) {
   return { downloadUrl: item['@microsoft.graph.downloadUrl'] || null, webUrl: item.webUrl || null };
 }
 
-// Recruiter adds a candidate to the Premium Library. AUTHORITATIVE 4★ gate:
+// Recruiter adds a candidate to the Premium Talent. AUTHORITATIVE 4★ gate:
 // re-reads the saved review so the UI can't be bypassed.
 async function addToPremium(token, request) {
   requireAdmin(request);
@@ -2705,7 +2705,7 @@ async function addToPremium(token, request) {
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const review = await kvGet(`session:${token}:review`);
   const stars = review?.stars || session.reviewStars || 0;
-  if (stars < 4) return jsonRes({ error: 'Candidate must be rated 4★ or 5★ to add to the Premium Library.' }, 403);
+  if (stars < 4) return jsonRes({ error: 'Candidate must be rated 4★ or 5★ to add to the Premium Talent.' }, 403);
 
   const { category, department, role } = await request.json().catch(() => ({}));
   if (!category || !department || !role) return jsonRes({ error: 'category, department and role are required' }, 400);
@@ -2738,19 +2738,19 @@ async function removeFromPremium(token, request) {
   return jsonRes({ ok: true });
 }
 
-// Admin marks a premium candidate as Taken (hired) — removes them from the
+// Admin marks a premium talent as Taken (hired) — removes them from the
 // client-facing library. Only the recruiter does this, after an actual hire.
 async function markPremiumTaken(token, request) {
   requireAdmin(request);
   const session = await kvGet(`session:${token}`);
-  if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
+  if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
   session.premium.status = 'Taken';
   session.premium.takenAt = Date.now();
   await kvPut(`session:${token}`, session);
   return jsonRes({ ok: true });
 }
 
-// Admin management list — every premium candidate (any status) + interests.
+// Admin management list — every premium talent (any status) + interests.
 async function listPremium(request) {
   requireAdmin(request);
   const tokens = (await kvGet('premium:list')) || [];
@@ -2788,7 +2788,7 @@ async function listClientLibs(request) {
   return jsonRes({ links });
 }
 
-// PUBLIC (client token). HARD ACL: only premium candidates with status
+// PUBLIC (client token). HARD ACL: only premium talent with status
 // 'Available' are ever returned, and only safe fields (no email/notes/review).
 async function getClientLib(clientToken) {
   const meta = await kvGet(`clientlib:${clientToken}`);
@@ -2870,9 +2870,9 @@ async function sendClientLibEmail(clientToken, request) {
   const bodyRows = `
     <p style="font-family:Arial,sans-serif;font-size:15px;color:#333;margin:0 0 16px">Hello ${htmlEsc(meta.label)},</p>
     <p style="font-family:Arial,sans-serif;font-size:14px;color:#374151;line-height:22px;margin:0 0 16px">
-      You have been given private access to <strong>CTI Group's Premium Candidate Library</strong> — a curated pool of top-rated, pre-screened talent. Browse their video answers and résumés, filter by category, department and role, and mark anyone you're <strong>interested</strong> in.
+      You have been given private access to <strong>CTI Group's Premium Talent</strong> — a curated pool of top-rated, pre-screened talent. Browse their video answers and résumés, filter by category, department and role, and mark anyone you're <strong>interested</strong> in.
     </p>
-    ${emailButton(url, 'Browse Premium Candidates')}
+    ${emailButton(url, 'Browse Premium Talent')}
     <p style="font-family:Arial,sans-serif;font-size:12px;color:#6b7280;margin:20px 0 4px">Or copy this link into your browser:</p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
       <td bgcolor="#f3f4f6" style="background-color:#f3f4f6;padding:10px;word-break:break-all">
@@ -2886,7 +2886,7 @@ async function sendClientLibEmail(clientToken, request) {
     headers: { 'Authorization': `Bearer ${graphToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `CTI ZeusHire — Premium Candidate Library Access`,
+        subject: `CTI ZeusHire — Premium Talent Access`,
         body: { contentType: 'HTML', content: emailWrap('#B01A18', 'Premium Talent', bodyRows) },
         from: { emailAddress: { name: 'CTI ZeusHire', address: EMAIL_SENDER } },
         toRecipients,

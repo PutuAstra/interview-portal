@@ -130,7 +130,7 @@ function gotoPage(page) {
   if (page === 'branding')      renderBrandingPage();
 }
 
-// ── Premium Candidates page ───────────────────────────────────
+// ── Premium Talent page ───────────────────────────────────
 
 let _premiumList = [];
 
@@ -138,7 +138,7 @@ function renderPremiumPage() {
   const main = document.getElementById('admin-main');
   main.innerHTML = `
     <div class="flex justify-between items-center mb-16">
-      <h2>⭐ Premium Candidates</h2>
+      <h2>⭐ Premium Talent</h2>
       <button class="btn btn-outline" onclick="openClientLinksPanel()">🔗 Client Links</button>
     </div>
     <div class="flex gap-8 mb-16 items-center" style="flex-wrap:wrap">
@@ -188,7 +188,7 @@ function filterAndRenderPremium() {
   const el = document.getElementById('premium-list');
   if (!el) return;
   if (!list.length) {
-    el.innerHTML = `<div class="empty-state">${_premiumList.length ? 'No premium candidates match your filter.' : 'No premium candidates yet. Add 4★/5★ candidates from a One-Way review.'}</div>`;
+    el.innerHTML = `<div class="empty-state">${_premiumList.length ? 'No premium talent match your filter.' : 'No premium talent yet. Add 4★/5★ candidates from a One-Way review.'}</div>`;
     return;
   }
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">${list.map(renderPremiumCard).join('')}</div>`;
@@ -2045,9 +2045,9 @@ function renderSessionRow(s, num) {
     mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length} · ${Math.round(p * 100)}%</span>`;
   }
 
-  // Premium Library chip.
+  // Premium Talent chip.
   const premHTML = s.premium
-    ? `<span title="In Premium Library (${esc(s.premium.status)}) — ${esc(s.premium.category)} / ${esc(s.premium.department)} / ${esc(s.premium.role)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(245,158,11,0.5);color:#f59e0b;background:rgba(245,158,11,0.12);white-space:nowrap">⭐ Premium${s.premium.status === 'Taken' ? ' · Taken' : ''}</span>`
+    ? `<span title="In Premium Talent (${esc(s.premium.status)}) — ${esc(s.premium.category)} / ${esc(s.premium.department)} / ${esc(s.premium.role)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(245,158,11,0.5);color:#f59e0b;background:rgba(245,158,11,0.12);white-space:nowrap">⭐ Premium${s.premium.status === 'Taken' ? ' · Taken' : ''}</span>`
     : '';
 
   let fbHTML = '';
@@ -2687,11 +2687,11 @@ async function openReview(token, candidateName) {
     const prem = session.premium;
     const premiumRow = prem
       ? `<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.08);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-           <span style="font-size:12px;color:var(--text)">⭐ In Premium Library — <strong>${esc(prem.category)} / ${esc(prem.department)} / ${esc(prem.role)}</strong> · <span style="color:${prem.status === 'Available' ? '#16a34a' : 'var(--muted)'}">${prem.status}</span></span>
+           <span style="font-size:12px;color:var(--text)">⭐ In Premium Talent — <strong>${esc(prem.category)} / ${esc(prem.department)} / ${esc(prem.role)}</strong> · <span style="color:${prem.status === 'Available' ? '#16a34a' : 'var(--muted)'}">${prem.status}</span></span>
            <button class="btn btn-ghost" style="font-size:11px;color:var(--red);padding:2px 8px" onclick="removeFromPremium('${token}')">Remove</button>
          </div>`
       : `<div style="margin-top:12px">
-           <button id="add-premium-btn" class="btn btn-outline" style="font-size:13px;padding:8px 16px;border-color:rgba(245,158,11,0.5)" ${_reviewStars >= 4 ? '' : 'disabled'} onclick="openPremiumModal('${token}')">⭐ Add to Premium Library</button>
+           <button id="add-premium-btn" class="btn btn-outline" style="font-size:13px;padding:8px 16px;border-color:rgba(245,158,11,0.5)" ${_reviewStars >= 4 ? '' : 'disabled'} onclick="openPremiumModal('${token}')">⭐ Add to Premium Talent</button>
            <span id="add-premium-hint" style="font-size:11px;color:var(--muted);margin-left:8px">${_reviewStars >= 4 ? '' : 'Requires a 4★ or 5★ rating'}</span>
          </div>`;
 
@@ -2796,7 +2796,7 @@ function setReviewStars(n) {
   if (hint) hint.textContent = n < 4 ? 'Requires a 4★ or 5★ rating' : '';
 }
 
-// ── Premium Library: intake modal ──
+// ── Premium Talent: intake modal ──
 const PREMIUM_CATEGORIES  = ['Sea-Based', 'Land-Based', 'J-1 Program'];
 const PREMIUM_DEPARTMENTS = ['Housekeeping', 'Food and Beverage', 'Front Office', 'Culinary', 'Deck', 'Engine / Technical', 'Spa & Wellness', 'Retail', 'Entertainment', 'Other'];
 const PREMIUM_ROLES       = ['Commis', 'DCDP', 'CDP', 'Waiter', 'Bartender', 'Public Area Attendant', 'Cabin Steward', 'Front Desk', 'Cook', 'Sous Chef', 'Housekeeping Attendant', 'Receptionist'];
@@ -2822,22 +2822,22 @@ async function savePremium() {
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     await apiJSON('POST', `/api/session/${token}/premium`, { category, department, role });
-    toast('Added to Premium Library', 'success');
+    toast('Added to Premium Talent', 'success');
     closeModal('modal-premium');
     closeModal('modal-review');
     if (currentInterviewId) await loadSessions(currentInterviewId);
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = '⭐ Add to Premium Library';
+    btn.disabled = false; btn.textContent = '⭐ Add to Premium Talent';
   }
 }
 
 async function removeFromPremium(token) {
-  if (!confirm('Remove this candidate from the Premium Library?')) return;
+  if (!confirm('Remove this candidate from the Premium Talent?')) return;
   try {
     await apiJSON('DELETE', `/api/session/${token}/premium`);
-    toast('Removed from Premium Library', 'success');
+    toast('Removed from Premium Talent', 'success');
     closeModal('modal-review');
     if (currentInterviewId) await loadSessions(currentInterviewId);
     if (document.getElementById('premium-list')) loadPremium();
