@@ -368,6 +368,12 @@ function sessionExpired(session) {
   return !!(session.expiresAt && Date.now() > session.expiresAt);
 }
 
+// Assessment-only = no video questions (only text/MCQ) → emails say "assessment".
+function interviewIsAssessmentOnly(interview) {
+  const qs = interview?.questions || [];
+  return qs.length > 0 && qs.every(q => (q.answerType || 'video') !== 'video');
+}
+
 // Canonical host for the static site. Reminder emails build the candidate link
 // from this + the session token, so the link is always present and always points
 // at the live host (independent of any stored interviewLink).
@@ -555,6 +561,9 @@ async function remindSessionNow(token, request) {
 async function sendReminderEmail(session) {
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
+  const assessOnly = interviewIsAssessmentOnly(interview);
+  const noun = assessOnly ? 'assessment' : 'interview';
+  const Noun = assessOnly ? 'Assessment' : 'Interview';
   // Deadline is optional (manual reminders may have none) — degrade gracefully.
   const hasDeadline = !!session.expiresAt;
   const deadline = hasDeadline ? new Date(session.expiresAt).toLocaleDateString('en-US', {
@@ -570,18 +579,18 @@ async function sendReminderEmail(session) {
   // reminder has a working button even when no interviewLink was ever stored.
   const link = takeUrlFor(session.token);
 
-  const html = emailWrap('#B01A18', 'CTI ZeusHire — Interview Reminder', `
+  const html = emailWrap('#B01A18', `CTI ZeusHire — ${Noun} Reminder`, `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${htmlEsc(session.candidateName)}</strong>,</p>
     <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
       ${hasDeadline
-        ? `This is a friendly reminder that your video interview is due in <strong>${label}</strong>.`
-        : `This is a friendly reminder to complete your video interview.`}
+        ? `This is a friendly reminder that your ${noun} is due in <strong>${label}</strong>.`
+        : `This is a friendly reminder to complete your ${noun}.`}
     </p>
     ${emailInfoBox('#B01A18', htmlEsc(interviewTitle), hasDeadline ? `Deadline: ${deadline}` : '')}
     <p style="margin:0 0 16px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
-      Please complete your interview before the deadline to be considered for this opportunity.
+      Please complete your ${noun} before the deadline to be considered for this opportunity.
     </p>
-    ${link ? emailButton(link, 'Complete My Interview') : ''}
+    ${link ? emailButton(link, assessOnly ? 'Complete My Assessment' : 'Complete My Interview') : ''}
     ${link ? `
     <p style="margin:16px 0 4px 0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif">Or copy this link into your browser:</p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
@@ -591,7 +600,7 @@ async function sendReminderEmail(session) {
     </tr></table>
     ` : ''}
     <p style="margin:20px 0 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif">
-      If you have already completed your interview, please disregard this reminder.
+      If you have already completed your ${noun}, please disregard this reminder.
     </p>
   `);
 
@@ -603,8 +612,8 @@ async function sendReminderEmail(session) {
     body: JSON.stringify({
       message: {
         subject: hasDeadline
-          ? `Reminder: Complete your ${interviewTitle} interview — ${label} Left`
-          : `Reminder: Complete your ${interviewTitle} interview`,
+          ? `Reminder: Complete your ${interviewTitle} ${noun} — ${label} Left`
+          : `Reminder: Complete your ${interviewTitle} ${noun}`,
         body: { contentType: 'HTML', content: html },
         from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
@@ -936,6 +945,8 @@ async function sendInterviewEmail(token, request) {
   const { link } = await request.json();
   const interview = await kvGet(`interview:${session.interviewId}`);
   const interviewTitle = interview?.title || 'Interview';
+  const assessOnly = interviewIsAssessmentOnly(interview);
+  const noun = assessOnly ? 'assessment' : 'interview';
 
   // Persist the link so reminder emails can include it
   if (link && !session.interviewLink) {
@@ -945,10 +956,10 @@ async function sendInterviewEmail(token, request) {
 
   const html = emailWrap('#B01A18', 'CTI ZeusHire', `
     <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Dear <strong>${htmlEsc(session.candidateName)}</strong>,</p>
-    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">You have been invited to complete a one-way video interview for the following position:</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">${assessOnly ? 'You have been invited to complete an online assessment for the following position:' : 'You have been invited to complete a one-way video interview for the following position:'}</p>
     ${emailInfoBox('#B01A18', htmlEsc(interviewTitle))}
-    <p style="margin:0 0 8px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">Please click the button below to begin. You can complete the interview at your own pace.</p>
-    ${emailButton(link, 'Start Interview')}
+    <p style="margin:0 0 8px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">Please click the button below to begin. You can complete the ${noun} at your own pace.</p>
+    ${emailButton(link, assessOnly ? 'Start Assessment' : 'Start Interview')}
     <p style="margin:20px 0 4px 0;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif">Or copy this link into your browser:</p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
       <td bgcolor="#f3f4f6" style="background-color:#f3f4f6;padding:10px;word-break:break-all">
@@ -964,7 +975,7 @@ async function sendInterviewEmail(token, request) {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: {
-        subject: `Interview Invitation: ${interviewTitle} — CTI ZeusHire`,
+        subject: `${assessOnly ? 'Assessment' : 'Interview'} Invitation: ${interviewTitle} — CTI ZeusHire`,
         body: { contentType: 'HTML', content: html },
         from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
         toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
