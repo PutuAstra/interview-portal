@@ -216,8 +216,8 @@ function showProfileUpload() {
           onchange="handleResumeFile(this.files[0])" />
       </div>` : ''}
 
-      <button class="btn btn-primary btn-lg" style="width:100%" onclick="submitProfileUpload()">
-        Continue to Setup →
+      <button class="btn btn-primary btn-lg" style="width:fit-content;margin:0 auto;display:block" onclick="submitProfileUpload()">
+        ${isAssessmentOnly() ? 'Start Assessment →' : 'Continue to Setup →'}
       </button>
     </div>`;
 }
