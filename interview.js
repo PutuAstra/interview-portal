@@ -85,8 +85,8 @@ function showExpired() {
   main().innerHTML = `
     <div class="thankyou-screen">
       <div class="thankyou-icon">⏰</div>
-      <h2 style="color:var(--muted)">Interview Closed</h2>
-      <p class="mt-8">The submission deadline for this interview has passed.</p>
+      <h2 style="color:var(--muted)">${flowNoun()} Closed</h2>
+      <p class="mt-8">The submission deadline for this ${flowNounLC()} has passed.</p>
       <p class="text-muted text-sm mt-8">Please contact your recruiter if you believe this is an error.</p>
     </div>`;
 }
@@ -122,13 +122,36 @@ function profileComplete() {
   return !!session.profilePhotoItemId && (!interviewNeedsResume() || !!session.resumeItemId);
 }
 
+// Assessment-only = no video questions at all (only text/MCQ). Such interviews are
+// labelled "Assessment" to the candidate and skip the camera Setup & Preview screen.
+function isAssessmentOnly() {
+  const qs = (interview && interview.questions) || [];
+  return qs.length > 0 && qs.every(q => (q.answerType || 'video') !== 'video');
+}
+function flowNoun()   { return isAssessmentOnly() ? 'Assessment' : 'Interview'; }
+function flowNounLC() { return isAssessmentOnly() ? 'assessment' : 'interview'; }
+// After the intro/profile step: assessment-only goes straight to questions (no camera).
+function startAfterProfile() { return isAssessmentOnly() ? 'showQuestion(0)' : 'showSetup()'; }
+
 function showIntro() {
   const totalDuration = interview.questions.reduce((s, q) => s + (q.duration || 0), 0);
   const mins = Math.max(1, Math.ceil(totalDuration / 60));
 
+  const assess = isAssessmentOnly();
+  const bullets = assess
+    ? `<li>You will answer <strong>${interview.questions.length} question${interview.questions.length !== 1 ? 's' : ''}</strong></li>
+       <li>Some questions may have a time limit</li>
+       <li>Once you submit an answer you cannot change it</li>`
+    : `<li>You will answer <strong>${interview.questions.length} question${interview.questions.length !== 1 ? 's' : ''}</strong>, taking around <strong>~${mins} min</strong></li>
+       <li>Each question has a time limit — recording stops automatically</li>
+       <li>Make sure your camera and microphone are ready</li>
+       <li>Find a quiet place with good lighting</li>
+       <li>Once you start a question you cannot redo it</li>`;
+  const startLabel = profileComplete() ? (assess ? 'Start Assessment →' : 'Setup &amp; Preview') : 'Continue →';
+
   main().innerHTML = `
     <div class="card" style="max-width:720px;width:100%;text-align:center">
-      <div style="font-size:40px;margin-bottom:16px">🎙️</div>
+      <div style="font-size:40px;margin-bottom:16px">${assess ? '📝' : '🎙️'}</div>
       <h1>${esc(interview.title)}</h1>
       <p class="mt-8">Hello, <strong>${esc(session.candidateName)}</strong> 👋</p>
 
@@ -138,17 +161,13 @@ function showIntro() {
       <div class="card" style="background:var(--bg);margin-top:20px;text-align:left">
         <p class="text-sm text-muted mb-8">Before you start:</p>
         <ul style="list-style:disc;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text-2);font-size:13px">
-          <li>You will answer <strong>${interview.questions.length} question${interview.questions.length !== 1 ? 's' : ''}</strong>, taking around <strong>~${mins} min</strong></li>
-          <li>Each question has a time limit — recording stops automatically</li>
-          <li>Make sure your camera and microphone are ready</li>
-          <li>Find a quiet place with good lighting</li>
-          <li>Once you start a question you cannot redo it</li>
+          ${bullets}
         </ul>
       </div>
 
       <button class="btn btn-primary btn-lg mt-24"
-        onclick="${profileComplete() ? 'showSetup()' : 'showProfileUpload()'}">
-        ${profileComplete() ? 'Setup &amp; Preview' : 'Continue →'}
+        onclick="${profileComplete() ? startAfterProfile() : 'showProfileUpload()'}">
+        ${startLabel}
       </button>
     </div>`;
 }
@@ -426,7 +445,8 @@ async function submitProfileUpload() {
     session.profilePhotoItemId = true;
     window._croppedPhotoBlob = null;
 
-    showSetup();
+    // Assessment-only interviews skip the camera Setup & Preview screen.
+    if (isAssessmentOnly()) showQuestion(0); else showSetup();
   } catch (e) {
     main().innerHTML = `
       <div class="card" style="max-width:400px;width:100%;text-align:center;padding:48px 32px">
@@ -1072,7 +1092,7 @@ async function submitWrittenAnswer(index) {
       <div style="font-size:40px">✓</div>
       <p class="mt-8" style="color:var(--green);font-weight:600">Answer saved</p>
       <button class="btn btn-primary btn-lg mt-16" onclick="${isLast ? 'finishInterview()' : `showQuestion(${index + 1})`}">
-        ${isLast ? 'Finish Interview' : 'Next Question →'}
+        ${isLast ? `Finish ${flowNoun()}` : "Next Question →"}
       </button>
     </div>`;
 }
@@ -1408,7 +1428,7 @@ function showAfterRecording() {
     <div class="flex gap-8">
       ${canRetake ? `<button class="btn btn-outline" onclick="retakeAnswer()">↩ Retake</button>` : ''}
       <button class="btn btn-primary btn-lg" onclick="${isLast ? 'finishInterview()' : `showQuestion(${currentQ + 1})`}">
-        ${isLast ? 'Finish Interview' : 'Next Question →'}
+        ${isLast ? `Finish ${flowNoun()}` : "Next Question →"}
       </button>
     </div>`;
 }
@@ -1448,8 +1468,8 @@ function showThankYou(alreadyDone) {
       <h1>${alreadyDone ? 'Already Submitted' : 'Thank You!'}</h1>
       <p class="mt-8">
         ${alreadyDone
-          ? 'This interview has already been completed.'
-          : `Your interview has been submitted, <strong>${esc(session?.candidateName || '')}</strong>. The CTI Group team will review your responses and be in touch.`}
+          ? `This ${flowNounLC()} has already been completed.`
+          : `Your ${flowNounLC()} has been submitted, <strong>${esc(session?.candidateName || '')}</strong>. The CTI Group team will review your responses and be in touch.`}
       </p>
       <p class="mt-16 text-muted text-sm">You may now close this tab.</p>
     </div>`;
