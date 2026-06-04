@@ -113,9 +113,10 @@ async function renderPage({ session, interview, review, mode, shareToken: tok })
   if (resume && resume.downloadUrl) {
     const rext = (resume.ext || 'pdf').toLowerCase();
     const enc = encodeURIComponent(resume.downloadUrl);
-    const viewerSrc = (rext === 'doc' || rext === 'docx')
-      ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
-      : `https://docs.google.com/viewer?url=${enc}&embedded=true`;
+    const viewerSrc = resume.previewUrl
+      || ((rext === 'doc' || rext === 'docx')
+        ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
+        : `https://docs.google.com/viewer?url=${enc}&embedded=true`);
     resumeHTML = `
       <div class="card" style="margin-bottom:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">

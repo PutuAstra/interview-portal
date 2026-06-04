@@ -2676,9 +2676,12 @@ async function openReview(token, candidateName) {
       // OneDrive download URLs serve with Content-Disposition: attachment, which forces
       // download instead of inline display. Route through a viewer service instead.
       const enc = encodeURIComponent(resumeData.downloadUrl);
-      const viewerSrc = (ext === 'doc' || ext === 'docx')
-        ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
-        : `https://docs.google.com/viewer?url=${enc}&embedded=true`;
+      // Prefer Microsoft Graph's native preview (reliable inline render); fall back
+      // to the Office/Google viewers on the download URL.
+      const viewerSrc = resumeData.previewUrl
+        || ((ext === 'doc' || ext === 'docx')
+          ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
+          : `https://docs.google.com/viewer?url=${enc}&embedded=true`);
       resumeSection = `
         <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;justify-content:space-between;align-items:center">

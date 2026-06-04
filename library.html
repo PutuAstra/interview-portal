@@ -165,12 +165,13 @@ async function loadAllVideos(token, linkEl) {
 
 async function viewResume(token) {
   try {
-    const { downloadUrl, ext } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/resume/${token}`).then(r => r.json());
-    if (!downloadUrl) return alert('Résumé not available.');
+    const { downloadUrl, previewUrl, ext } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/resume/${token}`).then(r => r.json());
+    if (!downloadUrl && !previewUrl) return alert('Résumé not available.');
     const enc = encodeURIComponent(downloadUrl);
-    const viewer = (ext === 'doc' || ext === 'docx')
-      ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
-      : `https://docs.google.com/viewer?url=${enc}&embedded=true`;
+    const viewer = previewUrl
+      || ((ext === 'doc' || ext === 'docx')
+        ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
+        : `https://docs.google.com/viewer?url=${enc}&embedded=true`);
     window.open(viewer, '_blank');
   } catch { alert('Could not open résumé.'); }
 }

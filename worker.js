@@ -2142,19 +2142,34 @@ async function getProfilePhotoUrl(token, request) {
   }
 }
 
+// Microsoft Graph /preview returns a short-lived embeddable URL that renders the
+// file inline (PDF/doc/image) — far more reliable than the Google Docs viewer.
+async function drivePreviewUrl(itemId, accessToken) {
+  try {
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${itemId}/preview`,
+      { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
+    );
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.getUrl || null;
+  } catch { return null; }
+}
+
 async function getResumeUrl(token, request) {
   requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.resumeItemId) return jsonRes({ notFound: true });
   try {
     const accessToken = await getAccessToken();
-    const res  = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
-    const item = await res.json();
+    const [item, previewUrl] = await Promise.all([
+      fetch(`https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }).then(r => r.json()),
+      drivePreviewUrl(session.resumeItemId, accessToken),
+    ]);
     return jsonRes({
       downloadUrl: item['@microsoft.graph.downloadUrl'] || null,
+      previewUrl,
       fileName:    session.resumeFileName || 'resume.pdf',
       ext:         session.resumeExt      || 'pdf',
     });
@@ -2739,13 +2754,14 @@ async function getShareResume(shareToken) {
   if (!session?.resumeItemId) return jsonRes({ notFound: true });
   try {
     const accessToken = await getAccessToken();
-    const res  = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
-    const item = await res.json();
+    const [item, previewUrl] = await Promise.all([
+      fetch(`https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }).then(r => r.json()),
+      drivePreviewUrl(session.resumeItemId, accessToken),
+    ]);
     return jsonRes({
       downloadUrl: item['@microsoft.graph.downloadUrl'] || null,
+      previewUrl,
       fileName:    session.resumeFileName || 'resume.pdf',
       ext:         session.resumeExt      || 'pdf',
     });
@@ -2954,8 +2970,13 @@ async function getClientLibResume(clientToken, token) {
   if (err) return err;
   if (!session.resumeItemId) return jsonRes({ notFound: true });
   try {
-    const { downloadUrl } = await driveDownloadUrl(session.resumeItemId);
-    return jsonRes({ downloadUrl, ext: session.resumeExt || 'pdf' });
+    const accessToken = await getAccessToken();
+    const [item, previewUrl] = await Promise.all([
+      fetch(`https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }).then(r => r.json()),
+      drivePreviewUrl(session.resumeItemId, accessToken),
+    ]);
+    return jsonRes({ downloadUrl: item['@microsoft.graph.downloadUrl'] || null, previewUrl, ext: session.resumeExt || 'pdf' });
   } catch (e) { return jsonRes({ error: e.message }, 500); }
 }
 
