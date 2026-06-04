@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Premium Talent — ZeusHire</title>
+  <link rel="icon" type="image/png" href="cti-logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=20250528b" />
+  <style>
+    .lib-container { min-height:100vh; display:flex; flex-direction:column; background:var(--bg); }
+    .lib-topbar { display:flex; align-items:center; justify-content:space-between; padding:0 24px; height:56px; background:var(--card); border-bottom:1px solid var(--border); flex-shrink:0; }
+    .lib-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:15px; color:var(--text); }
+    .lib-body { flex:1; max-width:1200px; margin:0 auto; padding:24px 20px; width:100%; box-sizing:border-box; }
+    .lib-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+    .lib-filters select, .lib-filters input { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:8px 12px; color:var(--text); font-size:13px; }
+    .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+    .cand-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:16px; display:flex; flex-direction:column; gap:10px; }
+    .cand-tags { display:flex; gap:5px; flex-wrap:wrap; }
+    .cand-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:10px; background:var(--bg); border:1px solid var(--border); color:var(--text-2); }
+    .cand-card video { width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; display:block; }
+    .badge-client { display:inline-flex; align-items:center; gap:5px; background:rgba(245,158,11,0.12); color:#f59e0b; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid rgba(245,158,11,0.3); }
+  </style>
+</head>
+<body>
+<div class="lib-container">
+  <div class="lib-topbar" id="lib-topbar">
+    <div class="lib-brand">
+      <img src="cti-logo.png" alt="CTI" style="height:30px;width:auto" />
+      <span id="brand-name">CTI ZeusHire</span>
+      <span class="badge-client">⭐ Premium Talent</span>
+    </div>
+    <span class="text-muted text-sm" id="client-label"></span>
+  </div>
+  <div class="lib-body" id="lib-body">
+    <div class="spinner" style="margin:80px auto"></div>
+  </div>
+</div>
+
+<script>
+const WORKER_URL = 'https://interview-api.putuastrawijaya.workers.dev';
+const clientToken = new URLSearchParams(location.search).get('c');
+let _candidates = [];
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function jsAttr(s){ return esc(s).replace(/'/g,'&#39;'); }
+function showMsg(icon, title, body) {
+  document.getElementById('lib-body').innerHTML =
+    `<div style="max-width:460px;margin:80px auto;text-align:center"><div style="font-size:48px;margin-bottom:16px">${icon}</div><h2>${title}</h2><p class="text-muted mt-8">${body}</p></div>`;
+}
+
+async function boot() {
+  if (!clientToken) return showMsg('⚠️','Link Invalid','No access token in this URL.');
+  try {
+    const res = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}`);
+    if (!res.ok) return showMsg('⚠️','Link Not Found','This library link is invalid or has been revoked.');
+    const data = await res.json();
+    applyBranding(data.branding || {});
+    document.getElementById('client-label').textContent = data.label || '';
+    _candidates = data.candidates || [];
+    renderFilters();
+    renderGrid();
+  } catch {
+    showMsg('⚠️','Connection Error','Could not connect to the server. Please try again later.');
+  }
+}
+
+function applyBranding(b) {
+  if (b.brandColor) {
+    document.documentElement.style.setProperty('--accent', b.brandColor);
+    document.getElementById('lib-topbar').style.borderBottom = `1px solid ${b.brandColor}30`;
+  }
+  const name = b.brandName || 'CTI ZeusHire';
+  document.getElementById('brand-name').textContent = name;
+  document.title = name + ' — Premium Talent';
+}
+
+function renderFilters() {
+  const cats = [...new Set(_candidates.map(c => c.category))].sort();
+  const deps = [...new Set(_candidates.map(c => c.department))].sort();
+  const roles = [...new Set(_candidates.map(c => c.role))].sort();
+  const opt = (arr, label) => `<option value="all">${label}</option>` + arr.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  document.getElementById('lib-body').innerHTML = `
+    <div class="lib-filters">
+      <select id="f-cat" onchange="renderGrid()">${opt(cats,'All categories')}</select>
+      <select id="f-dep" onchange="renderGrid()">${opt(deps,'All departments')}</select>
+      <select id="f-role" onchange="renderGrid()">${opt(roles,'All roles')}</select>
+    </div>
+    <div id="grid" class="lib-grid"></div>`;
+}
+
+function renderGrid() {
+  const fc = document.getElementById('f-cat')?.value || 'all';
+  const fd = document.getElementById('f-dep')?.value || 'all';
+  const fr = document.getElementById('f-role')?.value || 'all';
+  const list = _candidates.filter(c =>
+    (fc === 'all' || c.category === fc) &&
+    (fd === 'all' || c.department === fd) &&
+    (fr === 'all' || c.role === fr));
+  const grid = document.getElementById('grid');
+  if (!list.length) { grid.innerHTML = `<div class="empty-state">No candidates match your filter.</div>`; return; }
+  grid.innerHTML = list.map(cardHTML).join('');
+  // Lazy-load each candidate's first video URL
+  list.forEach(c => loadCandidateVideo(c));
+}
+
+function cardHTML(c) {
+  const firstVid = (c.videos || [])[0];
+  return `
+    <div class="cand-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="font-size:16px;font-weight:700">${esc(c.candidateName)}</div>
+      </div>
+      <div class="cand-tags">
+        <span class="cand-tag">${esc(c.category)}</span>
+        <span class="cand-tag">${esc(c.department)}</span>
+        <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
+      </div>
+      ${firstVid
+        ? `<video id="vid-${c.token}" controls preload="none" poster=""></video>
+           ${(c.videos.length > 1) ? `<div style="font-size:11px;color:var(--muted)">+ ${c.videos.length - 1} more answer${c.videos.length - 1 !== 1 ? 's' : ''} — <a href="#" onclick="loadAllVideos('${c.token}',this);return false" style="color:var(--accent)">show all</a></div>` : ''}
+           <div id="more-${c.token}"></div>`
+        : `<div class="text-muted text-sm">No video answers</div>`}
+      <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+        ${c.hasResume ? `<button class="btn btn-outline" style="font-size:12px;padding:6px 12px" onclick="viewResume('${c.token}')">📄 Résumé</button>` : ''}
+        <button class="btn btn-primary" id="int-${c.token}" style="font-size:12px;padding:6px 14px" ${c.alreadyInterested ? 'disabled' : ''} onclick="markInterested('${c.token}','${jsAttr(c.candidateName)}')">
+          ${c.alreadyInterested ? '✓ Interested' : '⭐ Interested'}
+        </button>
+      </div>
+    </div>`;
+}
+
+async function loadCandidateVideo(c) {
+  const v = (c.videos || [])[0];
+  if (!v) return;
+  try {
+    const { downloadUrl } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/video/${c.token}/${v.questionIndex}`).then(r => r.json());
+    const el = document.getElementById(`vid-${c.token}`);
+    if (el && downloadUrl) el.src = downloadUrl;
+  } catch {}
+}
+
+async function loadAllVideos(token, linkEl) {
+  if (linkEl) linkEl.parentElement.style.display = 'none';
+  const c = _candidates.find(x => x.token === token);
+  const more = document.getElementById(`more-${token}`);
+  if (!c || !more) return;
+  const rest = (c.videos || []).slice(1);
+  more.innerHTML = rest.map(v => `<video id="vid-${token}-${v.questionIndex}" controls preload="none" style="margin-top:8px"></video>`).join('');
+  for (const v of rest) {
+    try {
+      const { downloadUrl } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/video/${token}/${v.questionIndex}`).then(r => r.json());
+      const el = document.getElementById(`vid-${token}-${v.questionIndex}`);
+      if (el && downloadUrl) el.src = downloadUrl;
+    } catch {}
+  }
+}
+
+async function viewResume(token) {
+  try {
+    const { downloadUrl, ext } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/resume/${token}`).then(r => r.json());
+    if (!downloadUrl) return alert('Résumé not available.');
+    const enc = encodeURIComponent(downloadUrl);
+    const viewer = (ext === 'doc' || ext === 'docx')
+      ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
+      : `https://docs.google.com/viewer?url=${enc}&embedded=true`;
+    window.open(viewer, '_blank');
+  } catch { alert('Could not open résumé.'); }
+}
+
+async function markInterested(token, name) {
+  const btn = document.getElementById(`int-${token}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const res = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/interest/${token}`, { method: 'POST' });
+    if (!res.ok) throw new Error();
+    if (btn) btn.textContent = '✓ Interested';
+    const c = _candidates.find(x => x.token === token);
+    if (c) c.alreadyInterested = true;
+  } catch {
+    if (btn) { btn.disabled = false; btn.textContent = '⭐ Interested'; }
+    alert('Could not register interest. Please try again.');
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
