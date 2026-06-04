@@ -2163,30 +2163,56 @@ async function getResumeUrl(token, request) {
   }
 }
 
+// Default outcome-email templates (used when the recruiter hasn't customized them).
+// Placeholders: {name} {position}
+const OUTCOME_DEFAULTS = {
+  move_forward: {
+    subject: 'Good news about your {position} application — CTI Group',
+    body:
+`Dear {name},
+
+Congratulations! We were impressed with your responses for {position}, and we're pleased to let you know that you've been selected to move forward to the next stage of our process.
+
+Our recruitment team will be in touch shortly with the next steps. Thank you for your interest in CTI Group.
+
+Warm regards,
+CTI Group Recruitment Team`,
+  },
+  not_moving_forward: {
+    subject: 'Update on your {position} application — CTI Group',
+    body:
+`Dear {name},
+
+Thank you for taking the time to complete your interview for {position} and for your interest in CTI Group.
+
+After careful consideration, we have decided not to move forward with your application at this time. We genuinely appreciate the effort you put in and encourage you to apply for future opportunities that match your experience.
+
+We wish you all the best in your career.
+
+Kind regards,
+CTI Group Recruitment Team`,
+  },
+};
+
 // Outcome email to the candidate based on the recruiter's decision.
 async function sendOutcomeEmail(session, interview, decision) {
   if (!session.candidateEmail) return false;
-  const name  = htmlEsc(session.candidateName);
-  const title = htmlEsc(interview?.title || 'the position');
-  let subject, inner;
-  if (decision === 'move_forward') {
-    subject = `Good news about your ${interview?.title || ''} application — CTI Group`;
-    inner = `
-      <p style="margin:0 0 16px;font-size:15px;color:#1a1a1a;font-family:Arial,sans-serif">Dear <strong>${name}</strong>,</p>
-      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">🎉 <strong>Congratulations!</strong> We were impressed with your responses for <strong>${title}</strong>, and we're pleased to let you know that you've been selected to move forward to the next stage of our process.</p>
-      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">Our recruitment team will be in touch shortly with the next steps. Thank you for your interest in CTI Group.</p>
-      <p style="margin:16px 0 0;color:#374151;font-size:14px;font-family:Arial,sans-serif">Warm regards,<br/>CTI Group Recruitment Team</p>`;
-  } else if (decision === 'not_moving_forward') {
-    subject = `Update on your ${interview?.title || ''} application — CTI Group`;
-    inner = `
-      <p style="margin:0 0 16px;font-size:15px;color:#1a1a1a;font-family:Arial,sans-serif">Dear <strong>${name}</strong>,</p>
-      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">Thank you for taking the time to complete your interview for <strong>${title}</strong> and for your interest in CTI Group.</p>
-      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">After careful consideration, we have decided not to move forward with your application at this time. This was not an easy decision — we received many strong submissions. We genuinely appreciate the effort you put in and encourage you to apply for future opportunities that match your experience.</p>
-      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">We wish you all the best in your career.</p>
-      <p style="margin:16px 0 0;color:#374151;font-size:14px;font-family:Arial,sans-serif">Kind regards,<br/>CTI Group Recruitment Team</p>`;
-  } else {
-    return false;
-  }
+  if (decision !== 'move_forward' && decision !== 'not_moving_forward') return false;
+
+  const settings = (await kvGet('recruiter:settings')) || {};
+  const custom = decision === 'move_forward'
+    ? { subject: settings.outcomeFwdSubject, body: settings.outcomeFwdBody }
+    : { subject: settings.outcomeRejSubject, body: settings.outcomeRejBody };
+  const def = OUTCOME_DEFAULTS[decision];
+
+  const fill = t => (t || '').replace(/\{name\}/g, session.candidateName).replace(/\{position\}/g, interview?.title || 'the position');
+  const subject = fill((custom.subject && custom.subject.trim()) ? custom.subject : def.subject);
+  const bodyText = fill((custom.body && custom.body.trim()) ? custom.body : def.body);
+  // Plain-text body → safe HTML paragraphs (escape, blank line = paragraph, single newline = <br>).
+  const inner = bodyText.split(/\n{2,}/).map(p =>
+    `<p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">${htmlEsc(p).replace(/\n/g, '<br/>')}</p>`
+  ).join('');
+
   const accessToken = await getAccessToken();
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${EMAIL_SENDER}/sendMail`, {
     method: 'POST',

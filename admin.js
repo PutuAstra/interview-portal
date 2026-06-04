@@ -4559,6 +4559,29 @@ async function renderBrandingPage() {
   renderBrandingContent();
 }
 
+const OUTCOME_EMAIL_DEFAULTS = {
+  fwdSubject: 'Good news about your {position} application — CTI Group',
+  fwdBody: `Dear {name},
+
+Congratulations! We were impressed with your responses for {position}, and we're pleased to let you know that you've been selected to move forward to the next stage of our process.
+
+Our recruitment team will be in touch shortly with the next steps. Thank you for your interest in CTI Group.
+
+Warm regards,
+CTI Group Recruitment Team`,
+  rejSubject: 'Update on your {position} application — CTI Group',
+  rejBody: `Dear {name},
+
+Thank you for taking the time to complete your interview for {position} and for your interest in CTI Group.
+
+After careful consideration, we have decided not to move forward with your application at this time. We genuinely appreciate the effort you put in and encourage you to apply for future opportunities that match your experience.
+
+We wish you all the best in your career.
+
+Kind regards,
+CTI Group Recruitment Team`,
+};
+
 function renderBrandingContent() {
   const main = document.getElementById('admin-main');
   const s = _brandingSettings;
@@ -4614,6 +4637,24 @@ function renderBrandingContent() {
         </div>
       </div>
 
+      <h3 style="margin:20px 0 6px">Candidate Outcome Emails</h3>
+      <p class="text-muted text-sm mb-16">Sent automatically when you save a review decision. Placeholders: <code>{name}</code>, <code>{position}</code>. A blank line starts a new paragraph.</p>
+
+      <div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;gap:16px">
+        <div class="form-group" style="margin:0">
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#16a34a">✓ Move Forward — Subject</label>
+          <input type="text" id="em-fwd-subject" value="${esc(s.outcomeFwdSubject || OUTCOME_EMAIL_DEFAULTS.fwdSubject)}" style="width:100%" />
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#16a34a;margin-top:10px;display:block">✓ Move Forward — Message</label>
+          <textarea id="em-fwd-body" rows="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;line-height:1.5">${esc(s.outcomeFwdBody || OUTCOME_EMAIL_DEFAULTS.fwdBody)}</textarea>
+        </div>
+        <div class="form-group" style="margin:0;border-top:1px solid var(--border);padding-top:16px">
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626">✗ Not Moving Forward — Subject</label>
+          <input type="text" id="em-rej-subject" value="${esc(s.outcomeRejSubject || OUTCOME_EMAIL_DEFAULTS.rejSubject)}" style="width:100%" />
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-top:10px;display:block">✗ Not Moving Forward — Message</label>
+          <textarea id="em-rej-body" rows="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;line-height:1.5">${esc(s.outcomeRejBody || OUTCOME_EMAIL_DEFAULTS.rejBody)}</textarea>
+        </div>
+      </div>
+
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary" onclick="saveBrandingSettings()">💾 Save Branding</button>
         <button class="btn btn-ghost" onclick="renderBrandingContent()">Reset</button>
@@ -4654,8 +4695,12 @@ async function saveBrandingSettings() {
   const brandName       = document.getElementById('brand-name')?.value.trim()       || '';
   const brandColor      = document.getElementById('brand-color')?.value              || '#B01A18';
   const brandWelcomeMsg = document.getElementById('brand-welcome')?.value.trim()     || '';
+  const outcomeFwdSubject = document.getElementById('em-fwd-subject')?.value.trim() || '';
+  const outcomeFwdBody    = document.getElementById('em-fwd-body')?.value.trim()    || '';
+  const outcomeRejSubject = document.getElementById('em-rej-subject')?.value.trim() || '';
+  const outcomeRejBody    = document.getElementById('em-rej-body')?.value.trim()    || '';
   try {
-    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg });
+    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody });
     _brandingSettings = updated;
     toast('Branding saved!', 'success');
     renderBrandingContent();
