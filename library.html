@@ -102,7 +102,10 @@ function renderGrid() {
     (fd === 'all' || c.department === fd) &&
     (fr === 'all' || c.role === fr));
   const grid = document.getElementById('grid');
-  if (!list.length) { grid.innerHTML = `<div class="empty-state">No candidates match your filter.</div>`; return; }
+  if (!list.length) {
+    grid.innerHTML = `<div class="empty-state">${_candidates.length ? 'No candidates match your filter.' : 'No candidates available at the moment.'}</div>`;
+    return;
+  }
   grid.innerHTML = list.map(cardHTML).join('');
   // Lazy-load each candidate's first video URL
   list.forEach(c => loadCandidateVideo(c));
