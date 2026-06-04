@@ -176,6 +176,7 @@ async function route(request) {
   // One-way: profile photo + resume fetch (admin-facing)
   if (seg[0] === 'session' && seg[2] === 'profile-photo' && m === 'GET')  return getProfilePhotoUrl(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'resume-url'    && m === 'GET')  return getResumeUrl(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'resume-file'   && m === 'GET')  return getResumeFile(seg[1], request);
   // One-way: recruiter review outcome
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'POST') return saveSessionReview(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'review' && m === 'GET')  return getSessionReview(seg[1], request);
@@ -2155,6 +2156,31 @@ async function drivePreviewUrl(itemId, accessToken) {
     const j = await r.json();
     return j.getUrl || null;
   } catch { return null; }
+}
+
+// Stream the résumé back inline so the admin can render it in the browser's
+// NATIVE viewer (consistent scroll). Fetched via JS with the X-Admin-Key header
+// (so the key never goes in a URL) and turned into a blob on the client.
+async function getResumeFile(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session?.resumeItemId) return jsonRes({ error: 'No résumé' }, 404);
+  const accessToken = await getAccessToken();
+  const item = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  ).then(r => r.json());
+  const url = item['@microsoft.graph.downloadUrl'];
+  if (!url) return jsonRes({ error: 'Résumé unavailable' }, 404);
+  const fileRes = await fetch(url);
+  if (!fileRes.ok) return jsonRes({ error: 'Résumé fetch failed' }, 502);
+  const ext = (session.resumeExt || 'pdf').toLowerCase();
+  const ct = ext === 'pdf' ? 'application/pdf'
+           : (fileRes.headers.get('content-type') || 'application/octet-stream');
+  return new Response(fileRes.body, {
+    status: 200,
+    headers: { 'Content-Type': ct, 'Content-Disposition': 'inline', 'Cache-Control': 'private, max-age=300' },
+  });
 }
 
 async function getResumeUrl(token, request) {

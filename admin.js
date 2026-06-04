@@ -2423,6 +2423,16 @@ async function saveDeadline(token, expiresAt, reminderFrequency) {
 
 // ── Review videos ─────────────────────────────────────────────
 
+async function loadResumePdf(token) {
+  const frame = document.getElementById('resume-frame');
+  if (!frame) return;
+  try {
+    const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: { 'X-Admin-Key': adminKey } });
+    if (!res.ok) return; // keep the preview viewer already loaded
+    frame.src = URL.createObjectURL(await res.blob());
+  } catch { /* keep fallback viewer */ }
+}
+
 function starsHTML(n, max = 5) {
   return Array.from({ length: max }, (_, i) =>
     `<span style="color:${i < n ? '#f59e0b' : 'var(--border)'}">★</span>`
@@ -2688,7 +2698,7 @@ async function openReview(token, candidateName) {
             <h3 style="margin:0;font-size:14px">Resume</h3>
             <a href="${resumeData.downloadUrl}" target="_blank" class="btn btn-ghost" style="font-size:11px;padding:2px 8px">Download ↗</a>
           </div>
-          <iframe src="${viewerSrc}" style="flex:1;min-height:400px;border:1px solid var(--border);border-radius:8px;width:100%" frameborder="0" allowfullscreen></iframe>
+          <iframe id="resume-frame" src="${viewerSrc}" style="flex:1;min-height:400px;border:1px solid var(--border);border-radius:8px;width:100%" frameborder="0" allowfullscreen></iframe>
         </div>`;
     } else {
       resumeSection = `<div class="empty-state" style="flex:none">No resume uploaded</div>`;
@@ -2770,6 +2780,12 @@ async function openReview(token, candidateName) {
         ${resumeSection}
         ${reviewOutcome}
       </div>`;
+
+    // For PDF résumés, upgrade the iframe to the browser's native PDF viewer
+    // (consistent scroll). Fetched as a blob so the key stays in a header.
+    if (resumeData?.downloadUrl && (resumeData.ext || 'pdf').toLowerCase() === 'pdf') {
+      loadResumePdf(token);
+    }
 
   } catch (e) {
     content.innerHTML = `<div style="margin:auto;color:var(--red);font-size:13px">${e.message}</div>`;
