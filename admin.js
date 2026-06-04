@@ -261,6 +261,7 @@ async function refreshClientLinks() {
               <div style="font-size:13px;font-weight:600">${esc(l.label)}</div>
               <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(url)}</div>
             </div>
+            <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
           </div>`;
         }).join('')
@@ -270,12 +271,31 @@ async function refreshClientLinks() {
 
 async function createClientLinkFromModal() {
   const label = (document.getElementById('clientlink-label').value || '').trim();
+  const email = (document.getElementById('clientlink-email').value || '').trim();
   if (!label) return toast('Enter a client name/label', 'error');
   try {
-    await apiJSON('POST', '/api/clientlib', { label });
+    const { clientToken } = await apiJSON('POST', '/api/clientlib', { label });
     document.getElementById('clientlink-label').value = '';
-    toast('Client link created', 'success');
+    document.getElementById('clientlink-email').value = '';
+    const emails = email.split(/[,;\s]+/).filter(e => e.includes('@'));
+    if (emails.length) {
+      await apiJSON('POST', `/api/clientlib/${clientToken}/email`, { emails, url: buildLibraryUrl(clientToken) });
+      toast(`Link created & emailed to ${emails.length} recipient${emails.length !== 1 ? 's' : ''}`, 'success');
+    } else {
+      toast('Client link created', 'success');
+    }
     await refreshClientLinks();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function emailClientLink(clientToken) {
+  const input = prompt('Email this library link to (comma-separated addresses):');
+  if (!input) return;
+  const emails = input.split(/[,;\s]+/).filter(e => e.includes('@'));
+  if (!emails.length) return toast('No valid email address', 'error');
+  try {
+    await apiJSON('POST', `/api/clientlib/${clientToken}/email`, { emails, url: buildLibraryUrl(clientToken) });
+    toast(`Emailed to ${emails.length} recipient${emails.length !== 1 ? 's' : ''}`, 'success');
   } catch (e) { toast(e.message, 'error'); }
 }
 

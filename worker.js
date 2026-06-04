@@ -199,6 +199,7 @@ async function route(request) {
   if (seg[0] === 'clientlib' && seg[2] === 'video'    && m === 'GET') return getClientLibVideo(seg[1], seg[3], parseInt(seg[4]));
   if (seg[0] === 'clientlib' && seg[2] === 'resume'   && m === 'GET') return getClientLibResume(seg[1], seg[3]);
   if (seg[0] === 'clientlib' && seg[2] === 'interest' && m === 'POST') return clientExpressInterest(seg[1], seg[3], request);
+  if (seg[0] === 'clientlib' && seg[2] === 'email'    && m === 'POST') return sendClientLibEmail(seg[1], request);
   if (seg[0] === 'clientlib' && seg.length === 2      && m === 'GET') return getClientLib(seg[1]);
 
   // Interview Script management
@@ -2853,6 +2854,47 @@ async function getClientLibResume(clientToken, token) {
     const { downloadUrl } = await driveDownloadUrl(session.resumeItemId);
     return jsonRes({ downloadUrl, ext: session.resumeExt || 'pdf' });
   } catch (e) { return jsonRes({ error: e.message }, 500); }
+}
+
+// Email a client their library link.
+async function sendClientLibEmail(clientToken, request) {
+  requireAdmin(request);
+  const meta = await kvGet(`clientlib:${clientToken}`);
+  if (!meta) return jsonRes({ error: 'Library link not found' }, 404);
+  const { emails, url } = await request.json();
+  if (!emails?.length || !url) return jsonRes({ error: 'emails and url required' }, 400);
+  const toRecipients = emails.map(e => e.trim()).filter(e => e.includes('@')).map(e => ({ emailAddress: { address: e } }));
+  if (!toRecipients.length) return jsonRes({ error: 'No valid email addresses' }, 400);
+
+  const graphToken = await getAccessToken();
+  const bodyRows = `
+    <p style="font-family:Arial,sans-serif;font-size:15px;color:#333;margin:0 0 16px">Hello ${htmlEsc(meta.label)},</p>
+    <p style="font-family:Arial,sans-serif;font-size:14px;color:#374151;line-height:22px;margin:0 0 16px">
+      You have been given private access to <strong>CTI Group's Premium Candidate Library</strong> — a curated pool of top-rated, pre-screened talent. Browse their video answers and résumés, filter by category, department and role, and mark anyone you're <strong>interested</strong> in.
+    </p>
+    ${emailButton(url, 'Browse Premium Candidates')}
+    <p style="font-family:Arial,sans-serif;font-size:12px;color:#6b7280;margin:20px 0 4px">Or copy this link into your browser:</p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+      <td bgcolor="#f3f4f6" style="background-color:#f3f4f6;padding:10px;word-break:break-all">
+        <p style="margin:0;color:#6b7280;font-size:12px;font-family:Arial,sans-serif;word-break:break-all">${url}</p>
+      </td>
+    </tr></table>
+    <p style="font-family:Arial,sans-serif;font-size:12px;color:#aaa;margin:20px 0 0;text-align:center">This is a private link — no login required.</p>`;
+
+  await fetch(`https://graph.microsoft.com/v1.0/users/${EMAIL_SENDER}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${graphToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: `CTI ZeusHire — Premium Candidate Library Access`,
+        body: { contentType: 'HTML', content: emailWrap('#B01A18', 'Premium Talent', bodyRows) },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: EMAIL_SENDER } },
+        toRecipients,
+      },
+      saveToSentItems: true,
+    }),
+  });
+  return jsonRes({ ok: true });
 }
 
 // Client raises their hand. Does NOT change Available status — just logs interest

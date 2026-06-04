@@ -508,9 +508,10 @@
     </div>
     <p class="text-muted text-sm mb-16">Each link lets a client browse only <strong>Available</strong> premium candidates (filter by category/department/role) and mark <strong>Interested</strong>. No login required.</p>
     <div class="form-group">
-      <label>New client link — label</label>
+      <label>New client link</label>
+      <input type="text" id="clientlink-label" placeholder="Label — e.g. Royal Caribbean — Jakarta" style="width:100%;margin-bottom:8px;box-sizing:border-box" />
       <div style="display:flex;gap:8px">
-        <input type="text" id="clientlink-label" placeholder="e.g. Royal Caribbean — Jakarta" style="flex:1" />
+        <input type="text" id="clientlink-email" placeholder="Client email (optional — emails the link on create)" style="flex:1" />
         <button class="btn btn-primary" onclick="createClientLinkFromModal()" style="white-space:nowrap">+ Create</button>
       </div>
     </div>
@@ -522,6 +523,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250529h"></script>
+<script src="admin.js?v=20250529i"></script>
 </body>
 </html>
