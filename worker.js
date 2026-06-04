@@ -189,6 +189,18 @@ async function route(request) {
   if (seg[0] === 'share'   && seg[2] === 'resume-url' && m === 'GET') return getShareResume(seg[1]);
   if (seg[0] === 'share'   && seg[2] === 'feedback' && m === 'POST') return submitShareFeedback(seg[1], request);
 
+  // ── Premium Candidates Library ──
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'taken' && m === 'POST') return markPremiumTaken(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && m === 'POST')   return addToPremium(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && m === 'DELETE') return removeFromPremium(seg[1], request);
+  if (seg[0] === 'premium' && seg.length === 1 && m === 'GET')        return listPremium(request);
+  if (seg[0] === 'clientlib' && seg.length === 1 && m === 'POST')     return createClientLib(request);
+  if (seg[0] === 'clientlib' && seg.length === 1 && m === 'GET')      return listClientLibs(request);
+  if (seg[0] === 'clientlib' && seg[2] === 'video'    && m === 'GET') return getClientLibVideo(seg[1], seg[3], parseInt(seg[4]));
+  if (seg[0] === 'clientlib' && seg[2] === 'resume'   && m === 'GET') return getClientLibResume(seg[1], seg[3]);
+  if (seg[0] === 'clientlib' && seg[2] === 'interest' && m === 'POST') return clientExpressInterest(seg[1], seg[3], request);
+  if (seg[0] === 'clientlib' && seg.length === 2      && m === 'GET') return getClientLib(seg[1]);
+
   // Interview Script management
   if (seg[0] === 'script' && seg[1] === 'clients' && seg.length === 2) {
     if (m === 'GET')  return listScriptClients(request);
@@ -2667,6 +2679,196 @@ async function getShareVideo(shareToken, qIndex) {
   } catch (e) {
     return jsonRes({ error: 'Could not retrieve video' }, 500);
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Premium Candidates Library
+// ─────────────────────────────────────────────────────────────
+
+// Resolve a OneDrive item's temporary download URL.
+async function driveDownloadUrl(itemId) {
+  const accessToken = await getAccessToken();
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${itemId}`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  );
+  const item = await res.json();
+  return { downloadUrl: item['@microsoft.graph.downloadUrl'] || null, webUrl: item.webUrl || null };
+}
+
+// Recruiter adds a candidate to the Premium Library. AUTHORITATIVE 4★ gate:
+// re-reads the saved review so the UI can't be bypassed.
+async function addToPremium(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  const review = await kvGet(`session:${token}:review`);
+  const stars = review?.stars || session.reviewStars || 0;
+  if (stars < 4) return jsonRes({ error: 'Candidate must be rated 4★ or 5★ to add to the Premium Library.' }, 403);
+
+  const { category, department, role } = await request.json().catch(() => ({}));
+  if (!category || !department || !role) return jsonRes({ error: 'category, department and role are required' }, 400);
+
+  session.premium = {
+    status:     'Available',
+    category:   String(category).slice(0, 80),
+    department: String(department).slice(0, 80),
+    role:       String(role).slice(0, 80),
+    stars,
+    addedAt:    Date.now(),
+    interests:  session.premium?.interests || [],
+    takenAt:    null,
+    takenBy:    null,
+  };
+  await kvPut(`session:${token}`, session);
+  const list = (await kvGet('premium:list')) || [];
+  if (!list.includes(token)) { list.push(token); await kvPut('premium:list', list); }
+  return jsonRes({ ok: true, premium: session.premium });
+}
+
+async function removeFromPremium(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  delete session.premium;
+  await kvPut(`session:${token}`, session);
+  const list = ((await kvGet('premium:list')) || []).filter(t => t !== token);
+  await kvPut('premium:list', list);
+  return jsonRes({ ok: true });
+}
+
+// Admin marks a premium candidate as Taken (hired) — removes them from the
+// client-facing library. Only the recruiter does this, after an actual hire.
+async function markPremiumTaken(token, request) {
+  requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
+  session.premium.status = 'Taken';
+  session.premium.takenAt = Date.now();
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true });
+}
+
+// Admin management list — every premium candidate (any status) + interests.
+async function listPremium(request) {
+  requireAdmin(request);
+  const tokens = (await kvGet('premium:list')) || [];
+  const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
+  const premium = sessions.filter(s => s && s.premium).map(s => ({
+    token:              s.token,
+    candidateName:      s.candidateName,
+    candidateEmail:     s.candidateEmail || '',
+    interviewId:        s.interviewId,
+    profilePhotoItemId: s.profilePhotoItemId || null,
+    reviewStars:        s.reviewStars || s.premium.stars || 0,
+    premium:            s.premium,
+  }));
+  return jsonRes({ premium });
+}
+
+// ── Client library access (tokenized, no login) ──
+async function createClientLib(request) {
+  requireAdmin(request);
+  const { label } = await request.json().catch(() => ({}));
+  const clientToken = uid();
+  await kvPut(`clientlib:${clientToken}`, { label: (label || 'Client').slice(0, 80), createdAt: Date.now() });
+  const list = (await kvGet('clientlib:list')) || [];
+  list.push(clientToken); await kvPut('clientlib:list', list);
+  return jsonRes({ clientToken, label: label || 'Client' });
+}
+
+async function listClientLibs(request) {
+  requireAdmin(request);
+  const tokens = (await kvGet('clientlib:list')) || [];
+  const links = (await Promise.all(tokens.map(async t => {
+    const meta = await kvGet(`clientlib:${t}`);
+    return meta ? { clientToken: t, label: meta.label, createdAt: meta.createdAt } : null;
+  }))).filter(Boolean);
+  return jsonRes({ links });
+}
+
+// PUBLIC (client token). HARD ACL: only premium candidates with status
+// 'Available' are ever returned, and only safe fields (no email/notes/review).
+async function getClientLib(clientToken) {
+  const meta = await kvGet(`clientlib:${clientToken}`);
+  if (!meta) return jsonRes({ error: 'Library link not found' }, 404);
+
+  const settings = (await kvGet('recruiter:settings')) || {};
+  const branding = {
+    brandName:  settings.brandName  || '',
+    brandColor: settings.brandColor || '',
+    brandLogoUrl: settings.brandLogoUrl || '',
+  };
+
+  const tokens = (await kvGet('premium:list')) || [];
+  const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
+  const available = sessions.filter(s => s && s.premium && s.premium.status === 'Available');
+
+  const candidates = await Promise.all(available.map(async s => {
+    const interview = await kvGet(`interview:${s.interviewId}`);
+    const qs = interview?.questions || [];
+    const videos = (s.responses || [])
+      .filter(r => (r.answerType || 'video') === 'video' && r.driveItemId)
+      .map(r => ({ questionIndex: r.questionIndex, text: qs[r.questionIndex]?.text || `Question ${r.questionIndex + 1}` }))
+      .sort((a, b) => a.questionIndex - b.questionIndex);
+    const alreadyInterested = (s.premium.interests || []).some(i => i.clientToken === clientToken);
+    return {
+      token:              s.token,
+      candidateName:      s.candidateName,
+      profilePhotoItemId: s.profilePhotoItemId || null,
+      category:           s.premium.category,
+      department:         s.premium.department,
+      role:               s.premium.role,
+      hasResume:          !!s.resumeItemId,
+      videos,
+      alreadyInterested,
+    };
+  }));
+
+  return jsonRes({ label: meta.label, branding, candidates });
+}
+
+// Guard: a clientlib token may only touch premium + Available candidates.
+async function clientLibCandidate(clientToken, token) {
+  if (!(await kvGet(`clientlib:${clientToken}`))) return { err: jsonRes({ error: 'Library link not found' }, 404) };
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium || session.premium.status !== 'Available') return { err: jsonRes({ error: 'Candidate not available' }, 403) };
+  return { session };
+}
+
+async function getClientLibVideo(clientToken, token, qIndex) {
+  const { err, session } = await clientLibCandidate(clientToken, token);
+  if (err) return err;
+  const response = session.responses?.find(r => r.questionIndex === qIndex);
+  if (!response?.driveItemId) return jsonRes({ error: 'Video not found' }, 404);
+  try { return jsonRes(await driveDownloadUrl(response.driveItemId)); }
+  catch (e) { return jsonRes({ error: 'Could not retrieve video' }, 500); }
+}
+
+async function getClientLibResume(clientToken, token) {
+  const { err, session } = await clientLibCandidate(clientToken, token);
+  if (err) return err;
+  if (!session.resumeItemId) return jsonRes({ notFound: true });
+  try {
+    const { downloadUrl } = await driveDownloadUrl(session.resumeItemId);
+    return jsonRes({ downloadUrl, ext: session.resumeExt || 'pdf' });
+  } catch (e) { return jsonRes({ error: e.message }, 500); }
+}
+
+// Client raises their hand. Does NOT change Available status — just logs interest
+// for the recruiter; the recruiter later marks "Taken" if the client hires.
+async function clientExpressInterest(clientToken, token, request) {
+  const meta = await kvGet(`clientlib:${clientToken}`);
+  if (!meta) return jsonRes({ error: 'Library link not found' }, 404);
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium || session.premium.status !== 'Available') return jsonRes({ error: 'Candidate not available' }, 403);
+  session.premium.interests = session.premium.interests || [];
+  const existing = session.premium.interests.find(i => i.clientToken === clientToken);
+  if (!existing) {
+    session.premium.interests.push({ clientToken, clientLabel: meta.label || 'Client', at: Date.now() });
+    await kvPut(`session:${token}`, session);
+  }
+  return jsonRes({ ok: true });
 }
 
 // ── Recruiter Settings ────────────────────────────────────────
