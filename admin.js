@@ -227,7 +227,7 @@ function renderPremiumCard(p) {
       <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
         <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="openReview('${p.token}','${jsStr(p.candidateName)}')">Review</button>
         ${avail ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Taken</button>` : ''}
-        <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
+        <button class="btn btn-ghost btn-rm" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
       </div>
     </div>`;
 }
@@ -2688,7 +2688,7 @@ async function openReview(token, candidateName) {
     const premiumRow = prem
       ? `<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.08);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
            <span style="font-size:12px;color:var(--text)">⭐ In Premium Talent — <strong>${esc(prem.category)} / ${esc(prem.department)} / ${esc(prem.role)}</strong> · <span style="color:${prem.status === 'Available' ? '#16a34a' : 'var(--muted)'}">${prem.status}</span></span>
-           <button class="btn btn-ghost" style="font-size:11px;color:var(--red);padding:2px 8px" onclick="removeFromPremium('${token}')">Remove</button>
+           <button class="btn btn-ghost btn-rm" style="font-size:11px;color:var(--red);padding:2px 8px" onclick="removeFromPremium('${token}')">Remove</button>
          </div>`
       : `<div style="margin-top:12px">
            <button id="add-premium-btn" class="btn btn-outline" style="font-size:13px;padding:8px 16px;border-color:rgba(245,158,11,0.5)" ${_reviewStars >= 4 ? '' : 'disabled'} onclick="openPremiumModal('${token}')">⭐ Add to Premium Talent</button>

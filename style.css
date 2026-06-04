@@ -174,6 +174,11 @@ p  { color: var(--text-2); }
   color:     var(--text);
   transform: scale(1.03);
 }
+/* Red "remove/delete" ghost button — danger hover (red fill) */
+.btn-rm:hover:not(:disabled) {
+  color:      #fff !important;
+  background: #dc2626;
+}
 
 /* ── Danger (destructive red) ── */
 .btn-danger {
