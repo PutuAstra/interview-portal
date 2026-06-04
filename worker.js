@@ -2163,14 +2163,57 @@ async function getResumeUrl(token, request) {
   }
 }
 
+// Outcome email to the candidate based on the recruiter's decision.
+async function sendOutcomeEmail(session, interview, decision) {
+  if (!session.candidateEmail) return false;
+  const name  = htmlEsc(session.candidateName);
+  const title = htmlEsc(interview?.title || 'the position');
+  let subject, inner;
+  if (decision === 'move_forward') {
+    subject = `Good news about your ${interview?.title || ''} application — CTI Group`;
+    inner = `
+      <p style="margin:0 0 16px;font-size:15px;color:#1a1a1a;font-family:Arial,sans-serif">Dear <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">🎉 <strong>Congratulations!</strong> We were impressed with your responses for <strong>${title}</strong>, and we're pleased to let you know that you've been selected to move forward to the next stage of our process.</p>
+      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">Our recruitment team will be in touch shortly with the next steps. Thank you for your interest in CTI Group.</p>
+      <p style="margin:16px 0 0;color:#374151;font-size:14px;font-family:Arial,sans-serif">Warm regards,<br/>CTI Group Recruitment Team</p>`;
+  } else if (decision === 'not_moving_forward') {
+    subject = `Update on your ${interview?.title || ''} application — CTI Group`;
+    inner = `
+      <p style="margin:0 0 16px;font-size:15px;color:#1a1a1a;font-family:Arial,sans-serif">Dear <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">Thank you for taking the time to complete your interview for <strong>${title}</strong> and for your interest in CTI Group.</p>
+      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">After careful consideration, we have decided not to move forward with your application at this time. This was not an easy decision — we received many strong submissions. We genuinely appreciate the effort you put in and encourage you to apply for future opportunities that match your experience.</p>
+      <p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">We wish you all the best in your career.</p>
+      <p style="margin:16px 0 0;color:#374151;font-size:14px;font-family:Arial,sans-serif">Kind regards,<br/>CTI Group Recruitment Team</p>`;
+  } else {
+    return false;
+  }
+  const accessToken = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${EMAIL_SENDER}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: emailWrap('#B01A18', 'CTI ZeusHire', inner) },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: EMAIL_SENDER } },
+        toRecipients: [{ emailAddress: { address: session.candidateEmail } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+  return res.ok;
+}
+
 async function saveSessionReview(token, request) {
   requireAdmin(request);
-  const { notes, decision, stars, questionScores } = await request.json();
+  const { notes, decision, stars, questionScores, notify } = await request.json();
+  const prev = (await kvGet(`session:${token}:review`)) || {};
   await kvPut(`session:${token}:review`, {
     notes, decision,
     stars:          stars          || 0,
     questionScores: questionScores || {},
     reviewedAt:     Date.now(),
+    outcomeEmailedDecision: prev.outcomeEmailedDecision || null,
   });
   // Mirror decision + stars onto the session for fast list rendering
   const session = await kvGet(`session:${token}`);
@@ -2179,7 +2222,22 @@ async function saveSessionReview(token, request) {
     session.reviewStars    = stars || 0;
     await kvPut(`session:${token}`, session);
   }
-  return jsonRes({ ok: true });
+
+  // Email the candidate the outcome — only when requested, the decision actually
+  // changed since the last email (no spam on note edits), and they have an email.
+  let emailed = false;
+  if (notify && decision && session?.candidateEmail && decision !== prev.outcomeEmailedDecision) {
+    try {
+      const interview = await kvGet(`interview:${session.interviewId}`);
+      emailed = await sendOutcomeEmail(session, interview, decision);
+      if (emailed) {
+        const r = await kvGet(`session:${token}:review`);
+        r.outcomeEmailedDecision = decision;
+        await kvPut(`session:${token}:review`, r);
+      }
+    } catch (e) { console.error('[outcome email]', e.message); }
+  }
+  return jsonRes({ ok: true, emailed });
 }
 
 async function getSessionReview(token, request) {

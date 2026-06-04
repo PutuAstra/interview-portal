@@ -2739,7 +2739,10 @@ async function openReview(token, candidateName) {
         <textarea id="review-notes" placeholder="Notes about this candidate…"
           style="width:100%;min-height:90px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box"
         >${reviewData?.notes ? esc(reviewData.notes) : ''}</textarea>
-        <div style="margin-top:10px;text-align:right">
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          ${session.candidateEmail
+            ? `<label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="notify-candidate" checked style="accent-color:var(--accent);width:15px;height:15px" /> ✉ Email the candidate this outcome</label>`
+            : `<span style="font-size:11px;color:var(--muted)">No candidate email on file</span>`}
           <button class="btn btn-outline" style="padding:8px 20px;font-size:13px" onclick="saveReviewOutcome('${token}')">
             💾 Save Review
           </button>
@@ -2783,12 +2786,16 @@ async function saveReviewOutcome(token) {
   const decision = _reviewDecision;
   const stars    = _reviewStars || 0;
   if (!decision) return toast('Please select a decision first', 'error');
+  const notify = document.getElementById('notify-candidate')?.checked || false;
   try {
-    await apiJSON('POST', `/api/session/${token}/review`, {
+    const data = await apiJSON('POST', `/api/session/${token}/review`, {
       notes, decision, stars,
       questionScores: _questionScores,
+      notify,
     });
-    toast('Review saved', 'success');
+    toast(data?.emailed
+      ? (decision === 'move_forward' ? 'Review saved — congratulations email sent' : 'Review saved — outcome email sent')
+      : 'Review saved', 'success');
     closeModal('modal-review');
     // Refresh session list so decision badge + stars show on the card
     if (currentInterviewId) {
