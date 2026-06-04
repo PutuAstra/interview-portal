@@ -103,6 +103,7 @@ function toggleSidebarGroup(btn) {
 function gotoPage(page) {
   history.replaceState(null, '', '#' + page);
   const activeNav = ['ow-create', 'ow-list'].includes(page) ? 'ow-list'
+                  : page === 'premium' ? 'premium'
                   : page === 'scripts' ? 'scripts'
                   : ['booking', 'booking-create', 'booking-edit'].includes(page) ? 'booking'
                   : page === 'holidays' ? 'holidays'
@@ -117,6 +118,7 @@ function gotoPage(page) {
 
   if (page === 'ow-list')        renderOWListPage();
   if (page === 'ow-create')      renderOWCreatePage();
+  if (page === 'premium')        renderPremiumPage();
   if (page === 'tw-list')        renderTWListPage();
   if (page === 'tw-schedule')    renderTWSchedulePage();
   if (page === 'scripts')        renderScriptPage();
@@ -126,6 +128,159 @@ function gotoPage(page) {
   if (page === 'holidays')       renderHolidaysPage();
   if (page === 'calendar-sync') renderCalendarSyncPage();
   if (page === 'branding')      renderBrandingPage();
+}
+
+// ── Premium Candidates page ───────────────────────────────────
+
+let _premiumList = [];
+
+function renderPremiumPage() {
+  const main = document.getElementById('admin-main');
+  main.innerHTML = `
+    <div class="flex justify-between items-center mb-16">
+      <h2>⭐ Premium Candidates</h2>
+      <button class="btn btn-outline" onclick="openClientLinksPanel()">🔗 Client Links</button>
+    </div>
+    <div class="flex gap-8 mb-16 items-center" style="flex-wrap:wrap">
+      <select id="prem-f-status" onchange="filterAndRenderPremium()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">
+        <option value="all">All statuses</option>
+        <option value="Available">Available</option>
+        <option value="Taken">Taken</option>
+      </select>
+      <select id="prem-f-category" onchange="filterAndRenderPremium()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px"><option value="all">All categories</option></select>
+      <select id="prem-f-department" onchange="filterAndRenderPremium()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px"><option value="all">All departments</option></select>
+      <input type="text" id="prem-f-role" placeholder="Filter role…" oninput="filterAndRenderPremium()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;width:160px" />
+    </div>
+    <div id="premium-list"><div class="empty-state">Loading…</div></div>`;
+  loadPremium();
+}
+
+async function loadPremium() {
+  try {
+    const { premium } = await apiJSON('GET', '/api/premium');
+    _premiumList = premium || [];
+    // Populate filter dropdowns from data
+    const cats = [...new Set(_premiumList.map(p => p.premium.category))].sort();
+    const deps = [...new Set(_premiumList.map(p => p.premium.department))].sort();
+    const cSel = document.getElementById('prem-f-category');
+    const dSel = document.getElementById('prem-f-department');
+    if (cSel) cSel.innerHTML = '<option value="all">All categories</option>' + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    if (dSel) dSel.innerHTML = '<option value="all">All departments</option>' + deps.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    filterAndRenderPremium();
+  } catch (e) {
+    const el = document.getElementById('premium-list');
+    if (el) el.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}</div>`;
+  }
+}
+
+function filterAndRenderPremium() {
+  const fStatus = document.getElementById('prem-f-status')?.value || 'all';
+  const fCat    = document.getElementById('prem-f-category')?.value || 'all';
+  const fDep    = document.getElementById('prem-f-department')?.value || 'all';
+  const fRole   = (document.getElementById('prem-f-role')?.value || '').trim().toLowerCase();
+  const list = _premiumList.filter(p => {
+    if (fStatus !== 'all' && p.premium.status !== fStatus) return false;
+    if (fCat !== 'all' && p.premium.category !== fCat) return false;
+    if (fDep !== 'all' && p.premium.department !== fDep) return false;
+    if (fRole && !(p.premium.role || '').toLowerCase().includes(fRole)) return false;
+    return true;
+  });
+  const el = document.getElementById('premium-list');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = `<div class="empty-state">${_premiumList.length ? 'No premium candidates match your filter.' : 'No premium candidates yet. Add 4★/5★ candidates from a One-Way review.'}</div>`;
+    return;
+  }
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">${list.map(renderPremiumCard).join('')}</div>`;
+  list.filter(p => p.profilePhotoItemId).forEach(p => loadAvatarPhoto(p.token));
+}
+
+function renderPremiumCard(p) {
+  const pr = p.premium;
+  const avail = pr.status === 'Available';
+  const interests = pr.interests || [];
+  const statusBadge = avail
+    ? `<span style="font-size:10px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);border:1px solid rgba(22,163,74,0.3);padding:2px 8px;border-radius:10px">🟢 Available</span>`
+    : `<span style="font-size:10px;font-weight:700;color:var(--muted);background:rgba(148,163,184,0.12);border:1px solid var(--border);padding:2px 8px;border-radius:10px">🔒 Taken</span>`;
+  const interestHTML = interests.length
+    ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(99,100,167,0.1);border:1px solid rgba(99,100,167,0.3);border-radius:8px">
+         <div style="font-size:11px;font-weight:700;color:#a7a8d8;margin-bottom:3px">💬 ${interests.length} client${interests.length !== 1 ? 's' : ''} interested</div>
+         <div style="font-size:11px;color:var(--text-2)">${interests.map(i => esc(i.clientLabel || 'Client')).join(', ')}</div>
+       </div>`
+    : '';
+  return `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--card)">
+      <div style="display:flex;gap:10px;align-items:center">
+        <div id="av-${p.token}" class="candidate-avatar">${p.profilePhotoItemId ? '' : `<span style="font-size:11px;font-weight:700;color:var(--muted)">${candidateInitials(p.candidateName)}</span>`}</div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.candidateName)}</div>
+          <div style="font-size:13px;color:#f59e0b;margin-top:1px">${'★'.repeat(p.reviewStars)}<span style="color:var(--border)">${'★'.repeat(5 - p.reviewStars)}</span></div>
+        </div>
+        ${statusBadge}
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px">
+        <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">${esc(pr.category)}</span>
+        <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">${esc(pr.department)}</span>
+        <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">${esc(pr.role)}</span>
+      </div>
+      ${interestHTML}
+      <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="openReview('${p.token}','${jsStr(p.candidateName)}')">Review</button>
+        ${avail ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Mark Taken</button>` : ''}
+        <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
+      </div>
+    </div>`;
+}
+
+async function premiumMarkTaken(token, name) {
+  if (!confirm(`Mark ${name} as Taken (hired)? They will no longer appear in the client library.`)) return;
+  try {
+    await apiJSON('POST', `/api/session/${token}/premium/taken`);
+    toast('Marked as Taken', 'success');
+    loadPremium();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Client library links ──
+async function openClientLinksPanel() {
+  const modal = document.getElementById('modal-clientlinks');
+  openModal('modal-clientlinks');
+  await refreshClientLinks();
+}
+
+async function refreshClientLinks() {
+  const el = document.getElementById('clientlinks-list');
+  el.innerHTML = '<div class="spinner" style="margin:12px auto"></div>';
+  try {
+    const { links } = await apiJSON('GET', '/api/clientlib');
+    el.innerHTML = links.length
+      ? links.map(l => {
+          const url = buildLibraryUrl(l.clientToken);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">${esc(l.label)}</div>
+              <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(url)}</div>
+            </div>
+            <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
+          </div>`;
+        }).join('')
+      : '<div class="empty-state" style="padding:16px">No client links yet.</div>';
+  } catch (e) { el.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}</div>`; }
+}
+
+async function createClientLinkFromModal() {
+  const label = (document.getElementById('clientlink-label').value || '').trim();
+  if (!label) return toast('Enter a client name/label', 'error');
+  try {
+    await apiJSON('POST', '/api/clientlib', { label });
+    document.getElementById('clientlink-label').value = '';
+    toast('Client link created', 'success');
+    await refreshClientLinks();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function buildLibraryUrl(clientToken) {
+  return siteFileUrl('library.html', `?c=${clientToken}`);
 }
 
 // ── One-Way: List page ────────────────────────────────────────
@@ -2504,6 +2659,17 @@ async function openReview(token, candidateName) {
     const decisionFwd = _reviewDecision === 'move_forward';
     const decisionRej = _reviewDecision === 'not_moving_forward';
 
+    const prem = session.premium;
+    const premiumRow = prem
+      ? `<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.08);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+           <span style="font-size:12px;color:var(--text)">⭐ In Premium Library — <strong>${esc(prem.category)} / ${esc(prem.department)} / ${esc(prem.role)}</strong> · <span style="color:${prem.status === 'Available' ? '#16a34a' : 'var(--muted)'}">${prem.status}</span></span>
+           <button class="btn btn-ghost" style="font-size:11px;color:var(--red);padding:2px 8px" onclick="removeFromPremium('${token}')">Remove</button>
+         </div>`
+      : `<div style="margin-top:12px">
+           <button id="add-premium-btn" class="btn btn-outline" style="font-size:13px;padding:8px 16px;border-color:rgba(245,158,11,0.5)" ${_reviewStars >= 4 ? '' : 'disabled'} onclick="openPremiumModal('${token}')">⭐ Add to Premium Library</button>
+           <span id="add-premium-hint" style="font-size:11px;color:var(--muted);margin-left:8px">${_reviewStars >= 4 ? '' : 'Requires a 4★ or 5★ rating'}</span>
+         </div>`;
+
     const reviewOutcome = `
       <div style="border-top:1px solid var(--border);padding-top:16px;flex-shrink:0">
         <h3 style="margin:0 0 12px;font-size:14px">Review Outcome</h3>
@@ -2533,6 +2699,7 @@ async function openReview(token, candidateName) {
             💾 Save Review
           </button>
         </div>
+        ${premiumRow}
       </div>`;
 
     content.innerHTML = `
@@ -2597,6 +2764,59 @@ function highlightStars(n) {
 function setReviewStars(n) {
   _reviewStars = n;
   highlightStars(n);
+  // Live-gate the "Add to Premium" button (needs 4★+).
+  const btn = document.getElementById('add-premium-btn');
+  const hint = document.getElementById('add-premium-hint');
+  if (btn)  btn.disabled = n < 4;
+  if (hint) hint.textContent = n < 4 ? 'Requires a 4★ or 5★ rating' : '';
+}
+
+// ── Premium Library: intake modal ──
+const PREMIUM_CATEGORIES  = ['Sea-Based', 'Land-Based', 'J-1 Program'];
+const PREMIUM_DEPARTMENTS = ['Housekeeping', 'Food and Beverage', 'Front Office', 'Culinary', 'Deck', 'Engine / Technical', 'Spa & Wellness', 'Retail', 'Entertainment', 'Other'];
+const PREMIUM_ROLES       = ['Commis', 'DCDP', 'CDP', 'Waiter', 'Bartender', 'Public Area Attendant', 'Cabin Steward', 'Front Desk', 'Cook', 'Sous Chef', 'Housekeeping Attendant', 'Receptionist'];
+
+function openPremiumModal(token) {
+  const modal = document.getElementById('modal-premium');
+  modal.dataset.token = token;
+  document.getElementById('prem-category').innerHTML   = PREMIUM_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+  document.getElementById('prem-department').innerHTML = PREMIUM_DEPARTMENTS.map(d => `<option value="${d}">${d}</option>`).join('');
+  document.getElementById('prem-role').value = '';
+  document.getElementById('prem-roles-list').innerHTML = PREMIUM_ROLES.map(r => `<option value="${r}">`).join('');
+  openModal('modal-premium');
+}
+
+async function savePremium() {
+  const modal = document.getElementById('modal-premium');
+  const token = modal.dataset.token;
+  const category   = document.getElementById('prem-category').value;
+  const department = document.getElementById('prem-department').value;
+  const role       = document.getElementById('prem-role').value.trim();
+  if (!role) return toast('Please enter a role', 'error');
+  const btn = document.getElementById('prem-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await apiJSON('POST', `/api/session/${token}/premium`, { category, department, role });
+    toast('Added to Premium Library', 'success');
+    closeModal('modal-premium');
+    closeModal('modal-review');
+    if (currentInterviewId) await loadSessions(currentInterviewId);
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '⭐ Add to Premium Library';
+  }
+}
+
+async function removeFromPremium(token) {
+  if (!confirm('Remove this candidate from the Premium Library?')) return;
+  try {
+    await apiJSON('DELETE', `/api/session/${token}/premium`);
+    toast('Removed from Premium Library', 'success');
+    closeModal('modal-review');
+    if (currentInterviewId) await loadSessions(currentInterviewId);
+    if (document.getElementById('premium-list')) loadPremium();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function runAnalysis(token) {
