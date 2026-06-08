@@ -524,7 +524,8 @@ async function inviteUser(request) {
   const me = await requireSuperAdmin(request);
   const body = await request.json();
   const email = String(body.email || '').trim().toLowerCase();
-  const role  = body.role === 'super_admin' ? 'super_admin' : 'recruiter';
+  // Only the original bootstrap account is Super Admin — everyone invited is a Recruiter.
+  const role  = 'recruiter';
   if (!email) return jsonRes({ error: 'email required' }, 400);
   if (!email.endsWith('@' + ALLOWED_EMAIL_DOMAIN)) {
     return jsonRes({ error: `Only @${ALLOWED_EMAIL_DOMAIN} addresses can be invited.` }, 400);
@@ -615,7 +616,8 @@ async function updateUser(userId, request) {
     }
   }
 
-  if (body.role === 'super_admin' || body.role === 'recruiter') user.role = body.role;
+  if (body.role === 'super_admin') return jsonRes({ error: 'Only one Super Admin is allowed.' }, 409);
+  if (body.role === 'recruiter') user.role = 'recruiter';
   if (typeof body.active === 'boolean') user.active = body.active;
   if (body.calendarEmail !== undefined) user.calendarEmail = String(body.calendarEmail || '').trim().toLowerCase() || user.email;
   await kvPut(`user:${userId}`, user);

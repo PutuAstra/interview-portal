@@ -223,11 +223,7 @@ async function renderTeamPage() {
         <div class="text-muted text-sm">${esc(u.email)}</div>
       </td>
       <td>
-        <select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px" ${u.isMe ? 'disabled' : ''}
-                onchange="changeUserRole('${esc(u.id)}', this.value)">
-          <option value="recruiter"   ${u.role === 'recruiter'   ? 'selected' : ''}>Recruiter</option>
-          <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
-        </select>
+        <span class="badge ${u.role === 'super_admin' ? 'badge-in_progress' : ''}">${u.role === 'super_admin' ? 'Super Admin' : 'Recruiter'}</span>
       </td>
       <td>
         <span class="badge ${u.active ? 'badge-completed' : 'badge-pending'}">${u.active ? 'Active' : 'Disabled'}</span>
@@ -263,10 +259,6 @@ async function renderTeamPage() {
       <h3 style="margin-top:0">Invite someone</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input id="invite-email" type="email" placeholder="name@cti-usa.com" style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px" />
-        <select id="invite-role" style="max-width:170px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px">
-          <option value="recruiter">Recruiter</option>
-          <option value="super_admin">Super Admin</option>
-        </select>
         <button class="btn btn-primary" onclick="sendInvite()">Send Invite</button>
       </div>
       <div id="invite-msg" class="text-sm" style="margin-top:8px"></div>
@@ -291,7 +283,7 @@ async function renderTeamPage() {
 
 async function sendInvite() {
   const email = (document.getElementById('invite-email').value || '').trim().toLowerCase();
-  const role  = document.getElementById('invite-role').value;
+  const role  = 'recruiter';
   const msg   = document.getElementById('invite-msg');
   msg.style.color = ''; msg.textContent = '';
   if (!email) { msg.style.color = 'var(--danger,#dc2626)'; msg.textContent = 'Enter an email address.'; return; }
