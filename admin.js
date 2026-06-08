@@ -218,8 +218,7 @@ async function renderTeamPage() {
 
   const userRows = users.map(u => {
     const isAdminAccess = u.role !== 'super_admin' && u.viewScope === 'manage_all';
-    const roleLabel = u.role === 'super_admin' ? 'Super Admin' : (isAdminAccess ? 'Admin' : 'Recruiter');
-    const roleCls   = (u.role === 'super_admin' || isAdminAccess) ? 'badge-in_progress' : '';
+    const selStyle = 'background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px';
     return `
     <tr>
       <td>
@@ -227,15 +226,19 @@ async function renderTeamPage() {
         <div class="text-muted text-sm">${esc(u.email)}</div>
       </td>
       <td>
-        <span class="badge ${roleCls}">${roleLabel}</span>
+        ${u.role === 'super_admin'
+          ? '<span class="badge badge-in_progress">Super Admin</span>'
+          : `<select style="${selStyle}" onchange="changeUserRole('${esc(u.id)}', this.value)">
+               <option value="recruiter" ${!isAdminAccess ? 'selected' : ''}>Recruiter</option>
+               <option value="admin"     ${isAdminAccess ? 'selected' : ''}>Admin</option>
+             </select>`}
       </td>
       <td>
-        ${u.role === 'super_admin'
+        ${(u.role === 'super_admin' || isAdminAccess)
           ? '<span class="text-muted text-sm">Everything</span>'
-          : `<select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px" onchange="changeUserScope('${esc(u.id)}', this.value)">
-               <option value="own"        ${(u.viewScope || 'own') === 'own'        ? 'selected' : ''}>Own records only</option>
-               <option value="view_all"   ${u.viewScope === 'view_all'   ? 'selected' : ''}>View all (read-only)</option>
-               <option value="manage_all" ${u.viewScope === 'manage_all' ? 'selected' : ''}>Admin (full access)</option>
+          : `<select style="${selStyle}" onchange="changeUserScope('${esc(u.id)}', this.value)">
+               <option value="own"      ${(u.viewScope || 'own') === 'own' ? 'selected' : ''}>Own records only</option>
+               <option value="view_all" ${u.viewScope === 'view_all'       ? 'selected' : ''}>View all (read-only)</option>
              </select>`}
       </td>
       <td>
@@ -266,7 +269,7 @@ async function renderTeamPage() {
   main.innerHTML = `
    <div style="flex-shrink:0">
     <h2 style="margin:0 0 4px">👥 Team</h2>
-    <p class="text-muted text-sm mb-16">Only people you invite can sign in (with their <strong>@cti-usa.com</strong> Microsoft account). Visibility: <strong>Own records only</strong> (default), <strong>View all</strong> (see all, edit own), or <strong>Admin</strong> (full access to manage all records).</p>
+    <p class="text-muted text-sm mb-16">Only people you invite can sign in (with their <strong>@cti-usa.com</strong> Microsoft account). <strong>Role</strong>: a <strong>Recruiter</strong> has scoped access; an <strong>Admin</strong> can manage all records. For recruiters, <strong>Visibility</strong> sets what they see — <strong>Own records only</strong> (default) or <strong>View all</strong> (see all, edit own).</p>
 
     <h3 style="margin-bottom:8px">Members (${users.length})</h3>
     <div class="card" style="padding:0;margin-bottom:24px">
@@ -404,6 +407,14 @@ async function revokeUserInvite(email) {
 }
 
 async function changeUserScope(id, viewScope) {
+  try { await apiJSON('PATCH', '/api/users/' + id, { viewScope }); renderTeamPage(); }
+  catch (e) { alert(e.message); renderTeamPage(); }
+}
+
+// Role dropdown: 'admin' = full access to all records (viewScope manage_all);
+// 'recruiter' = scoped access (resets to own-records-only).
+async function changeUserRole(id, val) {
+  const viewScope = val === 'admin' ? 'manage_all' : 'own';
   try { await apiJSON('PATCH', '/api/users/' + id, { viewScope }); renderTeamPage(); }
   catch (e) { alert(e.message); renderTeamPage(); }
 }
