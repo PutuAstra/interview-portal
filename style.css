@@ -1541,8 +1541,29 @@ tr:hover td { background: var(--card-2); }
   #review-content { flex-direction: column !important; overflow-y: auto; }
   #review-content > * { width: 100% !important; flex: none !important; }
 
-  /* Team / card tables: keep within width */
-  .table-wrap { overflow-x: auto; }
+  /* Team / card <table> lists → stacked cards (dropdowns no longer overflow) */
+  .table-wrap table,
+  .table-wrap tbody,
+  .table-wrap tr,
+  .table-wrap td { display: block; width: auto; }
+  .table-wrap thead { display: none; }
+  .table-wrap tr {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin: 8px;
+    padding: 10px 12px;
+  }
+  .table-wrap td {
+    border: none !important;
+    padding: 5px 0 !important;
+    text-align: left !important;
+  }
+  .table-wrap td select,
+  .table-wrap td input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 
   /* Login card full-bleed */
   #login-gate .card,
