@@ -442,7 +442,9 @@ let _premiumList = [];
 
 function renderPremiumPage() {
   const main = document.getElementById('admin-main');
+  main.classList.add('flush-top');
   main.innerHTML = `
+   <div class="list-sticky-head">
     <div class="flex justify-between items-center mb-16">
       <h2>⭐ Premium Talent</h2>
       <button class="btn btn-outline" onclick="openClientLinksPanel()">🔗 Client Links</button>
@@ -457,6 +459,7 @@ function renderPremiumPage() {
       <select id="prem-f-department" onchange="filterAndRenderPremium()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px"><option value="all">All departments</option></select>
       <input type="text" id="prem-f-role" placeholder="Filter role…" oninput="filterAndRenderPremium()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;width:160px" />
     </div>
+   </div>
     <div id="premium-list"><div class="empty-state">Loading…</div></div>`;
   loadPremium();
 }
@@ -623,7 +626,9 @@ function buildLibraryUrl(clientToken) {
 
 async function renderOWListPage() {
   const main = document.getElementById('admin-main');
+  main.classList.add('flush-top');
   main.innerHTML = `
+   <div class="list-sticky-head">
     <div class="flex justify-between items-center mb-16">
       <h2>One-Way Interviews</h2>
       <button class="btn btn-primary" onclick="gotoPage('ow-create')">+ New Interview</button>
@@ -641,6 +646,7 @@ async function renderOWListPage() {
         <option value="candidates">Most candidates</option>
       </select>
     </div>
+   </div>
     <div id="interviews-list"><div class="empty-state">Loading…</div></div>
   `;
   loadInterviews();
@@ -3743,12 +3749,15 @@ const BOOKING_MIN_NOTICE = [
 
 async function renderBookingPage() {
   const main = document.getElementById('admin-main');
+  main.classList.add('flush-top');
   main.innerHTML = `
     <div style="max-width:820px">
+     <div class="list-sticky-head">
       <div class="flex justify-between items-center mb-16">
         <h2>Booking Interview</h2>
         <button class="btn btn-primary" onclick="gotoPage('booking-create')">+ New Booking Link</button>
       </div>
+     </div>
       <div id="booking-links-list"><div class="empty-state">Loading…</div></div>
     </div>
   `;
