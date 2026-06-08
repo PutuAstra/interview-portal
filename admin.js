@@ -2867,13 +2867,17 @@ async function openReview(token, candidateName) {
     const videoItems = videoResponses.length
       ? await Promise.all(videoResponses.map(async r => {
           const q = interview?.questions?.[r.questionIndex];
-          const { downloadUrl, webUrl } = await fetch(
+          const { downloadUrl, webUrl, fileName, fileSize, driveItemId } = await fetch(
             `${WORKER_URL}/api/session/${token}/video/${r.questionIndex}`,
             { headers: authHeaders() }
           ).then(r => r.json()).catch(() => ({}));
-          return { q, downloadUrl, webUrl, questionIndex: r.questionIndex };
+          return { q, downloadUrl, webUrl, fileName, fileSize, driveItemId, questionIndex: r.questionIndex };
         }))
       : [];
+
+    // Diagnostic: flag if multiple questions point to the same stored file.
+    const _idCounts = {};
+    videoItems.forEach(v => { if (v.driveItemId) _idCounts[v.driveItemId] = (_idCounts[v.driveItemId] || 0) + 1; });
 
     // ── Auto-scored MCQ assessment summary (correct / total scorable) ──
     const scorable = writtenResponses.filter(r => r.answerType === 'mcq' && (r.correct === true || r.correct === false));
@@ -2912,8 +2916,11 @@ async function openReview(token, candidateName) {
     // ── LEFT column: videos (4-column grid) + English analysis ──
     const videosHTML = videoItems.length
       ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-          ${videoItems.map(({ q, downloadUrl, webUrl, questionIndex }) => `
-            <div style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg)">
+          ${videoItems.map(({ q, downloadUrl, webUrl, fileName, fileSize, driveItemId, questionIndex }) => {
+            const dup = driveItemId && _idCounts[driveItemId] > 1;
+            const sizeKB = fileSize ? Math.round(fileSize / 1024) : null;
+            return `
+            <div style="display:flex;flex-direction:column;border:1px solid ${dup ? '#dc2626' : 'var(--border)'};border-radius:10px;overflow:hidden;background:var(--bg)">
               ${downloadUrl
                 ? `<video src="${downloadUrl}" controls preload="metadata" style="width:100%;aspect-ratio:16/9;background:#000;display:block;flex-shrink:0"></video>`
                 : `<div style="aspect-ratio:16/9;background:#111;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px">Unavailable</div>`
@@ -2922,11 +2929,13 @@ async function openReview(token, candidateName) {
                 <div>
                   <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:2px">Q${questionIndex + 1}</div>
                   <div style="font-size:11px;color:var(--text);line-height:1.4">${q ? esc(q.text) : 'Question ' + (questionIndex + 1)}</div>
+                  ${(fileName || sizeKB) ? `<div style="font-size:10px;color:${dup ? '#dc2626' : 'var(--muted)'};margin-top:3px">${esc(fileName || '')}${sizeKB ? ` · ${sizeKB} KB` : ''}${dup ? ' · ⚠ duplicate file' : ''}</div>` : ''}
                 </div>
                 ${webUrl ? `<a href="${webUrl}" target="_blank" class="btn btn-ghost" style="font-size:10px;padding:2px 5px;flex-shrink:0">↗</a>` : ''}
               </div>
               ${renderQScorePicker(questionIndex, reviewData?.questionScores?.[questionIndex])}
-            </div>`).join('')}
+            </div>`;
+          }).join('')}
         </div>`
       : (writtenResponses.length ? '' : `<div class="empty-state">No responses yet</div>`);
 

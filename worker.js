@@ -1606,6 +1606,9 @@ async function getVideoUrl(token, qIndex, request) {
     return jsonRes({
       downloadUrl: item['@microsoft.graph.downloadUrl'],
       webUrl: item.webUrl,
+      fileName: item.name || null,
+      fileSize: item.size || null,
+      driveItemId: response.driveItemId,
     });
   } catch (e) {
     return jsonRes({ error: 'Could not fetch video URL: ' + e.message }, 500);
