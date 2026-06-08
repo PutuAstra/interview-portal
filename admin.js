@@ -71,13 +71,31 @@ function showLoginGate() {
   document.getElementById('login-gate').style.display = 'flex';
 }
 
+function toggleAccountMenu() {
+  const menu = document.getElementById('account-menu');
+  if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+}
+// Close the account menu when clicking outside it.
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('account-menu');
+  const btn  = document.getElementById('account-btn');
+  if (menu && menu.style.display === 'block' && !menu.contains(e.target) && btn && !btn.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
+
 async function showApp() {
   // Validate the session (and show who's signed in). Expired SSO → back to gate.
   try {
     const me = await fetch(WORKER_URL + '/api/auth/me', { headers: authHeaders() }).then(r => r.json());
     if (me && me.authenticated) {
       const info = document.getElementById('topbar-info');
-      if (info) info.textContent = me.user.name + (me.user.breakGlass ? ' · admin key' : '');
+      if (info) info.textContent = me.user.name;
+      const em = document.getElementById('account-email');
+      if (em) em.textContent = me.user.email || '';
+      const rl = document.getElementById('account-role');
+      if (rl) rl.textContent = me.user.breakGlass ? 'Signed in with admin key'
+        : (me.user.role === 'super_admin' ? 'Super Admin' : 'Recruiter');
     } else if (authToken) {
       sessionStorage.removeItem('zeushire_auth'); authToken = '';
       return showLoginGate();
