@@ -30,7 +30,7 @@ const ALLOWED_ORIGINS = [
 ];
 const CORS_BASE = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Auth-Token',
   'Vary': 'Origin',
 };
 // Default headers used by jsonRes; handle() overrides the origin per-request.
