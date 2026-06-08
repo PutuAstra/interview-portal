@@ -1050,6 +1050,18 @@ tr:hover td { background: var(--card-2); }
   background: var(--card);
 }
 
+/* Freeze a list page's ENTIRE top section (title + filters + column header)
+   while the rows scroll. Negative margins pull it to the scroll area's edges so
+   it spans full width and covers the top padding; padding restores the layout. */
+.list-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: var(--bg);
+  margin: -28px -28px 0;
+  padding: 28px 28px 0;
+}
+
 /* ── Setup screen ── */
 .bg-opt {
   padding: 5px 12px;

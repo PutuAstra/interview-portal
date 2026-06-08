@@ -1294,6 +1294,7 @@ function applyTemplate(id) {
 async function renderTWListPage() {
   const main = document.getElementById('admin-main');
   main.innerHTML = `
+   <div class="list-sticky-head">
     <div class="flex justify-between items-center mb-16">
       <h2>Two-Way Interview Sessions</h2>
       <button class="btn btn-primary" onclick="gotoPage('tw-schedule')">+ Schedule Direct Invite</button>
@@ -1336,6 +1337,7 @@ async function renderTWListPage() {
       <span style="text-align:center">Status</span>
       <span style="text-align:right">Actions</span>
     </div>
+   </div>
     <div id="tw-sessions-list"></div>
   `;
   await loadTWSessions();
