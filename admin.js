@@ -100,9 +100,11 @@ async function showApp() {
       const rl = document.getElementById('account-role');
       if (rl) rl.textContent = me.user.breakGlass ? 'Signed in with admin key'
         : (me.user.role === 'super_admin' ? 'Super Admin' : 'Recruiter');
-      // Team management is super-admin only — reveal the nav item.
+      // Team management & Employer Branding are super-admin only — reveal the nav items.
       const teamNav = document.getElementById('nav-team');
       if (teamNav) teamNav.style.display = _isSuperAdmin ? '' : 'none';
+      const brandingNav = document.getElementById('nav-branding');
+      if (brandingNav) brandingNav.style.display = _isSuperAdmin ? '' : 'none';
     } else if (authToken) {
       sessionStorage.removeItem('zeushire_auth'); authToken = '';
       return showLoginGate();
@@ -4764,14 +4766,12 @@ async function submitCreateBookingLink() {
 // ── Employer Branding ─────────────────────────────────────────
 
 let _brandingSettings = {};
-const BRANDING_PASSWORD = '123456';
 
 async function renderBrandingPage() {
   const main = document.getElementById('admin-main');
-  // Soft password gate — prompted EVERY time the page is opened.
-  const pw = prompt('Enter the password to access Employer Branding:');
-  if (pw !== BRANDING_PASSWORD) {
-    main.innerHTML = `<div class="empty-state" style="margin-top:80px">🔒 Incorrect password — Employer Branding is locked.<br><button class="btn btn-outline" style="margin-top:14px" onclick="renderBrandingPage()">Try again</button></div>`;
+  // Employer Branding is restricted to super admins.
+  if (!_isSuperAdmin) {
+    main.innerHTML = `<div class="empty-state">🔒 Only administrators can access Employer Branding.</div>`;
     return;
   }
   main.innerHTML = `<div class="spinner" style="margin:80px auto"></div>`;
