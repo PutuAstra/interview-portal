@@ -672,14 +672,18 @@ async function deleteUser(userId, request) {
   return jsonRes({ ok: true });
 }
 
-// Phase 4 — one-time backfill. Assigns ownerId to legacy records created before
-// SSO (which are otherwise visible to super_admin only). Defaults the owner to
-// the caller (or the bootstrap super_admin if signed in with the break-glass key).
-// organizerEmail on legacy meetings is preserved as EMAIL_SENDER — that's where
-// their calendar events and recordings actually live, so playback keeps working.
+// Phase 4 — record ownership assignment (super_admin only).
+//   body.ownerId : the user to assign records to (defaults to the caller / bootstrap admin).
+//   body.force   : when true, REASSIGNS every record (even ones that already have an
+//                  owner). When false/absent, only fills records that have no owner yet
+//                  (the safe "backfill legacy records" behavior).
+// In all cases organizerEmail is only set when MISSING — it points at the mailbox where
+// a record's calendar event/recording physically lives, so reassigning ownership never
+// breaks recording playback.
 async function backfillOwner(request) {
   const me = await requireSuperAdmin(request);
   const body = await request.json().catch(() => ({}));
+  const force = body.force === true;
 
   // Resolve the target owner id (must be a real user for calendar routing).
   let targetId = body.ownerId || me.id;
@@ -688,6 +692,10 @@ async function backfillOwner(request) {
     const all  = (await Promise.all(uids.map(id => kvGet(`user:${id}`)))).filter(Boolean);
     const sa   = all.find(u => u.role === 'super_admin' && u.active !== false);
     if (sa) targetId = sa.id;
+  } else {
+    // Validate the target is a real, known user.
+    const target = await kvGet(`user:${targetId}`);
+    if (!target) return jsonRes({ error: 'Target user not found.' }, 404);
   }
 
   const counts = { interviews: 0, sessions: 0, twSessions: 0, bookingLinks: 0, bookings: 0 };
@@ -696,11 +704,11 @@ async function backfillOwner(request) {
   const interviewIds = (await kvGet('interview:list')) || [];
   for (const iid of interviewIds) {
     const iv = await kvGet(`interview:${iid}`);
-    if (iv && !iv.ownerId) { iv.ownerId = targetId; await kvPut(`interview:${iid}`, iv); counts.interviews++; }
+    if (iv && (force || !iv.ownerId)) { iv.ownerId = targetId; await kvPut(`interview:${iid}`, iv); counts.interviews++; }
     const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
     for (const tk of tokens) {
       const s = await kvGet(`session:${tk}`);
-      if (s && !s.ownerId) { s.ownerId = (iv && iv.ownerId) || targetId; await kvPut(`session:${tk}`, s); counts.sessions++; }
+      if (s && (force || !s.ownerId)) { s.ownerId = (iv && iv.ownerId) || targetId; await kvPut(`session:${tk}`, s); counts.sessions++; }
     }
   }
 
@@ -708,7 +716,7 @@ async function backfillOwner(request) {
   const twIds = (await kvGet('tw-session:list')) || [];
   for (const id of twIds) {
     const s = await kvGet(`tw-session:${id}`);
-    if (s && !s.ownerId) {
+    if (s && (force || !s.ownerId)) {
       s.ownerId = targetId;
       if (!s.organizerEmail) s.organizerEmail = EMAIL_SENDER; // legacy meetings live in the shared mailbox
       await kvPut(`tw-session:${id}`, s); counts.twSessions++;
@@ -719,19 +727,19 @@ async function backfillOwner(request) {
   const linkTokens = (await kvGet('booking:link:list')) || [];
   for (const t of linkTokens) {
     const link = await kvGet(`booking:link:${t}`);
-    if (link && !link.ownerId) { link.ownerId = targetId; await kvPut(`booking:link:${t}`, link); counts.bookingLinks++; }
+    if (link && (force || !link.ownerId)) { link.ownerId = targetId; await kvPut(`booking:link:${t}`, link); counts.bookingLinks++; }
     const bids = (await kvGet(`booking:link:${t}:bookings`)) || [];
     for (const bid of bids) {
       const b = await kvGet(`booking:booking:${bid}`);
-      if (b && (!b.ownerId || !b.organizerEmail)) {
-        if (!b.ownerId) b.ownerId = (link && link.ownerId) || targetId;
+      if (b && (force || !b.ownerId || !b.organizerEmail)) {
+        if (force || !b.ownerId) b.ownerId = (link && link.ownerId) || targetId;
         if (!b.organizerEmail) b.organizerEmail = EMAIL_SENDER; // legacy events/recordings live in the shared mailbox
         await kvPut(`booking:booking:${bid}`, b); counts.bookings++;
       }
     }
   }
 
-  return jsonRes({ ok: true, ownerId: targetId, updated: counts });
+  return jsonRes({ ok: true, ownerId: targetId, force, updated: counts });
 }
 
 // ── Brute-force throttle for the admin key ────────────────────

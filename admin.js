@@ -290,11 +290,25 @@ async function renderTeamPage() {
       </table>
     </div>
 
-    <h3>Legacy records</h3>
+    <h3>Record ownership</h3>
     <div class="card" style="padding:16px">
-      <p class="text-muted" style="margin-top:0">Interviews, bookings and two-way sessions created before sign-in was added have no owner, so only you (the administrator) can see them. Assign them all to your account so they behave like any other owned record. Past meetings &amp; recordings stay in the shared corporate mailbox and keep working.</p>
-      <button class="btn btn-outline" id="backfill-btn" onclick="runBackfill()">Assign legacy records to me</button>
-      <div id="backfill-msg" class="text-sm" style="margin-top:8px"></div>
+      <p class="text-muted" style="margin-top:0">Interviews, bookings and two-way sessions created before sign-in was added have no owner, so only you (the administrator) can see them. Assign unowned records to your account, or reassign records to a specific recruiter. Past meetings &amp; recordings stay in their original mailbox and keep working.</p>
+      <button class="btn btn-outline" id="backfill-btn" onclick="runBackfill()">Assign unowned records to me</button>
+
+      <div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="text-sm">Assign records to</span>
+        <select id="assign-target" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;min-width:220px">
+          ${users.map(u => `<option value="${esc(u.id)}">${esc(u.name)} — ${esc(u.email)}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary" id="assign-btn" onclick="runAssign()">Assign</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="assign-force" />
+        Reassign <strong>all</strong> existing records (including ones that already belong to another recruiter)
+      </label>
+      <div id="assign-msg" class="text-sm" style="margin-top:8px"></div>
     </div>`;
 }
 
@@ -313,7 +327,31 @@ async function runBackfill() {
     msg.style.color = 'var(--danger,#dc2626)';
     msg.textContent = e.message;
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Assign legacy records to me'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Assign unowned records to me'; }
+  }
+}
+
+async function runAssign() {
+  const sel = document.getElementById('assign-target');
+  const force = document.getElementById('assign-force').checked;
+  const btn = document.getElementById('assign-btn');
+  const msg = document.getElementById('assign-msg');
+  const ownerId = sel.value;
+  const label = sel.options[sel.selectedIndex]?.text || 'the selected user';
+  const verb = force ? 'Reassign ALL existing records (including ones owned by others)' : 'Assign all unowned records';
+  if (!confirm(`${verb} to ${label}?`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  msg.style.color = ''; msg.textContent = '';
+  try {
+    const r = await apiJSON('POST', '/api/users/backfill-owner', { ownerId, force });
+    const u = r.updated || {};
+    msg.style.color = 'var(--success,#16a34a)';
+    msg.textContent = `Done. Assigned to ${label}: ${u.interviews||0} interviews, ${u.sessions||0} sessions, ${u.twSessions||0} two-way, ${u.bookingLinks||0} booking links, ${u.bookings||0} bookings.`;
+  } catch (e) {
+    msg.style.color = 'var(--danger,#dc2626)';
+    msg.textContent = e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Assign'; }
   }
 }
 
