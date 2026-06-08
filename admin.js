@@ -216,14 +216,18 @@ async function renderTeamPage() {
   }
   const { users, invites } = _teamData;
 
-  const userRows = users.map(u => `
+  const userRows = users.map(u => {
+    const isAdminAccess = u.role !== 'super_admin' && u.viewScope === 'manage_all';
+    const roleLabel = u.role === 'super_admin' ? 'Super Admin' : (isAdminAccess ? 'Admin' : 'Recruiter');
+    const roleCls   = (u.role === 'super_admin' || isAdminAccess) ? 'badge-in_progress' : '';
+    return `
     <tr>
       <td>
         <div style="font-weight:600">${esc(u.name)} ${u.isMe ? '<span class="text-muted text-sm">(you)</span>' : ''}</div>
         <div class="text-muted text-sm">${esc(u.email)}</div>
       </td>
       <td>
-        <span class="badge ${u.role === 'super_admin' ? 'badge-in_progress' : ''}">${u.role === 'super_admin' ? 'Super Admin' : 'Recruiter'}</span>
+        <span class="badge ${roleCls}">${roleLabel}</span>
       </td>
       <td>
         ${u.role === 'super_admin'
@@ -231,7 +235,7 @@ async function renderTeamPage() {
           : `<select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px" onchange="changeUserScope('${esc(u.id)}', this.value)">
                <option value="own"        ${(u.viewScope || 'own') === 'own'        ? 'selected' : ''}>Own records only</option>
                <option value="view_all"   ${u.viewScope === 'view_all'   ? 'selected' : ''}>View all (read-only)</option>
-               <option value="manage_all" ${u.viewScope === 'manage_all' ? 'selected' : ''}>Manage all (full access)</option>
+               <option value="manage_all" ${u.viewScope === 'manage_all' ? 'selected' : ''}>Admin (full access)</option>
              </select>`}
       </td>
       <td>
@@ -244,7 +248,8 @@ async function renderTeamPage() {
           </button>
           <button class="btn btn-ghost" style="font-size:13px;color:var(--danger,#dc2626)" onclick="removeUser('${esc(u.id)}','${jsStr(u.name)}')">Remove</button>`}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const inviteRows = invites.length ? invites.map(i => `
     <tr>
@@ -274,7 +279,7 @@ async function renderTeamPage() {
     </div>
 
     <h3>Members</h3>
-    <p class="text-muted text-sm" style="margin-top:-6px">Visibility controls what each recruiter sees: <strong>Own records only</strong> (default), <strong>View all</strong> (see every recruiter's records but edit only their own), or <strong>Manage all</strong> (full access, like an admin).</p>
+    <p class="text-muted text-sm" style="margin-top:-6px">Visibility controls what each recruiter sees: <strong>Own records only</strong> (default), <strong>View all</strong> (see every recruiter's records but edit only their own), or <strong>Admin</strong> (full access to manage all records). Anyone set to Admin shows as <strong>Admin</strong> in the Role column.</p>
     <div class="table-wrap card" style="margin-bottom:28px">
       <table>
         <thead><tr><th>Person</th><th>Role</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
