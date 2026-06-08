@@ -1298,11 +1298,25 @@ function logProctoring(type, detail) {
 
 async function startRecording() {
   const q = interview.questions[currentQ];
-  await acquireMic(); // guarantee the mic is live & attached to canvasStream before capturing
+  await acquireMic(); // guarantee the mic is live before capturing
   attachProctoringListeners();
   chunks = [];
 
-  recorder = new MediaRecorder(canvasStream || mediaStream, {
+  // Record the RAW camera + mic directly — NOT the canvas captureStream.
+  // Mobile browsers throttle requestAnimationFrame to ~0 when the screen dims,
+  // locks, or the app is backgrounded, which freezes a canvas captureStream and
+  // produces identical frozen-frame videos. A real camera MediaStreamTrack keeps
+  // delivering frames regardless. The on-screen canvas (watermark/blur) remains
+  // the candidate's live preview only.
+  const recordStream = new MediaStream();
+  const camTrack = mediaStream && mediaStream.getVideoTracks ? mediaStream.getVideoTracks()[0] : null;
+  const micTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+  if (camTrack) recordStream.addTrack(camTrack);
+  if (micTrack) recordStream.addTrack(micTrack);
+  // Fallback to the old behavior only if no raw camera track is available.
+  const streamToRecord = camTrack ? recordStream : (canvasStream || mediaStream);
+
+  recorder = new MediaRecorder(streamToRecord, {
     mimeType: getSupportedMimeType(),
     videoBitsPerSecond: 2500000,   // 2.5 Mbps — good 720p quality
     audioBitsPerSecond: 128000,    // 128 kbps audio
