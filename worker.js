@@ -536,7 +536,53 @@ async function inviteUser(request) {
   await kvPut(`invite:${email}`, invite);
   const il = (await kvGet('invite:list')) || [];
   if (!il.includes(email)) { il.push(email); await kvPut('invite:list', il); }
-  return jsonRes(invite, 201);
+
+  // Notify the invitee so they know to sign in. Best-effort — the invite is
+  // valid regardless of whether the email goes through.
+  let emailSent = false, emailError = null;
+  try { await sendTeamInviteEmail(invite); emailSent = true; }
+  catch (e) { emailError = e.message; console.error('[invite] email failed for', email, '-', e.message); }
+
+  return jsonRes({ ...invite, emailSent, emailError }, 201);
+}
+
+// Invitation email: tells a new recruiter they've been granted access and links
+// them to the ZeusHire admin sign-in (Microsoft SSO).
+async function sendTeamInviteEmail(invite) {
+  const sender = EMAIL_SENDER;
+  const roleLabel = invite.role === 'super_admin' ? 'Administrator' : 'Recruiter';
+  const signInUrl = SSO_ADMIN_HOME;
+  const html = emailWrap('#B01A18', "You've been invited to ZeusHire", `
+    <p style="margin:0 0 16px 0;font-size:15px;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif">Hello,</p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
+      ${htmlEsc(invite.invitedByName || 'An administrator')} has invited you to access <strong>CTI ZeusHire</strong>, the CTI Group recruitment &amp; interview portal, as a <strong>${roleLabel}</strong>.
+    </p>
+    <p style="margin:0 0 20px 0;color:#374151;font-size:14px;font-family:Arial,Helvetica,sans-serif;line-height:22px">
+      To get started, click the button below and sign in with your CTI Microsoft account (<strong>${htmlEsc(invite.email)}</strong>). No separate password is needed.
+    </p>
+    ${emailButton(signInUrl, 'Sign in to ZeusHire')}
+    <p style="margin:24px 0 4px 0;color:#6b7280;font-size:12px;text-align:center;font-family:Arial,Helvetica,sans-serif">Or copy this link:</p>
+    <p style="margin:0;color:#6b7280;font-size:12px;text-align:center;word-break:break-all;font-family:Arial,Helvetica,sans-serif"><a href="${signInUrl}" style="color:#B01A18;text-decoration:underline">${signInUrl}</a></p>
+  `);
+
+  const accessToken = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${sender}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: 'Your CTI ZeusHire access',
+        body: { contentType: 'HTML', content: html },
+        from: { emailAddress: { name: 'CTI ZeusHire', address: sender } },
+        toRecipients: [{ emailAddress: { address: invite.email } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error('Email failed: ' + (err.error?.message || res.status));
+  }
 }
 
 // Revoke a pending invite (before the person has logged in).

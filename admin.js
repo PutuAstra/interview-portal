@@ -247,7 +247,8 @@ async function renderTeamPage() {
           <div class="text-muted text-sm">Invited by ${esc(i.invitedByName || i.invitedBy || '—')}</div></td>
       <td><span class="badge badge-in_progress">${i.role === 'super_admin' ? 'Super Admin' : 'Recruiter'}</span></td>
       <td><span class="badge badge-pending">Pending — not logged in yet</span></td>
-      <td style="text-align:right">
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-ghost" style="font-size:13px" onclick="resendInvite('${jsStr(i.email)}','${esc(i.role)}')">Resend</button>
         <button class="btn btn-ghost" style="font-size:13px;color:var(--danger,#dc2626)" onclick="revokeUserInvite('${jsStr(i.email)}')">Revoke</button>
       </td>
     </tr>`).join('') : `<tr><td colspan="4" class="text-muted text-sm" style="padding:16px">No pending invites.</td></tr>`;
@@ -256,7 +257,7 @@ async function renderTeamPage() {
     <div class="flex justify-between items-center mb-16">
       <h2>👥 Team</h2>
     </div>
-    <p class="text-muted mb-16">Only people you invite here can sign in. Everyone signs in with their CTI Microsoft account — invite them by their <strong>@cti-usa.com</strong> email, then they gain access on their first login.</p>
+    <p class="text-muted mb-16">Only people you invite here can sign in. When you invite someone by their <strong>@cti-usa.com</strong> email, they receive an email with a sign-in link and gain access on their first Microsoft login.</p>
 
     <div class="card" style="padding:16px;margin-bottom:24px">
       <h3 style="margin-top:0">Invite someone</h3>
@@ -295,15 +296,29 @@ async function sendInvite() {
   msg.style.color = ''; msg.textContent = '';
   if (!email) { msg.style.color = 'var(--danger,#dc2626)'; msg.textContent = 'Enter an email address.'; return; }
   try {
-    await apiJSON('POST', '/api/users/invite', { email, role });
-    msg.style.color = 'var(--success,#16a34a)';
-    msg.textContent = `Invite created for ${email}. They can now sign in with Microsoft.`;
+    const r = await apiJSON('POST', '/api/users/invite', { email, role });
     document.getElementById('invite-email').value = '';
+    if (r.emailSent) {
+      msg.style.color = 'var(--success,#16a34a)';
+      msg.textContent = `Invite sent to ${email}. They'll get an email with a sign-in link.`;
+    } else {
+      msg.style.color = 'var(--yellow,#f59e0b)';
+      msg.textContent = `Invite created for ${email}, but the email could not be sent${r.emailError ? ' (' + r.emailError + ')' : ''}. They can still sign in at the portal — or use Resend.`;
+    }
     renderTeamPage();
   } catch (e) {
     msg.style.color = 'var(--danger,#dc2626)';
     msg.textContent = e.message;
   }
+}
+
+async function resendInvite(email, role) {
+  try {
+    const r = await apiJSON('POST', '/api/users/invite', { email, role });
+    alert(r.emailSent
+      ? `Invitation email re-sent to ${email}.`
+      : `Could not send the email${r.emailError ? ': ' + r.emailError : ''}. They can still sign in directly at the portal.`);
+  } catch (e) { alert(e.message); }
 }
 
 async function revokeUserInvite(email) {
