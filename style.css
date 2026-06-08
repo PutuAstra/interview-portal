@@ -1501,15 +1501,24 @@ tr:hover td { background: var(--card-2); }
     gap: 6px;
   }
 
-  /* List cards (One-Way / Premium): stack the text block above the buttons */
-  #interviews-list .card > .flex.justify-between,
-  #premium-list  .card .flex.justify-between {
+  /* List cards (One-Way / Premium / Booking): stack the text block above the
+     buttons so action buttons never overlap the card content. */
+  #interviews-list   .card > .flex.justify-between,
+  #premium-list      .card .flex.justify-between,
+  #booking-links-list .card > .flex.justify-between {
     flex-direction: column;
     align-items: stretch !important;
-    gap: 10px;
+    gap: 12px;
   }
   #interviews-list .card .flex.gap-8,
   #premium-list  .card .flex.gap-8 { flex-wrap: wrap; }
+  /* Booking card's action column → full width, buttons not flush-right */
+  #booking-links-list .card > .flex.justify-between > div:last-child {
+    align-items: stretch !important;
+  }
+  #booking-links-list .card > .flex.justify-between > div:last-child > div {
+    justify-content: flex-start !important;
+  }
 
   /* Modals → near full screen */
   .modal {
