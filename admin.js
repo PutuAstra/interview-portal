@@ -1466,11 +1466,11 @@ function renderTWSessionRow(s, idx) {
     <div class="tw-session-row">
       <div class="text-muted" style="font-size:12px">${(idx ?? 0) + 1}</div>
       <div style="min-width:0">
-        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
         <div style="display:flex;align-items:center;gap:6px;min-width:0">
-          <span class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.teamsGenerated ? ' &nbsp;·&nbsp; <span style="color:#6264a7">Teams</span>' : ''}</span>
+          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</span>
           ${sourceBadge}
         </div>
+        <div class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.teamsGenerated ? ' &nbsp;·&nbsp; <span style="color:#6264a7">Teams</span>' : ''}</div>
       </div>
       <div style="font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${positionLabel}</div>
       <div>
