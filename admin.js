@@ -258,10 +258,10 @@ async function renderTeamPage() {
     <tr>
       <td><div style="font-weight:600">${esc(i.email)}</div>
           <div class="text-muted text-sm">Invited by ${esc(i.invitedByName || i.invitedBy || '—')}</div></td>
-      <td><span class="badge badge-in_progress">${i.role === 'super_admin' ? 'Super Admin' : 'Recruiter'}</span></td>
+      <td><span class="badge ${i.viewScope === 'manage_all' ? 'badge-in_progress' : ''}">${i.viewScope === 'manage_all' ? 'Admin' : (i.viewScope === 'view_all' ? 'Recruiter · View all' : 'Recruiter')}</span></td>
       <td><span class="badge badge-pending">Pending — not logged in yet</span></td>
       <td style="text-align:right;white-space:nowrap">
-        <button class="btn btn-ghost" style="font-size:13px" onclick="resendInvite('${jsStr(i.email)}','${esc(i.role)}')">Resend</button>
+        <button class="btn btn-ghost" style="font-size:13px" onclick="resendInvite('${jsStr(i.email)}','${esc(i.viewScope || 'own')}')">Resend</button>
         <button class="btn btn-ghost" style="font-size:13px;color:var(--danger,#dc2626)" onclick="revokeUserInvite('${jsStr(i.email)}')">Revoke</button>
       </td>
     </tr>`).join('') : `<tr><td colspan="4" class="text-muted text-sm" style="padding:16px">No pending invites.</td></tr>`;
@@ -284,6 +284,11 @@ async function renderTeamPage() {
       <div class="card" style="padding:16px;margin-top:10px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input id="invite-email" type="email" placeholder="name@cti-usa.com" style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px" />
+          <select id="invite-scope" title="Access level" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 10px;color:var(--text);font-size:14px">
+            <option value="own">Recruiter — Own records only</option>
+            <option value="view_all">Recruiter — View all (read-only)</option>
+            <option value="manage_all">Admin — full access</option>
+          </select>
           <button class="btn btn-primary" onclick="sendInvite()">Send Invite</button>
         </div>
         <div id="invite-msg" class="text-sm" style="margin-top:8px"></div>
@@ -370,12 +375,12 @@ async function runAssign() {
 
 async function sendInvite() {
   const email = (document.getElementById('invite-email').value || '').trim().toLowerCase();
-  const role  = 'recruiter';
+  const viewScope = document.getElementById('invite-scope')?.value || 'own';
   const msg   = document.getElementById('invite-msg');
   msg.style.color = ''; msg.textContent = '';
   if (!email) { msg.style.color = 'var(--danger,#dc2626)'; msg.textContent = 'Enter an email address.'; return; }
   try {
-    const r = await apiJSON('POST', '/api/users/invite', { email, role });
+    const r = await apiJSON('POST', '/api/users/invite', { email, viewScope });
     document.getElementById('invite-email').value = '';
     if (r.emailSent) {
       msg.style.color = 'var(--success,#16a34a)';
@@ -391,9 +396,9 @@ async function sendInvite() {
   }
 }
 
-async function resendInvite(email, role) {
+async function resendInvite(email, viewScope) {
   try {
-    const r = await apiJSON('POST', '/api/users/invite', { email, role });
+    const r = await apiJSON('POST', '/api/users/invite', { email, viewScope: viewScope || 'own' });
     alert(r.emailSent
       ? `Invitation email re-sent to ${email}.`
       : `Could not send the email${r.emailError ? ': ' + r.emailError : ''}. They can still sign in directly at the portal.`);

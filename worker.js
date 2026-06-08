@@ -490,7 +490,8 @@ async function authCallback(request) {
       return ssoError(`Your account hasn't been invited to ZeusHire yet. Please ask an administrator to invite ${email}, then try again.`);
     }
     const role = isBootstrap ? 'super_admin' : (invite?.role || 'recruiter');
-    user = { id: oid, email, name, calendarEmail: email, role, createdAt: Date.now(), active: true, invitedBy: invite?.invitedBy || null };
+    const viewScope = isBootstrap ? 'manage_all' : (invite?.viewScope || 'own');
+    user = { id: oid, email, name, calendarEmail: email, role, viewScope, createdAt: Date.now(), active: true, invitedBy: invite?.invitedBy || null };
     list.push(oid); await kvPut('user:list', list);
     await kvPut(`user:byEmail:${email}`, oid);
     // Consume the invite so it can't be reused.
@@ -546,8 +547,10 @@ async function inviteUser(request) {
   const me = await requireSuperAdmin(request);
   const body = await request.json();
   const email = String(body.email || '').trim().toLowerCase();
-  // Only the original bootstrap account is Super Admin — everyone invited is a Recruiter.
+  // Only the original bootstrap account is Super Admin — everyone invited is a Recruiter,
+  // with an access scope chosen at invite time (own / view_all / manage_all = "Admin").
   const role  = 'recruiter';
+  const viewScope = ['own', 'view_all', 'manage_all'].includes(body.viewScope) ? body.viewScope : 'own';
   if (!email) return jsonRes({ error: 'email required' }, 400);
   if (!email.endsWith('@' + ALLOWED_EMAIL_DOMAIN)) {
     return jsonRes({ error: `Only @${ALLOWED_EMAIL_DOMAIN} addresses can be invited.` }, 400);
@@ -555,7 +558,7 @@ async function inviteUser(request) {
   const existingId = await kvGet(`user:byEmail:${email}`);
   if (existingId) return jsonRes({ error: 'That person already has an account.' }, 409);
 
-  const invite = { email, role, invitedBy: me.email || me.id, invitedByName: me.name || '', invitedAt: Date.now() };
+  const invite = { email, role, viewScope, invitedBy: me.email || me.id, invitedByName: me.name || '', invitedAt: Date.now() };
   await kvPut(`invite:${email}`, invite);
   const il = (await kvGet('invite:list')) || [];
   if (!il.includes(email)) { il.push(email); await kvPut('invite:list', il); }
