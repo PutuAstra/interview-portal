@@ -282,7 +282,7 @@ async function renderTeamPage() {
     <p class="text-muted text-sm mb-16">Only people you invite can sign in (with their <strong>@cti-usa.com</strong> Microsoft account). <strong>Role</strong>: a <strong>Recruiter</strong> has scoped access; an <strong>Admin</strong> can manage all records. For recruiters, <strong>Visibility</strong> sets what they see — <strong>Own records only</strong> (default) or <strong>View all</strong> (see all, edit own).</p>
 
     <h3 style="margin-bottom:8px">Members (${users.length})</h3>
-    <div class="card" style="padding:0;margin-bottom:24px">
+    <div class="table-wrap card" style="padding:0;margin-bottom:24px">
       <table>
         <thead><tr><th>Person</th><th>Role</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
         <tbody>${userRows}</tbody>
@@ -307,7 +307,7 @@ async function renderTeamPage() {
 
     <details style="margin-bottom:12px">
       <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">Pending invites (${invites.length})</summary>
-      <div class="card" style="padding:0;margin-top:10px">
+      <div class="table-wrap card" style="padding:0;margin-top:10px">
         <table>
           <thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
           <tbody>${inviteRows}</tbody>
