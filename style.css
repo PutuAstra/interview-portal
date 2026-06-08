@@ -1070,6 +1070,21 @@ tr:hover td { background: var(--card-2); }
   position: static;
 }
 
+/* Frozen toolbar + column header inside the candidates modal's scroll body.
+   The body has no top padding so this pins flush; the header supplies the
+   spacing via padding-top. */
+.modal-list-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--card);
+  padding-top: 20px;
+}
+.modal-list-sticky .sessions-table-header {
+  position: static;
+  background: var(--card);
+}
+
 /* ── Setup screen ── */
 .bg-opt {
   padding: 5px 12px;
