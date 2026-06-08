@@ -443,6 +443,13 @@ tr:hover td { background: var(--card-2); }
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+  /* Stay frozen at the top while the modal body scrolls. Harmless on
+     fixed-layout modals (padding:0 / overflow:hidden) where there's no
+     internal scroll to stick to. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--card);
 }
 
 /* ── Misc ── */
