@@ -4376,8 +4376,8 @@ function renderCalendarSyncContent() {
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">How this works</div>
             <div style="font-size:13px;color:var(--muted);line-height:20px">
-              When candidates load the booking calendar, ZeusHire checks <strong style="color:var(--text-2)">all linked calendars</strong>
-              for busy/tentative/out-of-office events and hides those slots automatically.
+              When candidates load a booking calendar, ZeusHire checks the <strong style="color:var(--text-2)">link owner's own calendar</strong>
+              plus any <strong style="color:var(--text-2)">linked calendars</strong> below for busy/tentative/out-of-office events, and hides those slots automatically.
               No login required — the Azure App already has read access to any mailbox in your Microsoft 365 tenant.
               Busy times are cached for <strong style="color:var(--text-2)">5 minutes</strong> to keep the calendar page fast.
             </div>
@@ -4385,13 +4385,16 @@ function renderCalendarSyncContent() {
         </div>
       </div>
 
-      <!-- Primary calendar (read-only info) -->
+      <!-- Primary calendar (read-only info) — the signed-in user's own calendar -->
       <div class="card" style="margin-bottom:16px">
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:10px">Primary Calendar (Managed by ZeusHire)</div>
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:10px">Your Calendar (where your meetings are created)</div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:8px;height:8px;border-radius:50%;background:#16a34a;flex-shrink:0"></div>
-          <span style="font-size:14px;font-weight:600">${ADMIN_EMAIL || 'corporate-recruiter@cti-usa.com'}</span>
-          <span style="font-size:11px;color:var(--muted);margin-left:auto">Booking interviews, Direct Invites, Teams meetings</span>
+          <span style="font-size:14px;font-weight:600">${esc((_currentUser && _currentUser.email) || ADMIN_EMAIL || 'corporate-recruiter@cti-usa.com')}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:auto">Your booking interviews, direct invites &amp; Teams meetings</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:18px">
+          Every booking link and direct invite you create now schedules onto <strong>your own</strong> calendar, and that link's availability is checked against your calendar. Each recruiter's appointments stay on their own calendar.
         </div>
       </div>
 
