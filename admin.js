@@ -273,12 +273,38 @@ async function renderTeamPage() {
     </div>
 
     <h3>Pending invites</h3>
-    <div class="table-wrap card">
+    <div class="table-wrap card" style="margin-bottom:28px">
       <table>
         <thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
         <tbody>${inviteRows}</tbody>
       </table>
+    </div>
+
+    <h3>Legacy records</h3>
+    <div class="card" style="padding:16px">
+      <p class="text-muted" style="margin-top:0">Interviews, bookings and two-way sessions created before sign-in was added have no owner, so only you (the administrator) can see them. Assign them all to your account so they behave like any other owned record. Past meetings &amp; recordings stay in the shared corporate mailbox and keep working.</p>
+      <button class="btn btn-outline" id="backfill-btn" onclick="runBackfill()">Assign legacy records to me</button>
+      <div id="backfill-msg" class="text-sm" style="margin-top:8px"></div>
     </div>`;
+}
+
+async function runBackfill() {
+  const btn = document.getElementById('backfill-btn');
+  const msg = document.getElementById('backfill-msg');
+  if (!confirm('Assign all unowned legacy records to your account? This is safe and can be run more than once.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  msg.style.color = ''; msg.textContent = '';
+  try {
+    const r = await apiJSON('POST', '/api/users/backfill-owner', {});
+    const u = r.updated || {};
+    msg.style.color = 'var(--success,#16a34a)';
+    msg.textContent = `Done. Assigned: ${u.interviews||0} interviews, ${u.sessions||0} sessions, ${u.twSessions||0} two-way, ${u.bookingLinks||0} booking links, ${u.bookings||0} bookings.`;
+  } catch (e) {
+    msg.style.color = 'var(--danger,#dc2626)';
+    msg.textContent = e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Assign legacy records to me'; }
+  }
 }
 
 async function sendInvite() {

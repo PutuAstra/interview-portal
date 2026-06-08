@@ -109,6 +109,7 @@ async function route(request) {
   if (seg[0] === 'users' && seg.length === 1 && m === 'GET')  return listUsers(request);
   if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 2 && m === 'POST')   return inviteUser(request);
   if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 3 && m === 'DELETE') return revokeInvite(decodeURIComponent(seg[2]), request);
+  if (seg[0] === 'users' && seg[1] === 'backfill-owner' && seg.length === 2 && m === 'POST') return backfillOwner(request);
   if (seg[0] === 'users' && seg.length === 2 && m === 'PATCH')  return updateUser(seg[1], request);
   if (seg[0] === 'users' && seg.length === 2 && m === 'DELETE') return deleteUser(seg[1], request);
 
@@ -397,6 +398,18 @@ function canAccess(record, user) {
   return record.ownerId === user.id;
 }
 
+// Phase 3 — dynamic calendar routing. Resolves which mailbox a record's Teams
+// meetings, calendar events, and recordings route to: the OWNING recruiter's
+// calendarEmail, falling back to the shared corporate mailbox for legacy/unowned
+// records or the break-glass admin.
+async function resolveOwnerCalendarEmail(ownerId) {
+  if (ownerId && ownerId !== 'admin') {
+    const u = await kvGet(`user:${ownerId}`);
+    if (u && (u.calendarEmail || u.email)) return u.calendarEmail || u.email;
+  }
+  return EMAIL_SENDER || ONEDRIVE_USER;
+}
+
 // Decode a JWT payload (id_token from Microsoft's token endpoint — already trusted
 // over TLS via our client secret, so no JWKS signature check needed here).
 function decodeJwt(jwt) {
@@ -647,6 +660,68 @@ async function deleteUser(userId, request) {
   const ids = (await kvGet('user:list')) || [];
   await kvPut('user:list', ids.filter(id => id !== userId));
   return jsonRes({ ok: true });
+}
+
+// Phase 4 — one-time backfill. Assigns ownerId to legacy records created before
+// SSO (which are otherwise visible to super_admin only). Defaults the owner to
+// the caller (or the bootstrap super_admin if signed in with the break-glass key).
+// organizerEmail on legacy meetings is preserved as EMAIL_SENDER — that's where
+// their calendar events and recordings actually live, so playback keeps working.
+async function backfillOwner(request) {
+  const me = await requireSuperAdmin(request);
+  const body = await request.json().catch(() => ({}));
+
+  // Resolve the target owner id (must be a real user for calendar routing).
+  let targetId = body.ownerId || me.id;
+  if (targetId === 'admin') {
+    const uids = (await kvGet('user:list')) || [];
+    const all  = (await Promise.all(uids.map(id => kvGet(`user:${id}`)))).filter(Boolean);
+    const sa   = all.find(u => u.role === 'super_admin' && u.active !== false);
+    if (sa) targetId = sa.id;
+  }
+
+  const counts = { interviews: 0, sessions: 0, twSessions: 0, bookingLinks: 0, bookings: 0 };
+
+  // Interviews + their one-way sessions
+  const interviewIds = (await kvGet('interview:list')) || [];
+  for (const iid of interviewIds) {
+    const iv = await kvGet(`interview:${iid}`);
+    if (iv && !iv.ownerId) { iv.ownerId = targetId; await kvPut(`interview:${iid}`, iv); counts.interviews++; }
+    const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
+    for (const tk of tokens) {
+      const s = await kvGet(`session:${tk}`);
+      if (s && !s.ownerId) { s.ownerId = (iv && iv.ownerId) || targetId; await kvPut(`session:${tk}`, s); counts.sessions++; }
+    }
+  }
+
+  // Two-way (direct invite) sessions
+  const twIds = (await kvGet('tw-session:list')) || [];
+  for (const id of twIds) {
+    const s = await kvGet(`tw-session:${id}`);
+    if (s && !s.ownerId) {
+      s.ownerId = targetId;
+      if (!s.organizerEmail) s.organizerEmail = EMAIL_SENDER; // legacy meetings live in the shared mailbox
+      await kvPut(`tw-session:${id}`, s); counts.twSessions++;
+    }
+  }
+
+  // Booking links + their bookings
+  const linkTokens = (await kvGet('booking:link:list')) || [];
+  for (const t of linkTokens) {
+    const link = await kvGet(`booking:link:${t}`);
+    if (link && !link.ownerId) { link.ownerId = targetId; await kvPut(`booking:link:${t}`, link); counts.bookingLinks++; }
+    const bids = (await kvGet(`booking:link:${t}:bookings`)) || [];
+    for (const bid of bids) {
+      const b = await kvGet(`booking:booking:${bid}`);
+      if (b && (!b.ownerId || !b.organizerEmail)) {
+        if (!b.ownerId) b.ownerId = (link && link.ownerId) || targetId;
+        if (!b.organizerEmail) b.organizerEmail = EMAIL_SENDER; // legacy events/recordings live in the shared mailbox
+        await kvPut(`booking:booking:${bid}`, b); counts.bookings++;
+      }
+    }
+  }
+
+  return jsonRes({ ok: true, ownerId: targetId, updated: counts });
 }
 
 // ── Brute-force throttle for the admin key ────────────────────
@@ -1528,11 +1603,12 @@ async function createTWSession(request) {
     status: 'scheduled',
     createdAt: Date.now(),
     ownerId: user.id,
+    organizerEmail: user.calendarEmail || user.email || EMAIL_SENDER,
   };
 
   if (autoMeeting && scheduledAt) {
     try {
-      const meeting = await createTeamsMeeting(session);
+      const meeting = await createTeamsMeeting(session, session.organizerEmail);
       session.meetingLink        = meeting.joinUrl;
       session.calendarEventId    = meeting.eventId;
       session.calendarWebLink    = meeting.webLink;
@@ -1961,7 +2037,7 @@ async function fetchTWRecording(id, request) {
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   if (!canAccess(session, user)) return jsonRes({ error: 'Forbidden' }, 403);
 
-  const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+  const organizer   = session.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
   const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
   if (error) return jsonRes(error, 500);
@@ -2012,7 +2088,7 @@ async function fetchBookingRecording(bookingId, request) {
     if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
   }
 
-  const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+  const organizer   = booking.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
   const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
   if (error) return jsonRes(error, 500);
@@ -2071,7 +2147,7 @@ async function getBookingRecordingUrl(bookingId, request) {
     return jsonRes({ error: 'No recording linked to this booking' }, 404);
   }
   try {
-    const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+    const organizer   = booking.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
     const accessToken = await getAccessToken();
     const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
     if (error) return jsonRes(error, 500);
@@ -2092,13 +2168,14 @@ async function getBookingRecordingUrl(bookingId, request) {
 }
 
 async function getTWRecordingUrl(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (!canAccess(session, user)) return jsonRes({ error: 'Forbidden' }, 403);
   if (!session.recordingDriveItemId) return jsonRes({ error: 'No recording linked to this session' }, 404);
 
   try {
-    const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+    const organizer   = session.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
     const accessToken = await getAccessToken();
 
     const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
@@ -2119,12 +2196,12 @@ async function getTWRecordingUrl(id, request) {
   }
 }
 
-async function createTeamsMeeting(session) {
+async function createTeamsMeeting(session, organizerEmail) {
   const accessToken = await getAccessToken();
-  // Use EMAIL_SENDER (corporate-recruiter@cti-usa.com) as the Teams meeting
-  // organizer so calendar events appear in the recruiter's calendar.
-  // Fall back to ONEDRIVE_USER only if EMAIL_SENDER is not set.
-  const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+  // Phase 3: the meeting is organized on the OWNING recruiter's calendar
+  // (organizerEmail). Falls back to the shared corporate mailbox when no owner
+  // is resolved (legacy records / break-glass admin).
+  const organizer   = organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
 
   const startMs  = session.scheduledAt;
   const endMs    = startMs + (session.duration || 60) * 60 * 1000;
@@ -2995,7 +3072,7 @@ async function cancelBookingHandler(bookingId, request) {
   if (booking.calendarEventId) {
     try {
       const accessToken = await getAccessToken();
-      const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
+      const organizer   = booking.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
       await fetch(
         `https://graph.microsoft.com/v1.0/users/${organizer}/calendar/events/${booking.calendarEventId}`,
         { method: 'DELETE', headers: { 'Authorization': `Bearer ${accessToken}` } }
@@ -3650,28 +3727,36 @@ async function getBookingSlots(token) {
   // Results are KV-cached 5 min so concurrent page loads share one API call.
   // On failure the function returns [] — slots stay open (fail-open).
   const recruiterSettings = await kvGet('recruiter:settings');
-  const linkedCalendars   = recruiterSettings?.linkedCalendars || [];
+  const globalLinkedCalendars = recruiterSettings?.linkedCalendars || [];
 
-  // ── Step 4: Build global blocked time ranges ─────────────────
-  // Scans ALL confirmed bookings across ALL links + all scheduled
-  // direct-invite (tw-session) appointments so the recruiter's ZeusHire
-  // calendar is treated as a single unified availability source.
+  // Phase 3: availability is PER-RECRUITER. Only the owning recruiter's own
+  // appointments + their own Outlook calendar block this link's slots — so two
+  // recruiters can independently offer (and book) the same wall-clock time.
+  const linkOwnerId = link.ownerId || null;
+  const ownerEmail  = await resolveOwnerCalendarEmail(linkOwnerId);
 
-  // 4a. All booking links → all confirmed candidate bookings
-  const allLinkTokens    = (await kvGet('booking:link:list')) || [];
-  const allBookingIdLists = await Promise.all(
-    allLinkTokens.map(t => kvGet(`booking:link:${t}:bookings`))
+  // ── Step 4: Build the owning recruiter's blocked time ranges ──
+  // Scans the owner's confirmed candidate bookings (across their own links) +
+  // their scheduled direct-invite (tw-session) appointments.
+
+  // 4a. The owner's booking links → their confirmed candidate bookings
+  const allLinkTokens = (await kvGet('booking:link:list')) || [];
+  const allLinks      = await Promise.all(allLinkTokens.map(t => kvGet(`booking:link:${t}`)));
+  const ownedTokens   = allLinkTokens.filter((t, i) => ((allLinks[i]?.ownerId || null) === linkOwnerId));
+  const ownedBookingIdLists = await Promise.all(
+    ownedTokens.map(t => kvGet(`booking:link:${t}:bookings`))
   );
-  const allBookingIds  = [...new Set(allBookingIdLists.flatMap(ids => ids || []))];
-  const allBookings    = await Promise.all(allBookingIds.map(id => kvGet(`booking:booking:${id}`)));
+  const ownedBookingIds = [...new Set(ownedBookingIdLists.flatMap(ids => ids || []))];
+  const ownedBookings   = await Promise.all(ownedBookingIds.map(id => kvGet(`booking:booking:${id}`)));
 
-  // 4b. Direct-invite (tw-session) scheduled appointments
+  // 4b. The owner's direct-invite (tw-session) scheduled appointments
   const twIds      = (await kvGet('tw-session:list')) || [];
-  const twSessions = await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)));
+  const twSessions = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`))))
+    .filter(s => s && (s.ownerId || null) === linkOwnerId);
 
-  // 4c. Merge ZeusHire bookings + tw-sessions into base blocked ranges
+  // 4c. Merge owner's ZeusHire bookings + tw-sessions into base blocked ranges
   const blockedRanges = [
-    ...allBookings
+    ...ownedBookings
       .filter(b => b?.status === 'confirmed')
       .map(b => ({
         start: b.slotStart,
@@ -3685,22 +3770,24 @@ async function getBookingSlots(token) {
       })),
   ];
 
-  // ── Step 4d: Merge linked Outlook calendar busy blocks ────────
-  // Runs AFTER base blockedRanges is built so a single error doesn't
-  // prevent internal bookings from being blocked correctly.
-  if (linkedCalendars.length) {
+  // ── Step 4d: Merge the owner's Outlook calendar busy blocks ───
+  // Checks the owning recruiter's own calendar (ownerEmail) plus any globally
+  // configured shared calendars. Runs AFTER base blockedRanges is built so a
+  // single error doesn't prevent internal bookings from being blocked.
+  const calendarsToCheck = [...new Set([ownerEmail, ...globalLinkedCalendars].filter(Boolean))];
+  if (calendarsToCheck.length) {
     const windowStartMs = Date.now();
     const windowEndMs   = windowStartMs + (link.daysAhead || 14) * 24 * 60 * 60 * 1000;
     try {
       const accessToken = await getAccessToken();
-      // Concurrent: all linked calendars fetched in parallel
+      // Concurrent: all calendars fetched in parallel
       const busyArrays = await Promise.all(
-        linkedCalendars.map(email =>
+        calendarsToCheck.map(email =>
           fetchOutlookBusyRanges(email, windowStartMs, windowEndMs, accessToken)
         )
       );
       for (const ranges of busyArrays) blockedRanges.push(...ranges);
-      console.log(`[cal-sync] merged ${busyArrays.flat().length} external busy ranges from ${linkedCalendars.length} calendar(s)`);
+      console.log(`[cal-sync] merged ${busyArrays.flat().length} external busy ranges from ${calendarsToCheck.length} calendar(s) for owner ${ownerEmail}`);
     } catch (e) {
       // Non-fatal — if linked calendar lookup crashes, serve slots from
       // internal bookings only rather than blocking the whole page
@@ -3750,6 +3837,10 @@ async function createBookingHandler(token, request) {
 
   const slotEnd = slotStart + (link.duration || 30) * 60 * 1000;
 
+  // Phase 3: route this booking's calendar event / Teams meeting / recording to
+  // the recruiter who owns the booking link.
+  const organizerEmail = await resolveOwnerCalendarEmail(link.ownerId);
+
   // ── Race-condition guard: claim the slot atomically across ALL links ─
   // Key is global (not per-link) so two candidates booking *different* templates
   // at the same time cannot both win the same calendar slot.
@@ -3785,6 +3876,8 @@ async function createBookingHandler(token, request) {
     status:         'confirmed',
     createdAt:      Date.now(),
     inviteToken:    inviteToken || null,
+    ownerId:        link.ownerId || null,
+    organizerEmail: organizerEmail,
     calendarEventId:  null,
     calendarEventUrl: null,
   };
@@ -3800,7 +3893,7 @@ async function createBookingHandler(token, request) {
       notes:          `Booking Interview — ${link.interviewType || ''}`,
       id:             bookingId,
     };
-    const meeting = await createTeamsMeeting(session);
+    const meeting = await createTeamsMeeting(session, organizerEmail);
     booking.calendarEventId  = meeting.eventId;
     booking.calendarEventUrl = meeting.webLink;
     booking.meetingLink      = meeting.joinUrl;
