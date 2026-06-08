@@ -2015,6 +2015,25 @@ function findRecordingCandidate(files, session) {
   };
 }
 
+// ── Targeted search: find a recording by its unique [CTI-{shortId}] tag ──
+// Searches the WHOLE drive by filename text, so it locates the recording even
+// when it's old enough to have scrolled past the recent-files listing. Returns
+// only files whose name actually contains the tag (defensive against fuzzy hits).
+async function searchRecordingByTag(driveBase, accessToken, shortId) {
+  if (!shortId) return [];
+  const videoExt = /\.(mp4|mkv|webm)$/i;
+  try {
+    const res = await fetch(
+      `${driveBase}/search(q='${encodeURIComponent(shortId)}')?$top=25&$select=id,name,createdDateTime,size,webUrl`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const tag = `cti-${shortId}`.toLowerCase();
+    return (data.value || []).filter(f => videoExt.test(f.name) && f.name.toLowerCase().includes(tag));
+  } catch { return []; }
+}
+
 // ── Shared OneDrive recording file collector ──────────────────────
 // Lists /Recordings folder (Teams default) then falls back to drive search.
 async function collectRecordingFiles(driveBase, accessToken) {
@@ -2023,7 +2042,7 @@ async function collectRecordingFiles(driveBase, accessToken) {
 
   const folderRes = await fetch(
     `${driveBase}/root:/Recordings:/children` +
-    `?$orderby=createdDateTime+desc&$top=50&$select=id,name,createdDateTime,size,webUrl`,
+    `?$orderby=createdDateTime+desc&$top=200&$select=id,name,createdDateTime,size,webUrl`,
     { headers: { 'Authorization': `Bearer ${accessToken}` } }
   );
   if (folderRes.ok) {
@@ -2073,21 +2092,32 @@ async function fetchTWRecording(id, request) {
   const { driveBase, error } = await resolveOrganizerDriveBase(organizer, accessToken);
   if (error) return jsonRes(error, 500);
 
-  const allFiles   = await collectRecordingFiles(driveBase, accessToken);
-  const candidates = applyTimeWindow(allFiles, session.scheduledAt, session.duration || 60);
-
-  if (!candidates.length) {
-    return jsonRes({
-      notFound: true,
-      message: allFiles.length
-        ? `Found ${allFiles.length} recording(s) in OneDrive but none fall within the expected ` +
-          `meeting window (${new Date(session.scheduledAt).toISOString()} + ${session.duration || 60} min + 4h). ` +
-          `Recording may still be processing — retry in a few minutes.`
-        : 'No recording found yet. Recording may still be processing — try again in a few minutes.',
-    });
+  // Tier 0: direct tag search (robust to old recordings that scrolled past the
+  // recent-files listing). If the uniquely-tagged file exists anywhere in the
+  // drive, use it directly — no time window needed since the tag is unique.
+  let match = null, reason = '';
+  if (session.meetingShortId) {
+    const tagged = await searchRecordingByTag(driveBase, accessToken, session.meetingShortId);
+    if (tagged.length) { match = tagged[0]; reason = `tag_search:cti-${session.meetingShortId}`; }
   }
 
-  const { match, reason } = findRecordingCandidate(candidates, session);
+  if (!match) {
+    const allFiles   = await collectRecordingFiles(driveBase, accessToken);
+    const candidates = applyTimeWindow(allFiles, session.scheduledAt, session.duration || 60);
+
+    if (!candidates.length) {
+      return jsonRes({
+        notFound: true,
+        message: allFiles.length
+          ? `Found ${allFiles.length} recording(s) in OneDrive but none fall within the expected ` +
+            `meeting window (${new Date(session.scheduledAt).toISOString()} + ${session.duration || 60} min + 4h). ` +
+            `Recording may still be processing — retry in a few minutes.`
+          : 'No recording found yet. Recording may still be processing — try again in a few minutes.',
+      });
+    }
+
+    ({ match, reason } = findRecordingCandidate(candidates, session));
+  }
 
   if (!match) {
     return jsonRes({
@@ -2127,25 +2157,36 @@ async function fetchBookingRecording(bookingId, request) {
   const duration   = booking.slotEnd
     ? Math.round((booking.slotEnd - booking.slotStart) / 60000)
     : 30;
-  const allFiles   = await collectRecordingFiles(driveBase, accessToken);
-  const candidates = applyTimeWindow(allFiles, booking.slotStart, duration);
-
-  if (!candidates.length) {
-    return jsonRes({
-      notFound: true,
-      message: allFiles.length
-        ? `Found ${allFiles.length} recording(s) but none fall within the expected meeting window. ` +
-          `Recording may still be processing — retry in a few minutes.`
-        : 'No recording found yet — try again in a few minutes.',
-    });
-  }
 
   // Build session-like object for the shared matcher
   const sessionLike = {
     meetingShortId: booking.meetingShortId || null,
     candidateName:  booking.candidateName,
   };
-  const { match, reason } = findRecordingCandidate(candidates, sessionLike);
+
+  // Tier 0: direct tag search (robust to old recordings beyond the recent listing).
+  let match = null, reason = '';
+  if (booking.meetingShortId) {
+    const tagged = await searchRecordingByTag(driveBase, accessToken, booking.meetingShortId);
+    if (tagged.length) { match = tagged[0]; reason = `tag_search:cti-${booking.meetingShortId}`; }
+  }
+
+  if (!match) {
+    const allFiles   = await collectRecordingFiles(driveBase, accessToken);
+    const candidates = applyTimeWindow(allFiles, booking.slotStart, duration);
+
+    if (!candidates.length) {
+      return jsonRes({
+        notFound: true,
+        message: allFiles.length
+          ? `Found ${allFiles.length} recording(s) but none fall within the expected meeting window. ` +
+            `Recording may still be processing — retry in a few minutes.`
+          : 'No recording found yet — try again in a few minutes.',
+      });
+    }
+
+    ({ match, reason } = findRecordingCandidate(candidates, sessionLike));
+  }
 
   if (!match) {
     return jsonRes({
