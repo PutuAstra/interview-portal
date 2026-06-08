@@ -1439,7 +1439,7 @@ tr:hover td { background: var(--card-2); }
   /* Topbar: show hamburger, hide the long company name, keep it compact */
   .hamburger-btn { display: inline-flex; align-items: center; }
   .topbar-company { display: none; }
-  #topbar-info { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #topbar-info { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Layout height tracks the 46px mobile topbar */
   .admin-body { height: calc(100vh - 46px); height: calc(100dvh - 46px); position: relative; }
@@ -1466,21 +1466,57 @@ tr:hover td { background: var(--card-2); }
   }
   .admin-body.sidebar-open .sidebar-backdrop { display: block; }
 
-  /* Main content: tighter padding, allow horizontal scroll for wide tables */
-  .admin-main { padding: 16px 14px 56px; overflow-x: auto; }
-  .admin-main.flush-top { padding-top: 0; }
-  .list-sticky-head { padding-left: 0; padding-right: 0; }
+  .admin-main { padding: 14px 12px 56px; }
+  .admin-main.flush-top { padding-top: 14px; }
 
-  /* Grid tables keep their columns and scroll sideways instead of crushing */
-  .tw-table-header, .tw-session-row,
-  .sessions-table-header, .session-row { min-width: 680px; }
+  /* Sticky headers OFF on mobile (they overlapped rows). Headers scroll normally. */
+  .list-sticky-head,
+  .modal-list-sticky { position: static; padding-top: 0; }
+
+  /* Page title rows wrap so the action button drops below the title */
+  .list-sticky-head .flex.justify-between { flex-wrap: wrap; gap: 8px; }
+  .list-sticky-head .flex.justify-between h2 { font-size: 20px; }
+  /* Toolbars / filter chip rows wrap instead of overflowing */
+  .list-sticky-head .flex,
+  .modal-list-sticky > div { flex-wrap: wrap !important; }
+
+  /* Grid TABLES → stacked cards: hide column headers, stack each row's cells */
+  .tw-table-header, .sessions-table-header { display: none; }
+  .tw-session-row, .session-row {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    gap: 0;
+  }
+  .tw-session-row > div, .session-row > div {
+    text-align: left !important;
+    margin-bottom: 6px;
+  }
+  .tw-session-row > div:last-child, .session-row > div:last-child {
+    margin-bottom: 0;
+    justify-content: flex-start !important;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* List cards (One-Way / Premium): stack the text block above the buttons */
+  #interviews-list .card > .flex.justify-between,
+  #premium-list  .card .flex.justify-between {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 10px;
+  }
+  #interviews-list .card .flex.gap-8,
+  #premium-list  .card .flex.gap-8 { flex-wrap: wrap; }
 
   /* Modals → near full screen */
   .modal {
     width: calc(100vw - 16px) !important;
     max-width: calc(100vw - 16px) !important;
     max-height: calc(100dvh - 16px) !important;
-    padding: 18px;
+    padding: 16px;
   }
   #modal-sessions .modal,
   #modal-review .modal,
@@ -1495,6 +1531,9 @@ tr:hover td { background: var(--card-2); }
   /* Review modal: stack the responses + résumé panes vertically */
   #review-content { flex-direction: column !important; overflow-y: auto; }
   #review-content > * { width: 100% !important; flex: none !important; }
+
+  /* Team / card tables: keep within width */
+  .table-wrap { overflow-x: auto; }
 
   /* Login card full-bleed */
   #login-gate .card,
