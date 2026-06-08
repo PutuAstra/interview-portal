@@ -226,6 +226,15 @@ async function renderTeamPage() {
         <span class="badge ${u.role === 'super_admin' ? 'badge-in_progress' : ''}">${u.role === 'super_admin' ? 'Super Admin' : 'Recruiter'}</span>
       </td>
       <td>
+        ${u.role === 'super_admin'
+          ? '<span class="text-muted text-sm">Everything</span>'
+          : `<select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px" onchange="changeUserScope('${esc(u.id)}', this.value)">
+               <option value="own"        ${(u.viewScope || 'own') === 'own'        ? 'selected' : ''}>Own records only</option>
+               <option value="view_all"   ${u.viewScope === 'view_all'   ? 'selected' : ''}>View all (read-only)</option>
+               <option value="manage_all" ${u.viewScope === 'manage_all' ? 'selected' : ''}>Manage all (full access)</option>
+             </select>`}
+      </td>
+      <td>
         <span class="badge ${u.active ? 'badge-completed' : 'badge-pending'}">${u.active ? 'Active' : 'Disabled'}</span>
       </td>
       <td style="text-align:right;white-space:nowrap">
@@ -265,9 +274,10 @@ async function renderTeamPage() {
     </div>
 
     <h3>Members</h3>
+    <p class="text-muted text-sm" style="margin-top:-6px">Visibility controls what each recruiter sees: <strong>Own records only</strong> (default), <strong>View all</strong> (see every recruiter's records but edit only their own), or <strong>Manage all</strong> (full access, like an admin).</p>
     <div class="table-wrap card" style="margin-bottom:28px">
       <table>
-        <thead><tr><th>Person</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Person</th><th>Role</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
         <tbody>${userRows}</tbody>
       </table>
     </div>
@@ -345,8 +355,8 @@ async function revokeUserInvite(email) {
   catch (e) { alert(e.message); }
 }
 
-async function changeUserRole(id, role) {
-  try { await apiJSON('PATCH', '/api/users/' + id, { role }); renderTeamPage(); }
+async function changeUserScope(id, viewScope) {
+  try { await apiJSON('PATCH', '/api/users/' + id, { viewScope }); renderTeamPage(); }
   catch (e) { alert(e.message); renderTeamPage(); }
 }
 

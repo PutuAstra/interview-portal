@@ -392,9 +392,17 @@ async function requireSuperAdmin(request) {
 
 // Phase 2 ownership check: super_admin sees everything; a recruiter only their own
 // records. Legacy records with no ownerId are visible to super_admin only.
-function canAccess(record, user) {
+// Per-recruiter visibility scope (set by a super_admin on the Team page):
+//   'own'        — only records the recruiter created (default)
+//   'view_all'   — can SEE every recruiter's records, but edit/delete only own
+//   'manage_all' — full access to all records, like an administrator
+// mode: 'view' for read/list/recording-access; 'manage' for edit/delete/cancel.
+function canAccess(record, user, mode = 'manage') {
   if (!record || !user) return false;
   if (user.role === 'super_admin') return true;
+  const scope = user.viewScope || 'own';
+  if (scope === 'manage_all') return true;
+  if (scope === 'view_all' && mode === 'view') return true;
   return record.ownerId === user.id;
 }
 
@@ -508,7 +516,7 @@ async function authCallback(request) {
 async function authMe(request) {
   const user = await resolveUser(request);
   if (!user) return jsonRes({ authenticated: false }, 401);
-  return jsonRes({ authenticated: true, user: { name: user.name, email: user.email, role: user.role, breakGlass: !!user.breakGlass } });
+  return jsonRes({ authenticated: true, user: { name: user.name, email: user.email, role: user.role, viewScope: user.viewScope || 'own', breakGlass: !!user.breakGlass } });
 }
 
 async function authLogout(request) {
@@ -524,6 +532,7 @@ async function listUsers(request) {
   const ids = (await kvGet('user:list')) || [];
   const users = (await Promise.all(ids.map(id => kvGet(`user:${id}`)))).filter(Boolean).map(u => ({
     id: u.id, name: u.name, email: u.email, role: u.role,
+    viewScope: u.viewScope || 'own',
     active: u.active !== false, calendarEmail: u.calendarEmail || u.email,
     createdAt: u.createdAt || 0, isMe: u.id === me.id,
   }));
@@ -631,6 +640,7 @@ async function updateUser(userId, request) {
 
   if (body.role === 'super_admin') return jsonRes({ error: 'Only one Super Admin is allowed.' }, 409);
   if (body.role === 'recruiter') user.role = 'recruiter';
+  if (['own', 'view_all', 'manage_all'].includes(body.viewScope)) user.viewScope = body.viewScope;
   if (typeof body.active === 'boolean') user.active = body.active;
   if (body.calendarEmail !== undefined) user.calendarEmail = String(body.calendarEmail || '').trim().toLowerCase() || user.email;
   await kvPut(`user:${userId}`, user);
@@ -638,7 +648,7 @@ async function updateUser(userId, request) {
   // If access was revoked, kill any live sessions belonging to this user is best-effort
   // (sessions self-expire and resolveUser re-checks active flag on every request, so a
   // disabled user is locked out on their next API call regardless).
-  return jsonRes({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active !== false });
+  return jsonRes({ id: user.id, name: user.name, email: user.email, role: user.role, viewScope: user.viewScope || 'own', active: user.active !== false });
 }
 
 // Permanently remove a user account. Their owned records remain in KV (reassignable later).
@@ -1113,7 +1123,7 @@ async function listInterviews(request) {
   const items = await Promise.all(ids.map(async id => {
     const interview = await kvGet(`interview:${id}`);
     if (!interview) return null;
-    if (!canAccess(interview, user)) return null;   // recruiters see only their own
+    if (!canAccess(interview, user, 'view')) return null;   // honors per-recruiter visibility scope
     const tokens = (await kvGet(`interview:${id}:sessions`)) || [];
     const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
     const valid = sessions.filter(Boolean);
@@ -1131,7 +1141,7 @@ async function getInterview(id, request) {
   const user = await requireAdmin(request);
   const interview = await kvGet(`interview:${id}`);
   if (!interview) return jsonRes({ error: 'Not found' }, 404);
-  if (!canAccess(interview, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  if (!canAccess(interview, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
   return jsonRes(interview);
 }
 
@@ -1198,7 +1208,7 @@ async function createSession(interviewId, request) {
 async function listSessions(interviewId, request) {
   const user = await requireAdmin(request);
   const interview = await kvGet(`interview:${interviewId}`);
-  if (interview && !canAccess(interview, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  if (interview && !canAccess(interview, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
   const tokens = (await kvGet(`interview:${interviewId}:sessions`)) || [];
   const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
   return jsonRes(sessions.filter(Boolean));
@@ -1633,7 +1643,7 @@ async function listTWSessions(request) {
   const user = await requireAdmin(request);
   const ids = (await kvGet('tw-session:list')) || [];
   const items = await Promise.all(ids.map(id => kvGet(`tw-session:${id}`)));
-  return jsonRes(items.filter(Boolean).filter(s => canAccess(s, user)));
+  return jsonRes(items.filter(Boolean).filter(s => canAccess(s, user, 'view')));
 }
 
 // ── Unified Two-Way list (Direct Invite + Self-Booked merged) ─
@@ -1643,7 +1653,7 @@ async function listUnifiedTWSessions(request) {
 
   // 1. Direct Invite sessions (tw-session:*)
   const twIds   = (await kvGet('tw-session:list')) || [];
-  const twItems = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)))).filter(Boolean).filter(s => canAccess(s, user));
+  const twItems = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)))).filter(Boolean).filter(s => canAccess(s, user, 'view'));
   const directItems = twItems.map(s => ({
     id:                   s.id,
     ownerId:              s.ownerId || null,
@@ -1673,7 +1683,7 @@ async function listUnifiedTWSessions(request) {
     linkTokens.map(async (t, i) => {
       const link = links[i];
       if (!link) return [];
-      if (!canAccess(link, user)) return [];
+      if (!canAccess(link, user, 'view')) return [];
       const ids      = (await kvGet(`booking:link:${t}:bookings`)) || [];
       const bookings = (await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)))).filter(b => b && b.status !== 'cancelled');
       return bookings.map(b => ({
@@ -2035,7 +2045,7 @@ async function fetchTWRecording(id, request) {
   const user = await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
-  if (!canAccess(session, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  if (!canAccess(session, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
 
   const organizer   = session.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
@@ -2085,7 +2095,7 @@ async function fetchBookingRecording(bookingId, request) {
   if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
   if (booking.linkToken) {
     const link = await kvGet(`booking:link:${booking.linkToken}`);
-    if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+    if (link && !canAccess(link, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
   }
 
   const organizer   = booking.organizerEmail || EMAIL_SENDER || ONEDRIVE_USER;
@@ -2141,7 +2151,7 @@ async function getBookingRecordingUrl(bookingId, request) {
   if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
   if (booking.linkToken) {
     const link = await kvGet(`booking:link:${booking.linkToken}`);
-    if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+    if (link && !canAccess(link, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
   }
   if (!booking.recordingDriveItemId) {
     return jsonRes({ error: 'No recording linked to this booking' }, 404);
@@ -2171,7 +2181,7 @@ async function getTWRecordingUrl(id, request) {
   const user = await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
-  if (!canAccess(session, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  if (!canAccess(session, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
   if (!session.recordingDriveItemId) return jsonRes({ error: 'No recording linked to this session' }, 404);
 
   try {
@@ -2902,7 +2912,7 @@ async function listBookingLinks(request) {
   const user = await requireAdmin(request);
   const tokens = (await kvGet('booking:link:list')) || [];
   const links = await Promise.all(tokens.map(t => kvGet(`booking:link:${t}`)));
-  return jsonRes(links.filter(Boolean).filter(l => canAccess(l, user)));
+  return jsonRes(links.filter(Boolean).filter(l => canAccess(l, user, 'view')));
 }
 
 async function createBookingLink(request) {
@@ -3042,7 +3052,7 @@ async function listLinkBookings(token, request) {
   const user = await requireAdmin(request);
   const link = await kvGet(`booking:link:${token}`);
   if (!link) return jsonRes({ error: 'Not found' }, 404);
-  if (!canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  if (!canAccess(link, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
   const ids = (await kvGet(`booking:link:${token}:bookings`)) || [];
   const bookings = await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)));
   return jsonRes(bookings.filter(b => b && b.status !== 'cancelled'));
