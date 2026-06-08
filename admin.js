@@ -6,7 +6,8 @@ const WORKER_URL  = 'https://interview-api.putuastrawijaya.workers.dev';
 const ADMIN_EMAIL = 'corporate-recruiter@cti-usa.com'; // primary recruiter mailbox
 
 // ── State ─────────────────────────────────────────────────────
-let adminKey = '';
+let adminKey = '';       // break-glass shared key
+let authToken = '';      // Microsoft SSO session token (preferred)
 let questions = [];
 let currentInterviewId = null;
 let editInterviewId = null;
@@ -33,15 +34,22 @@ let _scriptClients = [];
 
 // ── Auth ──────────────────────────────────────────────────────
 
+function authHeaders() {
+  return authToken ? { 'X-Auth-Token': authToken } : { 'X-Admin-Key': adminKey };
+}
+
+// Primary: Microsoft (Entra) SSO.
+function loginWithMicrosoft() {
+  window.location.href = WORKER_URL + '/api/auth/login';
+}
+
+// Break-glass: shared admin key.
 async function doLogin() {
   const key = document.getElementById('key-input').value.trim();
   if (!key) return;
   try {
     const res = await api('GET', '/api/interviews', null, key);
-    if (res.status === 401) {
-      document.getElementById('login-err').style.display = 'block';
-      return;
-    }
+    if (res.status === 401) { document.getElementById('login-err').style.display = 'block'; return; }
     adminKey = key;
     sessionStorage.setItem('interview_admin_key', key);
     showApp();
@@ -50,35 +58,65 @@ async function doLogin() {
   }
 }
 
-function doLogout() {
+async function doLogout() {
+  if (authToken) { try { await fetch(WORKER_URL + '/api/auth/logout', { method: 'POST', headers: authHeaders() }); } catch {} }
+  sessionStorage.removeItem('zeushire_auth');
   sessionStorage.removeItem('interview_admin_key');
-  adminKey = '';
+  authToken = ''; adminKey = '';
+  showLoginGate();
+}
+
+function showLoginGate() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-gate').style.display = 'flex';
 }
 
-function showApp() {
+async function showApp() {
+  // Validate the session (and show who's signed in). Expired SSO → back to gate.
+  try {
+    const me = await fetch(WORKER_URL + '/api/auth/me', { headers: authHeaders() }).then(r => r.json());
+    if (me && me.authenticated) {
+      const info = document.getElementById('topbar-info');
+      if (info) info.textContent = me.user.name + (me.user.breakGlass ? ' · admin key' : '');
+    } else if (authToken) {
+      sessionStorage.removeItem('zeushire_auth'); authToken = '';
+      return showLoginGate();
+    }
+  } catch {}
   document.getElementById('login-gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const valid = ['ow-list', 'ow-create', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding'];
+  const valid = ['ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding'];
   const hash  = window.location.hash.replace('#', '');
   gotoPage(valid.includes(hash) ? hash : 'ow-list');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  const saved = sessionStorage.getItem('interview_admin_key');
-  if (saved) { adminKey = saved; showApp(); }
-  document.getElementById('key-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doLogin();
-  });
+  // 1) Returning from Microsoft SSO with a session token in the URL fragment.
+  const m = location.hash.match(/authToken=([^&]+)/);
+  if (m) {
+    authToken = decodeURIComponent(m[1]);
+    sessionStorage.setItem('zeushire_auth', authToken);
+    history.replaceState(null, '', location.pathname + location.search);
+    showApp();
+    return;
+  }
+  // 2) Existing SSO session, then 3) break-glass admin key.
+  const savedAuth = sessionStorage.getItem('zeushire_auth');
+  const savedKey  = sessionStorage.getItem('interview_admin_key');
+  if (savedAuth)      { authToken = savedAuth; showApp(); }
+  else if (savedKey)  { adminKey = savedKey; showApp(); }
+  const ki = document.getElementById('key-input');
+  if (ki) ki.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 });
 
 // ── API client ────────────────────────────────────────────────
 
 async function api(method, path, body = null, keyOverride = null) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (keyOverride) headers['X-Admin-Key'] = keyOverride;        // break-glass login test
+  else Object.assign(headers, authHeaders());
   return fetch(WORKER_URL + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': keyOverride || adminKey },
+    method, headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -604,7 +642,7 @@ async function openCompareModal(tokens) {
     // Load all sessions in parallel
     const sessions = await Promise.all(
       tokens.map(t =>
-        fetch(`${WORKER_URL}/api/session/${t}`, { headers: { 'X-Admin-Key': adminKey } })
+        fetch(`${WORKER_URL}/api/session/${t}`, { headers: authHeaders() })
           .then(r => r.json())
       )
     );
@@ -615,7 +653,7 @@ async function openCompareModal(tokens) {
     // Fetch review data for each session
     const reviews = await Promise.all(
       tokens.map(t =>
-        fetch(`${WORKER_URL}/api/session/${t}/review`, { headers: { 'X-Admin-Key': adminKey } })
+        fetch(`${WORKER_URL}/api/session/${t}/review`, { headers: authHeaders() })
           .then(r => r.json()).catch(() => ({}))
       )
     );
@@ -686,7 +724,7 @@ async function openCompareModal(tokens) {
         try {
           const { downloadUrl } = await fetch(
             `${WORKER_URL}/api/session/${s.token}/video/${activeQ}`,
-            { headers: { 'X-Admin-Key': adminKey } }
+            { headers: authHeaders() }
           ).then(r => r.json());
           if (downloadUrl) {
             cell.innerHTML = `<video src="${downloadUrl}" controls preload="metadata" style="width:100%;height:100%;object-fit:contain"></video>`;
@@ -2427,7 +2465,7 @@ async function loadResumePdf(token) {
   const frame = document.getElementById('resume-frame');
   if (!frame) return;
   try {
-    const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: { 'X-Admin-Key': adminKey } });
+    const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: authHeaders() });
     if (!res.ok) return; // keep the preview viewer already loaded
     frame.src = URL.createObjectURL(await res.blob());
   } catch { /* keep fallback viewer */ }
@@ -2536,10 +2574,10 @@ async function openReview(token, candidateName) {
 
   try {
     const [{ session, interview }, cachedAnalysis, resumeData, reviewData] = await Promise.all([
-      fetch(`${WORKER_URL}/api/session/${token}`, { headers: { 'X-Admin-Key': adminKey } }).then(r => r.json()),
-      fetch(`${WORKER_URL}/api/session/${token}/analysis`,    { headers: { 'X-Admin-Key': adminKey } }).then(r => r.json()).catch(() => ({ notFound: true })),
-      fetch(`${WORKER_URL}/api/session/${token}/resume-url`,  { headers: { 'X-Admin-Key': adminKey } }).then(r => r.json()).catch(() => ({ notFound: true })),
-      fetch(`${WORKER_URL}/api/session/${token}/review`,      { headers: { 'X-Admin-Key': adminKey } }).then(r => r.json()).catch(() => ({ notFound: true })),
+      fetch(`${WORKER_URL}/api/session/${token}`, { headers: authHeaders() }).then(r => r.json()),
+      fetch(`${WORKER_URL}/api/session/${token}/analysis`,    { headers: authHeaders() }).then(r => r.json()).catch(() => ({ notFound: true })),
+      fetch(`${WORKER_URL}/api/session/${token}/resume-url`,  { headers: authHeaders() }).then(r => r.json()).catch(() => ({ notFound: true })),
+      fetch(`${WORKER_URL}/api/session/${token}/review`,      { headers: authHeaders() }).then(r => r.json()).catch(() => ({ notFound: true })),
     ]);
 
     document.getElementById('review-interview-title').textContent = interview?.title || '';
@@ -2564,7 +2602,7 @@ async function openReview(token, candidateName) {
           const q = interview?.questions?.[r.questionIndex];
           const { downloadUrl, webUrl } = await fetch(
             `${WORKER_URL}/api/session/${token}/video/${r.questionIndex}`,
-            { headers: { 'X-Admin-Key': adminKey } }
+            { headers: authHeaders() }
           ).then(r => r.json()).catch(() => ({}));
           return { q, downloadUrl, webUrl, questionIndex: r.questionIndex };
         }))
@@ -2911,7 +2949,7 @@ async function runAnalysis(token) {
   try {
     const res = await fetch(`${WORKER_URL}/api/session/${token}/analyze`, {
       method: 'POST',
-      headers: { 'X-Admin-Key': adminKey },
+      headers: authHeaders(),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -3102,7 +3140,7 @@ function updateClientLogo(clientId, input) {
       form.append('file', croppedFile);
       const res = await fetch(`${WORKER_URL}/api/script/client/${clientId}/upload-logo`, {
         method: 'POST',
-        headers: { 'X-Admin-Key': adminKey },
+        headers: authHeaders(),
         body: form,
       });
       const data = await res.json();
@@ -3297,7 +3335,7 @@ async function submitAddClient() {
         form.append('file', _addClientLogoFile);
         const res = await fetch(`${WORKER_URL}/api/script/client/${client.id}/upload-logo`, {
           method: 'POST',
-          headers: { 'X-Admin-Key': adminKey },
+          headers: authHeaders(),
           body: form,
         });
         const data = await res.json();
@@ -3354,7 +3392,7 @@ async function uploadScriptDoc(positionId, input) {
     form.append('file', file);
     const res = await fetch(`${WORKER_URL}/api/script/position/${positionId}/upload`, {
       method: 'POST',
-      headers: { 'X-Admin-Key': adminKey },
+      headers: authHeaders(),
       body: form,
     });
     const data = await res.json();

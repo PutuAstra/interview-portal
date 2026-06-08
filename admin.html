@@ -29,14 +29,26 @@
       <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.3">CTI Group Worldwide Services, Inc.</div>
       <div style="font-size:13px;color:var(--muted);margin-top:4px">ZeusHire Admin Portal</div>
     </div>
-    <div class="form-group">
-      <label>Password</label>
-      <input type="password" id="key-input" placeholder="Enter your password" autocomplete="off" />
+    <button class="btn btn-primary btn-lg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px" onclick="loginWithMicrosoft()">
+      <span style="display:inline-grid;grid-template-columns:1fr 1fr;gap:1px;width:16px;height:16px">
+        <span style="background:#F25022"></span><span style="background:#7FBA00"></span>
+        <span style="background:#00A4EF"></span><span style="background:#FFB900"></span>
+      </span>
+      Sign in with Microsoft
+    </button>
+    <p class="text-muted text-sm" style="text-align:center;margin-top:10px">Use your <strong>@cti-usa.com</strong> account</p>
+
+    <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px;text-align:center">
+      <button class="btn btn-ghost" style="font-size:12px" onclick="document.getElementById('breakglass').style.display='block';this.style.display='none'">Use admin key instead</button>
+      <div id="breakglass" style="display:none;margin-top:12px;text-align:left">
+        <div class="form-group">
+          <label>Admin key</label>
+          <input type="password" id="key-input" placeholder="Enter the admin key" autocomplete="off" />
+        </div>
+        <button class="btn btn-outline" style="width:100%" onclick="doLogin()">Log In</button>
+      </div>
     </div>
-    <div style="text-align:center">
-      <button class="btn btn-primary btn-lg" onclick="doLogin()">Log In</button>
-    </div>
-    <p id="login-err" class="text-sm" style="color:var(--red);margin-top:10px;display:none">Incorrect key. Try again.</p>
+    <p id="login-err" class="text-sm" style="color:var(--red);margin-top:10px;display:none;text-align:center">Incorrect key. Try again.</p>
   </div>
 </div>
 
@@ -523,6 +535,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250529u"></script>
+<script src="admin.js?v=20250530a"></script>
 </body>
 </html>

@@ -97,6 +97,12 @@ async function route(request) {
   const m = request.method;
   const seg = url.pathname.replace(/^\/api\//, '').split('/');
 
+  // ── Auth (SSO) — public ──
+  if (seg[0] === 'auth' && seg[1] === 'login'    && m === 'GET')  return authLogin(request);
+  if (seg[0] === 'auth' && seg[1] === 'callback' && m === 'GET')  return authCallback(request);
+  if (seg[0] === 'auth' && seg[1] === 'me'       && m === 'GET')  return authMe(request);
+  if (seg[0] === 'auth' && seg[1] === 'logout'   && m === 'POST') return authLogout(request);
+
   if (seg[0] === 'interviews' && seg.length === 1) {
     if (m === 'GET')  return listInterviews(request);
     if (m === 'POST') return createInterview(request);
@@ -281,7 +287,7 @@ async function route(request) {
 
   // ── Reminder trigger (manual / external cron) ────────────────
   if (seg[0] === 'reminders' && seg[1] === 'run' && m === 'POST') {
-    requireAdmin(request);
+    await requireAdmin(request);
     const result = await handleScheduled();
     return jsonRes(result);
   }
@@ -341,8 +347,122 @@ function constTimeEq(a, b) {
   return diff === 0;
 }
 
-function requireAdmin(request) {
-  if (!constTimeEq(request.headers.get('X-Admin-Key'), ADMIN_KEY)) throw new Error('Unauthorized');
+// Resolve the active user from either a Microsoft SSO session (X-Auth-Token) or
+// the shared ADMIN_KEY (break-glass super-admin). Returns the user object or null.
+async function resolveUser(request) {
+  const authTok = request.headers.get('X-Auth-Token');
+  if (authTok) {
+    const s = await kvGet(`authsession:${authTok}`);
+    if (s && s.expiresAt > Date.now()) {
+      const u = await kvGet(`user:${s.userId}`);
+      if (u && u.active !== false) return u;
+    }
+    return null;
+  }
+  if (constTimeEq(request.headers.get('X-Admin-Key'), ADMIN_KEY)) {
+    return { id: 'admin', role: 'super_admin', name: 'Administrator', email: EMAIL_SENDER, breakGlass: true };
+  }
+  return null;
+}
+
+// Any authenticated user passes (per-user data isolation is layered on in Phase 2);
+// returns the user so handlers can stamp/scope ownership.
+async function requireAdmin(request) {
+  const user = await resolveUser(request);
+  if (!user) throw new Error('Unauthorized');
+  return user;
+}
+
+// Decode a JWT payload (id_token from Microsoft's token endpoint — already trusted
+// over TLS via our client secret, so no JWKS signature check needed here).
+function decodeJwt(jwt) {
+  const p = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(p);
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+const SSO_REDIRECT_URI = 'https://interview-api.putuastrawijaya.workers.dev/api/auth/callback';
+const SSO_ADMIN_HOME   = 'https://interview-portal.putuastrawijaya.workers.dev/admin';
+const ALLOWED_EMAIL_DOMAIN = 'cti-usa.com';
+
+// Begin SSO: redirect the browser to Microsoft sign-in.
+async function authLogin(request) {
+  const state = uid();
+  await INTERVIEW_DATA.put(`authstate:${state}`, '1', { expirationTtl: 600 });
+  const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?` + new URLSearchParams({
+    client_id: CLIENT_ID, response_type: 'code', redirect_uri: SSO_REDIRECT_URI,
+    response_mode: 'query', scope: 'openid profile email', state,
+  });
+  return new Response(null, { status: 302, headers: { Location: url } });
+}
+
+function ssoError(msg) {
+  return new Response(
+    `<!doctype html><meta charset=utf-8><body style="font-family:Arial;background:#0F172A;color:#fff;text-align:center;padding:60px">
+       <h2>Sign-in failed</h2><p style="color:#94A3B8">${msg}</p>
+       <p><a href="${SSO_ADMIN_HOME}" style="color:#B01A18">Back to ZeusHire</a></p></body>`,
+    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+}
+
+// SSO callback: exchange code → id_token, provision the user, create a session,
+// redirect back to the admin with the session token in the URL fragment.
+async function authCallback(request) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  if (!code) return ssoError('No authorization code returned.');
+  if (!state || !(await kvGet(`authstate:${state}`))) return ssoError('Invalid or expired sign-in request.');
+  await INTERVIEW_DATA.delete(`authstate:${state}`);
+
+  const tokenRes = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID, client_secret: CLIENT_SECRET, code,
+      redirect_uri: SSO_REDIRECT_URI, grant_type: 'authorization_code', scope: 'openid profile email',
+    }),
+  });
+  if (!tokenRes.ok) { console.error('[sso] token', await tokenRes.text().catch(() => '')); return ssoError('Could not complete sign-in.'); }
+  const tok = await tokenRes.json();
+
+  let claims;
+  try { claims = decodeJwt(tok.id_token); } catch { return ssoError('Invalid identity token.'); }
+  if (claims.tid !== TENANT_ID) return ssoError('This sign-in is not from the CTI organization.');
+  const email = String(claims.preferred_username || claims.email || '').toLowerCase();
+  if (!email.endsWith('@' + ALLOWED_EMAIL_DOMAIN)) return ssoError(`Only @${ALLOWED_EMAIL_DOMAIN} accounts can sign in.`);
+  const oid = claims.oid || claims.sub;
+  const name = claims.name || email;
+
+  let user = await kvGet(`user:${oid}`);
+  if (!user) {
+    const list = (await kvGet('user:list')) || [];
+    user = { id: oid, email, name, calendarEmail: email, role: list.length === 0 ? 'super_admin' : 'recruiter', createdAt: Date.now(), active: true };
+    list.push(oid); await kvPut('user:list', list);
+    await kvPut(`user:byEmail:${email}`, oid);
+  } else {
+    user.name = name; user.email = email; if (!user.calendarEmail) user.calendarEmail = email;
+  }
+  await kvPut(`user:${oid}`, user);
+
+  const sessionToken = uid();
+  await INTERVIEW_DATA.put(`authsession:${sessionToken}`,
+    JSON.stringify({ userId: oid, createdAt: Date.now(), expiresAt: Date.now() + 7 * 24 * 3600 * 1000 }),
+    { expirationTtl: 7 * 24 * 3600 });
+
+  return new Response(null, { status: 302, headers: { Location: `${SSO_ADMIN_HOME}#authToken=${sessionToken}` } });
+}
+
+async function authMe(request) {
+  const user = await resolveUser(request);
+  if (!user) return jsonRes({ authenticated: false }, 401);
+  return jsonRes({ authenticated: true, user: { name: user.name, email: user.email, role: user.role, breakGlass: !!user.breakGlass } });
+}
+
+async function authLogout(request) {
+  const t = request.headers.get('X-Auth-Token');
+  if (t) await INTERVIEW_DATA.delete(`authsession:${t}`);
+  return jsonRes({ ok: true });
 }
 
 // ── Brute-force throttle for the admin key ────────────────────
@@ -463,13 +583,13 @@ const QUESTION_TEMPLATES_DATA = [
   },
 ];
 
-function listTemplates(request) {
-  requireAdmin(request);
+async function listTemplates(request) {
+  await requireAdmin(request);
   return jsonRes(QUESTION_TEMPLATES_DATA);
 }
 
 async function generateQuestions(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
     return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured.' }, 500);
   }
@@ -559,7 +679,7 @@ async function handleScheduled() {
 // Manual reminder: admin clicks "Remind now" for a single pending candidate.
 // Bypasses the schedule entirely (does not touch nextReminderAt).
 async function remindSessionNow(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session)                       return jsonRes({ error: 'Session not found' }, 404);
   if (!session.candidateEmail)        return jsonRes({ error: 'No email address for this candidate' }, 400);
@@ -713,7 +833,7 @@ async function uploadToOneDrive(filePath, blob, accessToken, contentType) {
 // ── Interview handlers ────────────────────────────────────────
 
 async function createInterview(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { title, description, questions } = await request.json();
   if (!title || !questions?.length) return jsonRes({ error: 'title and questions required' }, 400);
 
@@ -729,7 +849,7 @@ async function createInterview(request) {
 }
 
 async function listInterviews(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const ids = (await kvGet('interview:list')) || [];
   const items = await Promise.all(ids.map(async id => {
     const interview = await kvGet(`interview:${id}`);
@@ -748,14 +868,14 @@ async function listInterviews(request) {
 }
 
 async function getInterview(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const interview = await kvGet(`interview:${id}`);
   if (!interview) return jsonRes({ error: 'Not found' }, 404);
   return jsonRes(interview);
 }
 
 async function updateInterview(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const existing = await kvGet(`interview:${id}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
 
@@ -768,7 +888,7 @@ async function updateInterview(id, request) {
 }
 
 async function deleteInterview(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   await INTERVIEW_DATA.delete(`interview:${id}`);
   const list = (await kvGet('interview:list')) || [];
   await kvPut('interview:list', list.filter(i => i !== id));
@@ -778,7 +898,7 @@ async function deleteInterview(id, request) {
 // ── Session handlers ──────────────────────────────────────────
 
 async function createSession(interviewId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const interview = await kvGet(`interview:${interviewId}`);
   if (!interview) return jsonRes({ error: 'Interview not found' }, 404);
 
@@ -810,7 +930,7 @@ async function createSession(interviewId, request) {
 }
 
 async function listSessions(interviewId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const tokens = (await kvGet(`interview:${interviewId}:sessions`)) || [];
   const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
   return jsonRes(sessions.filter(Boolean));
@@ -952,7 +1072,7 @@ function emailInfoBox(accentColor, title, subtitle = '') {
 // ─────────────────────────────────────────────────────────────
 
 async function sendInterviewEmail(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   if (!session.candidateEmail) return jsonRes({ error: 'No email address for this candidate' }, 400);
@@ -1107,7 +1227,7 @@ async function submitWrittenAnswer(token, qIndex, request) {
 }
 
 async function deleteSession(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   // "Revoke" (pending) is blocked on completed; explicit ?force=1 (admin Delete) allows it.
@@ -1128,7 +1248,7 @@ async function deleteSession(token, request) {
 }
 
 async function patchSession(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
@@ -1172,7 +1292,7 @@ async function completeSession(token) {
 }
 
 async function getVideoUrl(token, qIndex, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
@@ -1199,7 +1319,7 @@ async function getVideoUrl(token, qIndex, request) {
 // ── Two-way session handlers ──────────────────────────────────
 
 async function createTWSession(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { candidateName, candidateEmail, position, scheduledAt, duration, meetingLink, notes, autoMeeting } = await request.json();
   if (!candidateName || !candidateEmail || !position) {
     return jsonRes({ error: 'candidateName, candidateEmail, and position are required' }, 400);
@@ -1240,7 +1360,7 @@ async function createTWSession(request) {
 }
 
 async function listTWSessions(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const ids = (await kvGet('tw-session:list')) || [];
   const items = await Promise.all(ids.map(id => kvGet(`tw-session:${id}`)));
   return jsonRes(items.filter(Boolean));
@@ -1249,7 +1369,7 @@ async function listTWSessions(request) {
 // ── Unified Two-Way list (Direct Invite + Self-Booked merged) ─
 
 async function listUnifiedTWSessions(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
 
   // 1. Direct Invite sessions (tw-session:*)
   const twIds   = (await kvGet('tw-session:list')) || [];
@@ -1317,7 +1437,7 @@ async function listUnifiedTWSessions(request) {
 // ── Update self-booked session status (e.g. mark completed) ──
 
 async function updateBookingStatusHandler(bookingId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Not found' }, 404);
   const { status } = await request.json();
@@ -1329,7 +1449,7 @@ async function updateBookingStatusHandler(bookingId, request) {
 }
 
 async function updateTWSession(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const existing = await kvGet(`tw-session:${id}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
   const updates = await request.json();
@@ -1351,7 +1471,7 @@ async function updateTWSession(id, request) {
 }
 
 async function deleteTWSessionHandler(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   await INTERVIEW_DATA.delete(`tw-session:${id}`);
   const list = (await kvGet('tw-session:list')) || [];
   await kvPut('tw-session:list', list.filter(i => i !== id));
@@ -1402,7 +1522,7 @@ async function sendTWCancellationEmail(session) {
 }
 
 async function sendTWEmail(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   if (!session.candidateEmail) return jsonRes({ error: 'No email address for this candidate' }, 400);
@@ -1632,7 +1752,7 @@ function applyTimeWindow(files, meetingStartMs, durationMinutes) {
 }
 
 async function fetchTWRecording(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
@@ -1679,7 +1799,7 @@ async function fetchTWRecording(id, request) {
 }
 
 async function fetchBookingRecording(bookingId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
 
@@ -1731,7 +1851,7 @@ async function fetchBookingRecording(bookingId, request) {
 }
 
 async function getBookingRecordingUrl(bookingId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
   if (!booking.recordingDriveItemId) {
@@ -1759,7 +1879,7 @@ async function getBookingRecordingUrl(bookingId, request) {
 }
 
 async function getTWRecordingUrl(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   if (!session.recordingDriveItemId) return jsonRes({ error: 'No recording linked to this session' }, 404);
@@ -1863,7 +1983,7 @@ async function createTeamsMeeting(session) {
 // Required Worker secrets: GROQ_API_KEY (transcription), ANTHROPIC_API_KEY (analysis)
 
 async function analyzeSession(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
 
   if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
     return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured in Worker secrets.' }, 500);
@@ -2056,7 +2176,7 @@ For "recommendation", output exactly one of: "strong" (clear move-forward), "con
 }
 
 async function getAnalysis(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const analysis = await kvGet(`session:${token}:analysis`);
   if (!analysis) return jsonRes({ notFound: true });
   return jsonRes(analysis);
@@ -2127,7 +2247,7 @@ async function uploadResume(token, request) {
 }
 
 async function getProfilePhotoUrl(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.profilePhotoItemId) return jsonRes({ notFound: true });
   try {
@@ -2162,7 +2282,7 @@ async function drivePreviewUrl(itemId, accessToken) {
 // NATIVE viewer (consistent scroll). Fetched via JS with the X-Admin-Key header
 // (so the key never goes in a URL) and turned into a blob on the client.
 async function getResumeFile(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.resumeItemId) return jsonRes({ error: 'No résumé' }, 404);
   const accessToken = await getAccessToken();
@@ -2184,7 +2304,7 @@ async function getResumeFile(token, request) {
 }
 
 async function getResumeUrl(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.resumeItemId) return jsonRes({ notFound: true });
   try {
@@ -2273,7 +2393,7 @@ async function sendOutcomeEmail(session, interview, decision) {
 }
 
 async function saveSessionReview(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { notes, decision, stars, questionScores, notify } = await request.json();
   const prev = (await kvGet(`session:${token}:review`)) || {};
   await kvPut(`session:${token}:review`, {
@@ -2309,7 +2429,7 @@ async function saveSessionReview(token, request) {
 }
 
 async function getSessionReview(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const review = await kvGet(`session:${token}:review`);
   if (!review) return jsonRes({ notFound: true });
   return jsonRes(review);
@@ -2318,14 +2438,14 @@ async function getSessionReview(token, request) {
 // ── Interview Script handlers ─────────────────────────────────
 
 async function listScriptClients(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const ids = (await kvGet('script:client:list')) || [];
   const clients = await Promise.all(ids.map(id => kvGet(`script:client:${id}`)));
   return jsonRes(clients.filter(Boolean));
 }
 
 async function createScriptClient(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { name } = await request.json();
   if (!name) return jsonRes({ error: 'name required' }, 400);
   const id = uid();
@@ -2338,7 +2458,7 @@ async function createScriptClient(request) {
 }
 
 async function deleteScriptClient(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   // Remove all positions belonging to this client
   const posIds = (await kvGet(`script:client:${id}:positions`)) || [];
   await Promise.all(posIds.map(pid => INTERVIEW_DATA.delete(`script:position:${pid}`)));
@@ -2350,14 +2470,14 @@ async function deleteScriptClient(id, request) {
 }
 
 async function listScriptPositions(clientId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const ids = (await kvGet(`script:client:${clientId}:positions`)) || [];
   const positions = await Promise.all(ids.map(id => kvGet(`script:position:${id}`)));
   return jsonRes(positions.filter(Boolean));
 }
 
 async function createScriptPosition(clientId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const client = await kvGet(`script:client:${clientId}`);
   if (!client) return jsonRes({ error: 'Client not found' }, 404);
   const { name } = await request.json();
@@ -2372,7 +2492,7 @@ async function createScriptPosition(clientId, request) {
 }
 
 async function deleteScriptPosition(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const pos = await kvGet(`script:position:${id}`);
   if (!pos) return jsonRes({ error: 'Not found' }, 404);
   const list = (await kvGet(`script:client:${pos.clientId}:positions`)) || [];
@@ -2382,7 +2502,7 @@ async function deleteScriptPosition(id, request) {
 }
 
 async function uploadScriptDoc(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const pos = await kvGet(`script:position:${id}`);
   if (!pos) return jsonRes({ error: 'Position not found' }, 404);
   try {
@@ -2420,7 +2540,7 @@ async function uploadScriptDoc(id, request) {
 }
 
 async function getScriptDocUrl(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const pos = await kvGet(`script:position:${id}`);
   if (!pos?.driveItemId) return jsonRes({ notFound: true });
   try {
@@ -2442,7 +2562,7 @@ async function getScriptDocUrl(id, request) {
 }
 
 async function uploadScriptClientLogo(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const client = await kvGet(`script:client:${id}`);
   if (!client) return jsonRes({ error: 'Client not found' }, 404);
   try {
@@ -2470,7 +2590,7 @@ async function uploadScriptClientLogo(id, request) {
 }
 
 async function getScriptClientLogoUrl(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const client = await kvGet(`script:client:${id}`);
   if (!client?.logoItemId) return jsonRes({ notFound: true });
   try {
@@ -2489,14 +2609,14 @@ async function getScriptClientLogoUrl(id, request) {
 // ── Booking Interview handlers ────────────────────────────────
 
 async function listBookingLinks(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const tokens = (await kvGet('booking:link:list')) || [];
   const links = await Promise.all(tokens.map(t => kvGet(`booking:link:${t}`)));
   return jsonRes(links.filter(Boolean));
 }
 
 async function createBookingLink(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { title, clientName, position, duration, tzOffset, daysAhead, slotRules, minNoticeHours } = await request.json();
   if (!title) return jsonRes({ error: 'title required' }, 400);
   if (!slotRules?.length) return jsonRes({ error: 'slotRules required' }, 400);
@@ -2522,7 +2642,7 @@ async function createBookingLink(request) {
 }
 
 async function updateBookingLink(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const existing = await kvGet(`booking:link:${token}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
   const updates = await request.json();
@@ -2532,7 +2652,7 @@ async function updateBookingLink(token, request) {
 }
 
 async function deleteBookingLink(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   // Delete all bookings for this link
   const bookingIds = (await kvGet(`booking:link:${token}:bookings`)) || [];
   await Promise.all(bookingIds.map(id => INTERVIEW_DATA.delete(`booking:booking:${id}`)));
@@ -2544,7 +2664,7 @@ async function deleteBookingLink(token, request) {
 }
 
 async function sendBookingInviteHandler(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const link = await kvGet(`booking:link:${token}`);
   if (!link) return jsonRes({ error: 'Booking link not found' }, 404);
   const { candidateName, candidateEmail, bookUrl } = await request.json();
@@ -2624,7 +2744,7 @@ async function sendBookingInviteEmail(candidateName, candidateEmail, link, bookU
 }
 
 async function listLinkBookings(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const link = await kvGet(`booking:link:${token}`);
   if (!link) return jsonRes({ error: 'Not found' }, 404);
   const ids = (await kvGet(`booking:link:${token}:bookings`)) || [];
@@ -2633,7 +2753,7 @@ async function listLinkBookings(token, request) {
 }
 
 async function cancelBookingHandler(bookingId, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Not found' }, 404);
 
@@ -2680,7 +2800,7 @@ async function cancelBookingHandler(bookingId, request) {
 // ── Shareable Review Links ────────────────────────────────────
 
 async function createShareLink(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
@@ -2742,7 +2862,7 @@ async function getShare(shareToken) {
 // Recruiter opened the review — stamp "last seen" so reviewer feedback submitted
 // before now is no longer flagged as new on the candidate list.
 async function markFeedbackSeen(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   session.feedbackSeenAt = Date.now();
@@ -2835,7 +2955,7 @@ async function driveDownloadUrl(itemId) {
 // Recruiter adds a candidate to the Premium Talent. AUTHORITATIVE 4★ gate:
 // re-reads the saved review so the UI can't be bypassed.
 async function addToPremium(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const review = await kvGet(`session:${token}:review`);
@@ -2863,7 +2983,7 @@ async function addToPremium(token, request) {
 }
 
 async function removeFromPremium(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   delete session.premium;
@@ -2876,7 +2996,7 @@ async function removeFromPremium(token, request) {
 // Admin marks a premium talent as Taken (hired) — removes them from the
 // client-facing library. Only the recruiter does this, after an actual hire.
 async function markPremiumTaken(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
   session.premium.status = 'Taken';
@@ -2887,7 +3007,7 @@ async function markPremiumTaken(token, request) {
 
 // Admin reverts a Taken candidate back to Available (e.g. hire fell through).
 async function markPremiumAvailable(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
   session.premium.status = 'Available';
@@ -2898,7 +3018,7 @@ async function markPremiumAvailable(token, request) {
 
 // Admin management list — every premium talent (any status) + interests.
 async function listPremium(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const tokens = (await kvGet('premium:list')) || [];
   const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
   const premium = sessions.filter(s => s && s.premium).map(s => ({
@@ -2915,7 +3035,7 @@ async function listPremium(request) {
 
 // ── Client library access (tokenized, no login) ──
 async function createClientLib(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { label } = await request.json().catch(() => ({}));
   const clientToken = uid();
   await kvPut(`clientlib:${clientToken}`, { label: (label || 'Client').slice(0, 80), createdAt: Date.now() });
@@ -2925,7 +3045,7 @@ async function createClientLib(request) {
 }
 
 async function listClientLibs(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const tokens = (await kvGet('clientlib:list')) || [];
   const links = (await Promise.all(tokens.map(async t => {
     const meta = await kvGet(`clientlib:${t}`);
@@ -3009,7 +3129,7 @@ async function getClientLibResume(clientToken, token) {
 
 // Email a client their library link.
 async function sendClientLibEmail(clientToken, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const meta = await kvGet(`clientlib:${clientToken}`);
   if (!meta) return jsonRes({ error: 'Library link not found' }, 404);
   const { emails, url } = await request.json();
@@ -3067,12 +3187,12 @@ async function clientExpressInterest(clientToken, token, request) {
 // ── Recruiter Settings ────────────────────────────────────────
 
 async function getRecruiterSettings(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   return jsonRes(await kvGet('recruiter:settings') || { linkedCalendars: [] });
 }
 
 async function updateRecruiterSettings(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const updates  = await request.json();
   const existing = (await kvGet('recruiter:settings')) || {};
   const updated  = { ...existing, ...updates };
@@ -3081,7 +3201,7 @@ async function updateRecruiterSettings(request) {
 }
 
 async function testLinkedCalendar(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { email } = await request.json();
   if (!email) return jsonRes({ error: 'email required' }, 400);
 
@@ -3510,14 +3630,14 @@ async function createBookingHandler(token, request) {
 //     type ('national'|'custom'), countryCode, createdAt }
 
 async function listHolidays(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const ids      = (await kvGet('holiday:list')) || [];
   const holidays = await Promise.all(ids.map(id => kvGet(`holiday:${id}`)));
   return jsonRes(holidays.filter(Boolean));
 }
 
 async function createHoliday(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { name, date, isRecurring, type, countryCode } = await request.json();
   if (!name) return jsonRes({ error: 'name required' }, 400);
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return jsonRes({ error: 'date required (YYYY-MM-DD)' }, 400);
@@ -3539,7 +3659,7 @@ async function createHoliday(request) {
 }
 
 async function updateHoliday(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const existing = await kvGet(`holiday:${id}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
   const updates = await request.json();
@@ -3549,7 +3669,7 @@ async function updateHoliday(id, request) {
 }
 
 async function deleteHoliday(id, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   await INTERVIEW_DATA.delete(`holiday:${id}`);
   const list = (await kvGet('holiday:list')) || [];
   await kvPut('holiday:list', list.filter(i => i !== id));
@@ -3557,7 +3677,7 @@ async function deleteHoliday(id, request) {
 }
 
 async function getHolidaySettings(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const settings = (await kvGet('holiday:settings')) || {
     autoBlockNational: true,
     country:           'ID',
@@ -3567,7 +3687,7 @@ async function getHolidaySettings(request) {
 }
 
 async function updateHolidaySettings(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const existing = (await kvGet('holiday:settings')) || {};
   const updates  = await request.json();
   const updated  = { ...existing, ...updates };
@@ -3576,7 +3696,7 @@ async function updateHolidaySettings(request) {
 }
 
 async function syncNationalHolidays(request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const { year, country } = await request.json();
   const countryCode = (country || 'ID').toUpperCase();
   const yr          = parseInt(year) || new Date().getFullYear();
@@ -3702,7 +3822,7 @@ async function saveProctoringLog(token, request) {
 }
 
 async function sendShareEmail(token, request) {
-  requireAdmin(request);
+  await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const { emails, shareUrl, interviewTitle } = await request.json();
