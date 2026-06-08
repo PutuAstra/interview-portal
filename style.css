@@ -1051,15 +1051,20 @@ tr:hover td { background: var(--card-2); }
 }
 
 /* Freeze a list page's ENTIRE top section (title + filters + column header)
-   while the rows scroll. Negative margins pull it to the scroll area's edges so
-   it spans full width and covers the top padding; padding restores the layout. */
+   while the rows scroll beneath it. Plain top:0 pins it flush at the scroll
+   area's top with no row peeking above (negative margins caused that). */
 .list-sticky-head {
   position: sticky;
   top: 0;
   z-index: 8;
   background: var(--bg);
-  margin: -28px -28px 0;
-  padding: 28px 28px 0;
+  padding-bottom: 2px;
+}
+/* The whole head is already sticky — don't let the inner column header
+   double-stick (which caused it to detach/peek). */
+.list-sticky-head .tw-table-header,
+.list-sticky-head .sessions-table-header {
+  position: static;
 }
 
 /* ── Setup screen ── */
