@@ -3298,10 +3298,22 @@ async function submitEditInterview() {
 // ── Modals ────────────────────────────────────────────────────
 
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Stop any video/audio still playing inside the modal so it doesn't keep
+  // playing (and producing sound) in the background after the modal is closed.
+  el.querySelectorAll('video, audio').forEach(m => {
+    try { m.pause(); m.currentTime = 0; } catch (e) {}
+  });
+  el.classList.remove('open');
+}
 
 document.addEventListener('click', e => {
-  if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
+  if (e.target.classList.contains('modal-overlay')) {
+    if (e.target.id) closeModal(e.target.id);
+    else e.target.querySelectorAll('video, audio').forEach(m => { try { m.pause(); } catch (err) {} }), e.target.classList.remove('open');
+  }
 });
 
 // ── Toast ─────────────────────────────────────────────────────
