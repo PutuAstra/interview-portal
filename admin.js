@@ -1422,8 +1422,8 @@ function renderTWSessionRow(s, idx) {
 
   // Source badge
   const sourceBadge = s.scheduling_source === 'DIRECT_INVITE'
-    ? `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(59,130,246,0.1);color:#3b82f6;border:1px solid rgba(59,130,246,0.2);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap;margin-top:3px">✉ Direct Invite</span>`
-    : `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,0.1);color:#16a34a;border:1px solid rgba(22,163,74,0.2);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap;margin-top:3px">🗓 Self-Booked</span>`;
+    ? `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(59,130,246,0.1);color:#3b82f6;border:1px solid rgba(59,130,246,0.2);border-radius:20px;padding:1px 7px;font-size:10px;font-weight:600;white-space:nowrap;flex-shrink:0">✉ Direct Invite</span>`
+    : `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,0.1);color:#16a34a;border:1px solid rgba(22,163,74,0.2);border-radius:20px;padding:1px 7px;font-size:10px;font-weight:600;white-space:nowrap;flex-shrink:0">🗓 Self-Booked</span>`;
 
   // Actions — split by scheduling_source
   let actions = '';
@@ -1467,8 +1467,10 @@ function renderTWSessionRow(s, idx) {
       <div class="text-muted" style="font-size:12px">${(idx ?? 0) + 1}</div>
       <div style="min-width:0">
         <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
-        <div class="text-muted" style="font-size:11px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.teamsGenerated ? ' &nbsp;·&nbsp; <span style="color:#6264a7">Teams</span>' : ''}</div>
-        ${sourceBadge}
+        <div style="display:flex;align-items:center;gap:6px;min-width:0">
+          <span class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.teamsGenerated ? ' &nbsp;·&nbsp; <span style="color:#6264a7">Teams</span>' : ''}</span>
+          ${sourceBadge}
+        </div>
       </div>
       <div style="font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${positionLabel}</div>
       <div>
