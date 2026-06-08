@@ -373,6 +373,14 @@ async function requireAdmin(request) {
   return user;
 }
 
+// Phase 2 ownership check: super_admin sees everything; a recruiter only their own
+// records. Legacy records with no ownerId are visible to super_admin only.
+function canAccess(record, user) {
+  if (!record || !user) return false;
+  if (user.role === 'super_admin') return true;
+  return record.ownerId === user.id;
+}
+
 // Decode a JWT payload (id_token from Microsoft's token endpoint — already trusted
 // over TLS via our client secret, so no JWKS signature check needed here).
 function decodeJwt(jwt) {
@@ -833,12 +841,12 @@ async function uploadToOneDrive(filePath, blob, accessToken, contentType) {
 // ── Interview handlers ────────────────────────────────────────
 
 async function createInterview(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { title, description, questions } = await request.json();
   if (!title || !questions?.length) return jsonRes({ error: 'title and questions required' }, 400);
 
   const id = uid();
-  const interview = { id, title, description: description || '', questions, createdAt: Date.now() };
+  const interview = { id, title, description: description || '', questions, createdAt: Date.now(), ownerId: user.id };
   await kvPut(`interview:${id}`, interview);
 
   const list = (await kvGet('interview:list')) || [];
@@ -849,11 +857,12 @@ async function createInterview(request) {
 }
 
 async function listInterviews(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const ids = (await kvGet('interview:list')) || [];
   const items = await Promise.all(ids.map(async id => {
     const interview = await kvGet(`interview:${id}`);
     if (!interview) return null;
+    if (!canAccess(interview, user)) return null;   // recruiters see only their own
     const tokens = (await kvGet(`interview:${id}:sessions`)) || [];
     const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
     const valid = sessions.filter(Boolean);
@@ -868,16 +877,18 @@ async function listInterviews(request) {
 }
 
 async function getInterview(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const interview = await kvGet(`interview:${id}`);
   if (!interview) return jsonRes({ error: 'Not found' }, 404);
+  if (!canAccess(interview, user)) return jsonRes({ error: 'Forbidden' }, 403);
   return jsonRes(interview);
 }
 
 async function updateInterview(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const existing = await kvGet(`interview:${id}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
+  if (!canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
 
   const { title, description, questions } = await request.json();
   if (!title || !questions?.length) return jsonRes({ error: 'title and questions required' }, 400);
@@ -888,7 +899,9 @@ async function updateInterview(id, request) {
 }
 
 async function deleteInterview(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
+  const existing = await kvGet(`interview:${id}`);
+  if (existing && !canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
   await INTERVIEW_DATA.delete(`interview:${id}`);
   const list = (await kvGet('interview:list')) || [];
   await kvPut('interview:list', list.filter(i => i !== id));
@@ -898,9 +911,10 @@ async function deleteInterview(id, request) {
 // ── Session handlers ──────────────────────────────────────────
 
 async function createSession(interviewId, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const interview = await kvGet(`interview:${interviewId}`);
   if (!interview) return jsonRes({ error: 'Interview not found' }, 404);
+  if (!canAccess(interview, user)) return jsonRes({ error: 'Forbidden' }, 403);
 
   const { candidateName, candidateEmail, expiresAt, reminderFrequency: remFreq } = await request.json();
   if (!candidateName) return jsonRes({ error: 'candidateName required' }, 400);
@@ -919,6 +933,7 @@ async function createSession(interviewId, request) {
     expiresAt: expiresAt || null,
     reminderFrequency: freqHours,
     nextReminderAt,
+    ownerId: interview.ownerId || user.id,
   };
   await kvPut(`session:${token}`, session);
 
@@ -930,7 +945,9 @@ async function createSession(interviewId, request) {
 }
 
 async function listSessions(interviewId, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
+  const interview = await kvGet(`interview:${interviewId}`);
+  if (interview && !canAccess(interview, user)) return jsonRes({ error: 'Forbidden' }, 403);
   const tokens = (await kvGet(`interview:${interviewId}:sessions`)) || [];
   const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
   return jsonRes(sessions.filter(Boolean));
@@ -1319,7 +1336,7 @@ async function getVideoUrl(token, qIndex, request) {
 // ── Two-way session handlers ──────────────────────────────────
 
 async function createTWSession(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { candidateName, candidateEmail, position, scheduledAt, duration, meetingLink, notes, autoMeeting } = await request.json();
   if (!candidateName || !candidateEmail || !position) {
     return jsonRes({ error: 'candidateName, candidateEmail, and position are required' }, 400);
@@ -1334,6 +1351,7 @@ async function createTWSession(request) {
     notes: notes || '',
     status: 'scheduled',
     createdAt: Date.now(),
+    ownerId: user.id,
   };
 
   if (autoMeeting && scheduledAt) {
@@ -1360,22 +1378,23 @@ async function createTWSession(request) {
 }
 
 async function listTWSessions(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const ids = (await kvGet('tw-session:list')) || [];
   const items = await Promise.all(ids.map(id => kvGet(`tw-session:${id}`)));
-  return jsonRes(items.filter(Boolean));
+  return jsonRes(items.filter(Boolean).filter(s => canAccess(s, user)));
 }
 
 // ── Unified Two-Way list (Direct Invite + Self-Booked merged) ─
 
 async function listUnifiedTWSessions(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
 
   // 1. Direct Invite sessions (tw-session:*)
   const twIds   = (await kvGet('tw-session:list')) || [];
-  const twItems = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)))).filter(Boolean);
+  const twItems = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`)))).filter(Boolean).filter(s => canAccess(s, user));
   const directItems = twItems.map(s => ({
     id:                   s.id,
+    ownerId:              s.ownerId || null,
     scheduling_source:    'DIRECT_INVITE',
     candidateName:        s.candidateName,
     candidateEmail:       s.candidateEmail       || '',
@@ -1402,10 +1421,12 @@ async function listUnifiedTWSessions(request) {
     linkTokens.map(async (t, i) => {
       const link = links[i];
       if (!link) return [];
+      if (!canAccess(link, user)) return [];
       const ids      = (await kvGet(`booking:link:${t}:bookings`)) || [];
       const bookings = (await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)))).filter(b => b && b.status !== 'cancelled');
       return bookings.map(b => ({
         id:                   b.id,
+        ownerId:              link.ownerId || null,
         scheduling_source:    'CANDIDATE_BOOKING',
         candidateName:        b.candidateName,
         candidateEmail:       b.candidateEmail   || '',
@@ -1437,9 +1458,13 @@ async function listUnifiedTWSessions(request) {
 // ── Update self-booked session status (e.g. mark completed) ──
 
 async function updateBookingStatusHandler(bookingId, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Not found' }, 404);
+  if (booking.linkToken) {
+    const link = await kvGet(`booking:link:${booking.linkToken}`);
+    if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  }
   const { status } = await request.json();
   const allowed = ['completed', 'cancelled', 'confirmed'];
   if (!allowed.includes(status)) return jsonRes({ error: 'Invalid status' }, 400);
@@ -1449,11 +1474,12 @@ async function updateBookingStatusHandler(bookingId, request) {
 }
 
 async function updateTWSession(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const existing = await kvGet(`tw-session:${id}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
+  if (!canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
   const updates = await request.json();
-  const updated = { ...existing, ...updates };
+  const updated = { ...existing, ...updates, ownerId: existing.ownerId || user.id };
   await kvPut(`tw-session:${id}`, updated);
 
   // Send cancellation email when status transitions to 'cancelled'
@@ -1471,7 +1497,9 @@ async function updateTWSession(id, request) {
 }
 
 async function deleteTWSessionHandler(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
+  const existing = await kvGet(`tw-session:${id}`);
+  if (existing && !canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
   await INTERVIEW_DATA.delete(`tw-session:${id}`);
   const list = (await kvGet('tw-session:list')) || [];
   await kvPut('tw-session:list', list.filter(i => i !== id));
@@ -1752,9 +1780,10 @@ function applyTimeWindow(files, meetingStartMs, durationMinutes) {
 }
 
 async function fetchTWRecording(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`tw-session:${id}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (!canAccess(session, user)) return jsonRes({ error: 'Forbidden' }, 403);
 
   const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
@@ -1799,9 +1828,13 @@ async function fetchTWRecording(id, request) {
 }
 
 async function fetchBookingRecording(bookingId, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
+  if (booking.linkToken) {
+    const link = await kvGet(`booking:link:${booking.linkToken}`);
+    if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  }
 
   const organizer   = EMAIL_SENDER || ONEDRIVE_USER;
   const accessToken = await getAccessToken();
@@ -1851,9 +1884,13 @@ async function fetchBookingRecording(bookingId, request) {
 }
 
 async function getBookingRecordingUrl(bookingId, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Booking not found' }, 404);
+  if (booking.linkToken) {
+    const link = await kvGet(`booking:link:${booking.linkToken}`);
+    if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  }
   if (!booking.recordingDriveItemId) {
     return jsonRes({ error: 'No recording linked to this booking' }, 404);
   }
@@ -2609,14 +2646,14 @@ async function getScriptClientLogoUrl(id, request) {
 // ── Booking Interview handlers ────────────────────────────────
 
 async function listBookingLinks(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const tokens = (await kvGet('booking:link:list')) || [];
   const links = await Promise.all(tokens.map(t => kvGet(`booking:link:${t}`)));
-  return jsonRes(links.filter(Boolean));
+  return jsonRes(links.filter(Boolean).filter(l => canAccess(l, user)));
 }
 
 async function createBookingLink(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { title, clientName, position, duration, tzOffset, daysAhead, slotRules, minNoticeHours } = await request.json();
   if (!title) return jsonRes({ error: 'title required' }, 400);
   if (!slotRules?.length) return jsonRes({ error: 'slotRules required' }, 400);
@@ -2633,6 +2670,7 @@ async function createBookingLink(request) {
     slotRules,
     active:         true,
     createdAt:      Date.now(),
+    ownerId:        user.id,
   };
   await kvPut(`booking:link:${token}`, link);
   const list = (await kvGet('booking:link:list')) || [];
@@ -2642,17 +2680,20 @@ async function createBookingLink(request) {
 }
 
 async function updateBookingLink(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const existing = await kvGet(`booking:link:${token}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
+  if (!canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
   const updates = await request.json();
-  const updated = { ...existing, ...updates };
+  const updated = { ...existing, ...updates, ownerId: existing.ownerId || user.id };
   await kvPut(`booking:link:${token}`, updated);
   return jsonRes(updated);
 }
 
 async function deleteBookingLink(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
+  const existing = await kvGet(`booking:link:${token}`);
+  if (existing && !canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
   // Delete all bookings for this link
   const bookingIds = (await kvGet(`booking:link:${token}:bookings`)) || [];
   await Promise.all(bookingIds.map(id => INTERVIEW_DATA.delete(`booking:booking:${id}`)));
@@ -2664,9 +2705,10 @@ async function deleteBookingLink(token, request) {
 }
 
 async function sendBookingInviteHandler(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const link = await kvGet(`booking:link:${token}`);
   if (!link) return jsonRes({ error: 'Booking link not found' }, 404);
+  if (!canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
   const { candidateName, candidateEmail, bookUrl } = await request.json();
   if (!candidateName || !candidateEmail || !bookUrl) {
     return jsonRes({ error: 'candidateName, candidateEmail and bookUrl are required' }, 400);
@@ -2744,18 +2786,23 @@ async function sendBookingInviteEmail(candidateName, candidateEmail, link, bookU
 }
 
 async function listLinkBookings(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const link = await kvGet(`booking:link:${token}`);
   if (!link) return jsonRes({ error: 'Not found' }, 404);
+  if (!canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
   const ids = (await kvGet(`booking:link:${token}:bookings`)) || [];
   const bookings = await Promise.all(ids.map(id => kvGet(`booking:booking:${id}`)));
   return jsonRes(bookings.filter(b => b && b.status !== 'cancelled'));
 }
 
 async function cancelBookingHandler(bookingId, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const booking = await kvGet(`booking:booking:${bookingId}`);
   if (!booking) return jsonRes({ error: 'Not found' }, 404);
+  if (booking.linkToken) {
+    const link = await kvGet(`booking:link:${booking.linkToken}`);
+    if (link && !canAccess(link, user)) return jsonRes({ error: 'Forbidden' }, 403);
+  }
 
   booking.status      = 'cancelled';
   booking.cancelledAt = Date.now();
