@@ -33,6 +33,8 @@ let tmpCtx = null;
 let canvasStream = null;
 let micStream = null;       // recording mic — acquired just before recording, released during reads
 let micAcquiring = null;    // in-flight acquireMic() promise (dedupe concurrent calls)
+let drawFrameCount = 0;     // bumped every rendered canvas frame — used to detect a frozen canvas
+let recordingMode = 'canvas'; // 'canvas' (watermarked) or 'raw' (fallback when canvas is frozen)
 let micAnalyser = null;
 let micMeterFrameId = null;
 let setupAudioCtx = null;
@@ -769,9 +771,23 @@ function startBgLoop(vid) {
       bgCtx.drawImage(src, 0, 0, w, h);
     }
     drawWatermark();
+    drawFrameCount++;   // mark that a real frame was rendered this tick
     segLoopId = requestAnimationFrame(loop);
   }
   segLoopId = requestAnimationFrame(loop);
+}
+
+// Returns true if the canvas is actively rendering frames right now. A throttled
+// or frozen canvas (mobile rAF starvation) won't advance drawFrameCount, and a
+// fully-starved rAF won't even fire the callbacks — both resolve to false.
+function canvasIsLive() {
+  return new Promise(resolve => {
+    const start = drawFrameCount;
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    requestAnimationFrame(() => requestAnimationFrame(() => finish(drawFrameCount > start)));
+    setTimeout(() => finish(false), 400); // rAF starved → not live
+  });
 }
 
 function handleSegResults(results) {
@@ -1302,19 +1318,26 @@ async function startRecording() {
   attachProctoringListeners();
   chunks = [];
 
-  // Record the RAW camera + mic directly — NOT the canvas captureStream.
-  // Mobile browsers throttle requestAnimationFrame to ~0 when the screen dims,
-  // locks, or the app is backgrounded, which freezes a canvas captureStream and
-  // produces identical frozen-frame videos. A real camera MediaStreamTrack keeps
-  // delivering frames regardless. The on-screen canvas (watermark/blur) remains
-  // the candidate's live preview only.
-  const recordStream = new MediaStream();
+  // Prefer the watermarked canvas stream (keeps CTI branding + background blur
+  // baked into the saved video). But mobile browsers throttle requestAnimationFrame
+  // to ~0 when the screen dims/locks/backgrounds, which FREEZES the canvas and
+  // produces identical still-frame videos. So we detect a frozen/throttled canvas
+  // right before recording and, only then, fall back to the raw camera track
+  // (which never freezes). Healthy cameras keep the watermark.
   const camTrack = mediaStream && mediaStream.getVideoTracks ? mediaStream.getVideoTracks()[0] : null;
   const micTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
-  if (camTrack) recordStream.addTrack(camTrack);
-  if (micTrack) recordStream.addTrack(micTrack);
-  // Fallback to the old behavior only if no raw camera track is available.
-  const streamToRecord = camTrack ? recordStream : (canvasStream || mediaStream);
+
+  let streamToRecord = canvasStream || mediaStream;
+  recordingMode = 'canvas';
+  const live = await canvasIsLive();
+  if (!live && camTrack) {
+    const raw = new MediaStream();
+    raw.addTrack(camTrack);
+    if (micTrack) raw.addTrack(micTrack);
+    streamToRecord = raw;
+    recordingMode = 'raw';
+    logProctoring('canvas_frozen_fallback', 'recorded raw camera (no watermark)');
+  }
 
   recorder = new MediaRecorder(streamToRecord, {
     mimeType: getSupportedMimeType(),
