@@ -264,57 +264,62 @@ async function renderTeamPage() {
     </tr>`).join('') : `<tr><td colspan="4" class="text-muted text-sm" style="padding:16px">No pending invites.</td></tr>`;
 
   main.innerHTML = `
-    <div class="flex justify-between items-center mb-16">
-      <h2>👥 Team</h2>
-    </div>
-    <p class="text-muted mb-16">Only people you invite here can sign in. When you invite someone by their <strong>@cti-usa.com</strong> email, they receive an email with a sign-in link and gain access on their first Microsoft login.</p>
+   <div style="flex-shrink:0">
+    <h2 style="margin:0 0 4px">👥 Team</h2>
+    <p class="text-muted text-sm mb-16">Only people you invite can sign in (with their <strong>@cti-usa.com</strong> Microsoft account). Visibility: <strong>Own records only</strong> (default), <strong>View all</strong> (see all, edit own), or <strong>Admin</strong> (full access to manage all records).</p>
 
-    <div class="card" style="padding:16px;margin-bottom:24px">
-      <h3 style="margin-top:0">Invite someone</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <input id="invite-email" type="email" placeholder="name@cti-usa.com" style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px" />
-        <button class="btn btn-primary" onclick="sendInvite()">Send Invite</button>
-      </div>
-      <div id="invite-msg" class="text-sm" style="margin-top:8px"></div>
-    </div>
-
-    <h3>Members</h3>
-    <p class="text-muted text-sm" style="margin-top:-6px">Visibility controls what each recruiter sees: <strong>Own records only</strong> (default), <strong>View all</strong> (see every recruiter's records but edit only their own), or <strong>Admin</strong> (full access to manage all records). Anyone set to Admin shows as <strong>Admin</strong> in the Role column.</p>
-    <div class="table-wrap card" style="margin-bottom:28px">
+    <h3 style="margin-bottom:8px">Members (${users.length})</h3>
+    <div class="card" style="padding:0;margin-bottom:24px">
       <table>
         <thead><tr><th>Person</th><th>Role</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
         <tbody>${userRows}</tbody>
       </table>
     </div>
 
-    <h3>Pending invites</h3>
-    <div class="table-wrap card" style="margin-bottom:28px">
-      <table>
-        <thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
-        <tbody>${inviteRows}</tbody>
-      </table>
-    </div>
-
-    <h3>Record ownership</h3>
-    <div class="card" style="padding:16px">
-      <p class="text-muted" style="margin-top:0">Interviews, bookings and two-way sessions created before sign-in was added have no owner, so only you (the administrator) can see them. Assign unowned records to your account, or reassign records to a specific recruiter. Past meetings &amp; recordings stay in their original mailbox and keep working.</p>
-      <button class="btn btn-outline" id="backfill-btn" onclick="runBackfill()">Assign unowned records to me</button>
-
-      <div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>
-
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <span class="text-sm">Assign records to</span>
-        <select id="assign-target" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;min-width:220px">
-          ${users.map(u => `<option value="${esc(u.id)}">${esc(u.name)} — ${esc(u.email)}</option>`).join('')}
-        </select>
-        <button class="btn btn-primary" id="assign-btn" onclick="runAssign()">Assign</button>
+    <details style="margin-bottom:12px">
+      <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">➕ Invite someone</summary>
+      <div class="card" style="padding:16px;margin-top:10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="invite-email" type="email" placeholder="name@cti-usa.com" style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px" />
+          <button class="btn btn-primary" onclick="sendInvite()">Send Invite</button>
+        </div>
+        <div id="invite-msg" class="text-sm" style="margin-top:8px"></div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="assign-force" />
-        Reassign <strong>all</strong> existing records (including ones that already belong to another recruiter)
-      </label>
-      <div id="assign-msg" class="text-sm" style="margin-top:8px"></div>
-    </div>`;
+    </details>
+
+    <details style="margin-bottom:12px">
+      <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">Pending invites (${invites.length})</summary>
+      <div class="card" style="padding:0;margin-top:10px">
+        <table>
+          <thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <tbody>${inviteRows}</tbody>
+        </table>
+      </div>
+    </details>
+
+    <details>
+      <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">Record ownership</summary>
+      <div class="card" style="padding:16px;margin-top:10px">
+        <p class="text-muted" style="margin-top:0">Assign unowned (pre-sign-in) records to your account, or reassign records to a specific recruiter. Past meetings &amp; recordings stay in their original mailbox and keep working.</p>
+        <button class="btn btn-outline" id="backfill-btn" onclick="runBackfill()">Assign unowned records to me</button>
+
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span class="text-sm">Assign records to</span>
+          <select id="assign-target" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;min-width:220px">
+            ${users.map(u => `<option value="${esc(u.id)}">${esc(u.name)} — ${esc(u.email)}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary" id="assign-btn" onclick="runAssign()">Assign</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="assign-force" />
+          Reassign <strong>all</strong> existing records (including ones that already belong to another recruiter)
+        </label>
+        <div id="assign-msg" class="text-sm" style="margin-top:8px"></div>
+      </div>
+    </details>
+   </div>`;
 }
 
 async function runBackfill() {
