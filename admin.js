@@ -180,6 +180,7 @@ function gotoPage(page) {
     btn.classList.toggle('active', btn.dataset.page === activeNav)
   );
   const main = document.getElementById('admin-main');
+  main.classList.remove('flush-top'); // pages opt-in to a sticky full-width header
   main.innerHTML = '<div class="spinner" style="margin:auto;margin-top:80px"></div>';
 
   if (page === 'ow-list')        renderOWListPage();
@@ -1293,6 +1294,7 @@ function applyTemplate(id) {
 
 async function renderTWListPage() {
   const main = document.getElementById('admin-main');
+  main.classList.add('flush-top'); // sticky head supplies the top spacing instead of admin-main padding
   main.innerHTML = `
    <div class="list-sticky-head">
     <div class="flex justify-between items-center mb-16">
