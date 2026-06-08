@@ -1242,10 +1242,12 @@ async function getSession(token, request) {
     brandLogoUrl:    settings.brandLogoUrl    || '',
   };
 
-  // Admins (valid X-Admin-Key) get the FULL session — the review modal needs
-  // responses, review decision, analysis, etc.
-  const isAdmin = request && constTimeEq(request.headers.get('X-Admin-Key'), ADMIN_KEY);
-  if (isAdmin) {
+  // Authenticated staff (SSO session OR break-glass admin key) get the FULL
+  // session — the review modal needs responses, decision, analysis, etc.
+  // Visibility scope is enforced so a recruiter can't read another's candidate.
+  const user = request ? await resolveUser(request) : null;
+  if (user) {
+    if (!canAccess(session, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
     return jsonRes({ session, interview, branding });
   }
 
