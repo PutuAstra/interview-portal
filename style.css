@@ -754,6 +754,10 @@ tr:hover td { background: var(--card-2); }
   color: var(--muted);
   border-bottom: 1px solid var(--border);
   margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
 }
 
 .session-row {
@@ -1010,6 +1014,10 @@ tr:hover td { background: var(--card-2); }
   color: var(--muted);
   border-bottom: 1px solid var(--border);
   margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
 }
 
 .tw-session-row {
@@ -1024,6 +1032,16 @@ tr:hover td { background: var(--card-2); }
 
 .tw-session-row:last-child { border-bottom: none; }
 .tw-session-row:hover { background: none; }
+
+/* Sticky column headers for <table>-based lists (Team page, modal tables) so
+   the header row stays visible while the body scrolls. */
+.table-wrap table thead th,
+.modal table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--card);
+}
 
 /* ── Setup screen ── */
 .bg-opt {
