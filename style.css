@@ -1488,6 +1488,37 @@ tr:hover td { background: var(--card-2); }
   .list-sticky-head .flex,
   .modal-list-sticky > div { flex-wrap: wrap !important; }
 
+  /* Modals → near full screen */
+  .modal {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    padding: 16px;
+  }
+  #modal-sessions .modal,
+  #modal-review .modal,
+  #modal-compare .modal {
+    width: calc(100vw - 8px) !important;
+    max-width: calc(100vw - 8px) !important;
+    height: calc(100dvh - 8px) !important;
+    padding: 0;
+  }
+  .modal-header { padding: 12px 16px !important; }
+
+  /* Review modal: stack the responses + résumé panes vertically */
+  #review-content { flex-direction: column !important; overflow-y: auto; }
+  #review-content > * { width: 100% !important; flex: none !important; }
+
+  /* Login card full-bleed */
+  #login-gate .card,
+  .login-card { max-width: 100% !important; width: 100% !important; }
+}
+
+/* ═══════════════ PORTRAIT PHONES ONLY — CARD/STACK STYLE ═══════════════
+   In portrait the screen is too narrow for table columns, so rows + cards
+   stack vertically. In LANDSCAPE (wider) the normal list/grid style is kept. */
+@media (max-width: 640px) and (orientation: portrait) {
+
   /* Grid TABLES → stacked cards: hide column headers, stack each row's cells */
   .tw-table-header, .sessions-table-header { display: none; }
   .tw-session-row, .session-row {
@@ -1509,8 +1540,7 @@ tr:hover td { background: var(--card-2); }
     gap: 6px;
   }
 
-  /* List cards (One-Way / Premium / Booking): stack the text block above the
-     buttons so action buttons never overlap the card content. */
+  /* List cards (One-Way / Premium / Booking): stack text above the buttons */
   #interviews-list   .card > .flex.justify-between,
   #premium-list      .card .flex.justify-between,
   #booking-links-list .card > .flex.justify-between {
@@ -1520,34 +1550,12 @@ tr:hover td { background: var(--card-2); }
   }
   #interviews-list .card .flex.gap-8,
   #premium-list  .card .flex.gap-8 { flex-wrap: wrap; }
-  /* Booking card's action column → full width, buttons not flush-right */
   #booking-links-list .card > .flex.justify-between > div:last-child {
     align-items: stretch !important;
   }
   #booking-links-list .card > .flex.justify-between > div:last-child > div {
     justify-content: flex-start !important;
   }
-
-  /* Modals → near full screen */
-  .modal {
-    width: calc(100vw - 16px) !important;
-    max-width: calc(100vw - 16px) !important;
-    max-height: calc(100dvh - 16px) !important;
-    padding: 16px;
-  }
-  #modal-sessions .modal,
-  #modal-review .modal,
-  #modal-compare .modal {
-    width: calc(100vw - 8px) !important;
-    max-width: calc(100vw - 8px) !important;
-    height: calc(100dvh - 8px) !important;
-    padding: 0;
-  }
-  .modal-header { padding: 12px 16px !important; }
-
-  /* Review modal: stack the responses + résumé panes vertically */
-  #review-content { flex-direction: column !important; overflow-y: auto; }
-  #review-content > * { width: 100% !important; flex: none !important; }
 
   /* Team / card <table> lists → stacked cards (dropdowns no longer overflow) */
   .table-wrap table,
@@ -1572,8 +1580,12 @@ tr:hover td { background: var(--card-2); }
     max-width: 100%;
     box-sizing: border-box;
   }
+}
 
-  /* Login card full-bleed */
-  #login-gate .card,
-  .login-card { max-width: 100% !important; width: 100% !important; }
+/* In LANDSCAPE phones, table lists may exceed the width — let them scroll
+   horizontally rather than crush, keeping the desktop list/grid style. */
+@media (max-width: 1024px) and (max-height: 540px) and (orientation: landscape) {
+  .admin-main { overflow-x: auto; }
+  .tw-table-header, .tw-session-row,
+  .sessions-table-header, .session-row { min-width: 680px; }
 }
