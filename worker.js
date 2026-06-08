@@ -310,6 +310,11 @@ async function route(request) {
   if (seg[0] === 'recruiter' && seg[1] === 'calendars' && seg[2] === 'test' && m === 'POST') {
     return testLinkedCalendar(request);
   }
+  // Per-recruiter linked calendars (each user manages their own busy-time cross-checks)
+  if (seg[0] === 'me' && seg[1] === 'calendars' && seg.length === 2) {
+    if (m === 'GET') return getMyCalendars(request);
+    if (m === 'PUT') return setMyCalendars(request);
+  }
 
   // ── Holiday & Closure Settings ───────────────────────────────
   // /api/holidays/settings  (must be before /api/holidays length-1 catch-all)
@@ -3521,6 +3526,36 @@ async function updateRecruiterSettings(request) {
   return jsonRes(updated);
 }
 
+// ── Per-recruiter linked calendars ───────────────────────────
+// Each recruiter keeps their own list of extra mailboxes to cross-check for
+// busy times. Stored on the user record so it only affects that recruiter's
+// own booking links.
+async function getMyCalendars(request) {
+  const user = await requireAdmin(request);
+  let cals = [];
+  if (user.id && user.id !== 'admin') {
+    const u = await kvGet(`user:${user.id}`);
+    cals = (u && u.linkedCalendars) || [];
+  }
+  return jsonRes({ linkedCalendars: cals });
+}
+
+async function setMyCalendars(request) {
+  const user = await requireAdmin(request);
+  if (!user.id || user.id === 'admin') {
+    return jsonRes({ error: 'Sign in with your Microsoft account to manage your linked calendars.' }, 400);
+  }
+  const body = await request.json();
+  const cals = Array.isArray(body.linkedCalendars)
+    ? [...new Set(body.linkedCalendars.map(e => String(e).trim().toLowerCase()).filter(Boolean))]
+    : [];
+  const u = await kvGet(`user:${user.id}`);
+  if (!u) return jsonRes({ error: 'User not found' }, 404);
+  u.linkedCalendars = cals;
+  await kvPut(`user:${user.id}`, u);
+  return jsonRes({ linkedCalendars: cals });
+}
+
 async function testLinkedCalendar(request) {
   await requireAdmin(request);
   const { email } = await request.json();
@@ -3741,20 +3776,18 @@ async function getBookingSlots(token) {
   }
 
   // ── Step 3: Linked calendars busy-range fetch ────────────────
-  // Loads recruiter:settings from KV to get the list of additional email
-  // addresses to check (e.g. herry.wahyudi@cti-usa.com).
-  // Uses the same app-level Graph token — no OAuth per-user flow needed since
-  // the Azure App has Calendars.ReadWrite.All (Application) permission.
+  // Uses the app-level Graph token — no OAuth per-user flow needed since the
+  // Azure App has Calendars.ReadWrite.All (Application) permission.
   // Results are KV-cached 5 min so concurrent page loads share one API call.
   // On failure the function returns [] — slots stay open (fail-open).
-  const recruiterSettings = await kvGet('recruiter:settings');
-  const globalLinkedCalendars = recruiterSettings?.linkedCalendars || [];
-
-  // Phase 3: availability is PER-RECRUITER. Only the owning recruiter's own
-  // appointments + their own Outlook calendar block this link's slots — so two
-  // recruiters can independently offer (and book) the same wall-clock time.
+  //
+  // Availability is PER-RECRUITER: only the owning recruiter's own appointments,
+  // their own Outlook calendar, and THEIR OWN linked calendars block this link's
+  // slots — so two recruiters can independently offer the same wall-clock time.
   const linkOwnerId = link.ownerId || null;
   const ownerEmail  = await resolveOwnerCalendarEmail(linkOwnerId);
+  const ownerUser   = (linkOwnerId && linkOwnerId !== 'admin') ? await kvGet(`user:${linkOwnerId}`) : null;
+  const ownerLinkedCalendars = (ownerUser && ownerUser.linkedCalendars) || [];
 
   // ── Step 4: Build the owning recruiter's blocked time ranges ──
   // Scans the owner's confirmed candidate bookings (across their own links) +
@@ -3792,10 +3825,10 @@ async function getBookingSlots(token) {
   ];
 
   // ── Step 4d: Merge the owner's Outlook calendar busy blocks ───
-  // Checks the owning recruiter's own calendar (ownerEmail) plus any globally
-  // configured shared calendars. Runs AFTER base blockedRanges is built so a
+  // Checks the owning recruiter's own calendar (ownerEmail) plus the extra
+  // calendars THAT recruiter linked. Runs AFTER base blockedRanges is built so a
   // single error doesn't prevent internal bookings from being blocked.
-  const calendarsToCheck = [...new Set([ownerEmail, ...globalLinkedCalendars].filter(Boolean))];
+  const calendarsToCheck = [...new Set([ownerEmail, ...ownerLinkedCalendars].filter(Boolean))];
   if (calendarsToCheck.length) {
     const windowStartMs = Date.now();
     const windowEndMs   = windowStartMs + (link.daysAhead || 14) * 24 * 60 * 60 * 1000;

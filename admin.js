@@ -4354,7 +4354,7 @@ async function renderCalendarSyncPage() {
   const main = document.getElementById('admin-main');
   main.innerHTML = `<div class="spinner" style="margin:80px auto"></div>`;
   try {
-    _calSyncSettings = await apiJSON('GET', '/api/recruiter/settings');
+    _calSyncSettings = await apiJSON('GET', '/api/me/calendars');
   } catch {
     _calSyncSettings = { linkedCalendars: [] };
   }
@@ -4400,9 +4400,10 @@ function renderCalendarSyncContent() {
 
       <!-- Linked calendars list -->
       <div class="card" style="margin-bottom:16px">
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px">
-          Linked Calendars (Read-Only — Busy Time Sync)
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:4px">
+          Your Linked Calendars (Read-Only — Busy Time Sync)
         </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px">These extra calendars are checked only against <strong>your own</strong> booking links — they don't affect other recruiters.</div>
         <div id="cal-list" style="display:grid;gap:8px">
           ${cals.length
             ? cals.map(email => renderLinkedCalRow(email)).join('')
@@ -4465,7 +4466,7 @@ async function addLinkedCalendar() {
   // Save
   const updated = [...existing, email];
   try {
-    _calSyncSettings = await apiJSON('PUT', '/api/recruiter/settings', { linkedCalendars: updated });
+    _calSyncSettings = await apiJSON('PUT', '/api/me/calendars', { linkedCalendars: updated });
     toast(`✓ ${email} linked — busy times will now be blocked`, 'success');
     renderCalendarSyncContent();
   } catch (e) {
@@ -4477,7 +4478,7 @@ async function removeLinkedCalendar(email) {
   if (!confirm(`Remove ${email} from calendar sync?\n\nCandidates will no longer be blocked from booking during this calendar's events.`)) return;
   const updated = (_calSyncSettings.linkedCalendars || []).filter(e => e !== email);
   try {
-    _calSyncSettings = await apiJSON('PUT', '/api/recruiter/settings', { linkedCalendars: updated });
+    _calSyncSettings = await apiJSON('PUT', '/api/me/calendars', { linkedCalendars: updated });
     toast(`${email} removed`, 'success');
     renderCalendarSyncContent();
   } catch (e) {
