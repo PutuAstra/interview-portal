@@ -80,6 +80,8 @@ async function handle(request) {
   } catch (e) {
     if (e.message === 'Unauthorized') {
       res = jsonRes({ error: 'Unauthorized' }, 401);
+    } else if (e.message === 'Forbidden') {
+      res = jsonRes({ error: 'Forbidden — administrator access required.' }, 403);
     } else {
       // Log the real error server-side; return a generic message so internal
       // details / stack traces never reach the client.
@@ -102,6 +104,13 @@ async function route(request) {
   if (seg[0] === 'auth' && seg[1] === 'callback' && m === 'GET')  return authCallback(request);
   if (seg[0] === 'auth' && seg[1] === 'me'       && m === 'GET')  return authMe(request);
   if (seg[0] === 'auth' && seg[1] === 'logout'   && m === 'POST') return authLogout(request);
+
+  // ── Team management (super_admin only) ──
+  if (seg[0] === 'users' && seg.length === 1 && m === 'GET')  return listUsers(request);
+  if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 2 && m === 'POST')   return inviteUser(request);
+  if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 3 && m === 'DELETE') return revokeInvite(decodeURIComponent(seg[2]), request);
+  if (seg[0] === 'users' && seg.length === 2 && m === 'PATCH')  return updateUser(seg[1], request);
+  if (seg[0] === 'users' && seg.length === 2 && m === 'DELETE') return deleteUser(seg[1], request);
 
   if (seg[0] === 'interviews' && seg.length === 1) {
     if (m === 'GET')  return listInterviews(request);
@@ -373,6 +382,13 @@ async function requireAdmin(request) {
   return user;
 }
 
+// User/invite management is restricted to super_admins (and the break-glass key).
+async function requireSuperAdmin(request) {
+  const user = await requireAdmin(request);
+  if (user.role !== 'super_admin') throw new Error('Forbidden');
+  return user;
+}
+
 // Phase 2 ownership check: super_admin sees everything; a recruiter only their own
 // records. Legacy records with no ownerId are visible to super_admin only.
 function canAccess(record, user) {
@@ -444,11 +460,26 @@ async function authCallback(request) {
 
   let user = await kvGet(`user:${oid}`);
   if (!user) {
+    // INVITE-ONLY: the very first ever sign-in bootstraps the super_admin.
+    // Everyone after that must have a pending invite created by a super_admin.
     const list = (await kvGet('user:list')) || [];
-    user = { id: oid, email, name, calendarEmail: email, role: list.length === 0 ? 'super_admin' : 'recruiter', createdAt: Date.now(), active: true };
+    const isBootstrap = list.length === 0;
+    const invite = await kvGet(`invite:${email}`);
+    if (!isBootstrap && !invite) {
+      return ssoError(`Your account hasn't been invited to ZeusHire yet. Please ask an administrator to invite ${email}, then try again.`);
+    }
+    const role = isBootstrap ? 'super_admin' : (invite?.role || 'recruiter');
+    user = { id: oid, email, name, calendarEmail: email, role, createdAt: Date.now(), active: true, invitedBy: invite?.invitedBy || null };
     list.push(oid); await kvPut('user:list', list);
     await kvPut(`user:byEmail:${email}`, oid);
+    // Consume the invite so it can't be reused.
+    if (invite) {
+      await INTERVIEW_DATA.delete(`invite:${email}`);
+      const il = (await kvGet('invite:list')) || [];
+      await kvPut('invite:list', il.filter(e => e !== email));
+    }
   } else {
+    if (user.active === false) return ssoError('Your ZeusHire access has been disabled. Please contact your administrator.');
     user.name = name; user.email = email; if (!user.calendarEmail) user.calendarEmail = email;
   }
   await kvPut(`user:${oid}`, user);
@@ -470,6 +501,103 @@ async function authMe(request) {
 async function authLogout(request) {
   const t = request.headers.get('X-Auth-Token');
   if (t) await INTERVIEW_DATA.delete(`authsession:${t}`);
+  return jsonRes({ ok: true });
+}
+
+// ── Team management (super_admin only) ────────────────────────
+// Returns active users + pending (not-yet-logged-in) invites.
+async function listUsers(request) {
+  const me = await requireSuperAdmin(request);
+  const ids = (await kvGet('user:list')) || [];
+  const users = (await Promise.all(ids.map(id => kvGet(`user:${id}`)))).filter(Boolean).map(u => ({
+    id: u.id, name: u.name, email: u.email, role: u.role,
+    active: u.active !== false, calendarEmail: u.calendarEmail || u.email,
+    createdAt: u.createdAt || 0, isMe: u.id === me.id,
+  }));
+  const inviteEmails = (await kvGet('invite:list')) || [];
+  const invites = (await Promise.all(inviteEmails.map(e => kvGet(`invite:${e}`)))).filter(Boolean);
+  return jsonRes({ users, invites });
+}
+
+// Create a pending invite for an @cti-usa.com email. They gain access on first SSO login.
+async function inviteUser(request) {
+  const me = await requireSuperAdmin(request);
+  const body = await request.json();
+  const email = String(body.email || '').trim().toLowerCase();
+  const role  = body.role === 'super_admin' ? 'super_admin' : 'recruiter';
+  if (!email) return jsonRes({ error: 'email required' }, 400);
+  if (!email.endsWith('@' + ALLOWED_EMAIL_DOMAIN)) {
+    return jsonRes({ error: `Only @${ALLOWED_EMAIL_DOMAIN} addresses can be invited.` }, 400);
+  }
+  const existingId = await kvGet(`user:byEmail:${email}`);
+  if (existingId) return jsonRes({ error: 'That person already has an account.' }, 409);
+
+  const invite = { email, role, invitedBy: me.email || me.id, invitedByName: me.name || '', invitedAt: Date.now() };
+  await kvPut(`invite:${email}`, invite);
+  const il = (await kvGet('invite:list')) || [];
+  if (!il.includes(email)) { il.push(email); await kvPut('invite:list', il); }
+  return jsonRes(invite, 201);
+}
+
+// Revoke a pending invite (before the person has logged in).
+async function revokeInvite(email, request) {
+  await requireSuperAdmin(request);
+  email = String(email || '').trim().toLowerCase();
+  await INTERVIEW_DATA.delete(`invite:${email}`);
+  const il = (await kvGet('invite:list')) || [];
+  await kvPut('invite:list', il.filter(e => e !== email));
+  return jsonRes({ ok: true });
+}
+
+// Change an existing user's role or enable/disable their access.
+async function updateUser(userId, request) {
+  const me = await requireSuperAdmin(request);
+  const user = await kvGet(`user:${userId}`);
+  if (!user) return jsonRes({ error: 'User not found' }, 404);
+  const body = await request.json();
+
+  // Guard: don't let the last active super_admin demote or disable themselves out of access.
+  const wouldLoseAdmin =
+    (body.role && body.role !== 'super_admin' && user.role === 'super_admin') ||
+    (body.active === false && user.role === 'super_admin');
+  if (wouldLoseAdmin) {
+    const ids = (await kvGet('user:list')) || [];
+    const all = (await Promise.all(ids.map(id => kvGet(`user:${id}`)))).filter(Boolean);
+    const otherActiveAdmins = all.filter(u => u.id !== userId && u.role === 'super_admin' && u.active !== false);
+    if (otherActiveAdmins.length === 0) {
+      return jsonRes({ error: 'Cannot remove the last administrator. Promote someone else first.' }, 409);
+    }
+  }
+
+  if (body.role === 'super_admin' || body.role === 'recruiter') user.role = body.role;
+  if (typeof body.active === 'boolean') user.active = body.active;
+  if (body.calendarEmail !== undefined) user.calendarEmail = String(body.calendarEmail || '').trim().toLowerCase() || user.email;
+  await kvPut(`user:${userId}`, user);
+
+  // If access was revoked, kill any live sessions belonging to this user is best-effort
+  // (sessions self-expire and resolveUser re-checks active flag on every request, so a
+  // disabled user is locked out on their next API call regardless).
+  return jsonRes({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active !== false });
+}
+
+// Permanently remove a user account. Their owned records remain in KV (reassignable later).
+async function deleteUser(userId, request) {
+  const me = await requireSuperAdmin(request);
+  if (userId === me.id) return jsonRes({ error: 'You cannot delete your own account.' }, 409);
+  const user = await kvGet(`user:${userId}`);
+  if (!user) return jsonRes({ error: 'User not found' }, 404);
+  if (user.role === 'super_admin') {
+    const ids = (await kvGet('user:list')) || [];
+    const all = (await Promise.all(ids.map(id => kvGet(`user:${id}`)))).filter(Boolean);
+    const otherActiveAdmins = all.filter(u => u.id !== userId && u.role === 'super_admin' && u.active !== false);
+    if (otherActiveAdmins.length === 0) {
+      return jsonRes({ error: 'Cannot delete the last administrator.' }, 409);
+    }
+  }
+  await INTERVIEW_DATA.delete(`user:${userId}`);
+  if (user.email) await INTERVIEW_DATA.delete(`user:byEmail:${user.email}`);
+  const ids = (await kvGet('user:list')) || [];
+  await kvPut('user:list', ids.filter(id => id !== userId));
   return jsonRes({ ok: true });
 }
 

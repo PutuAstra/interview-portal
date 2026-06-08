@@ -31,6 +31,8 @@ let _reviewStars = 0;
 let _sessionSortCol = null;
 let _sessionSortDir = 'desc';
 let _scriptClients = [];
+let _currentUser = null;     // { name, email, role, breakGlass }
+let _isSuperAdmin = false;
 
 // ── Auth ──────────────────────────────────────────────────────
 
@@ -89,6 +91,8 @@ async function showApp() {
   try {
     const me = await fetch(WORKER_URL + '/api/auth/me', { headers: authHeaders() }).then(r => r.json());
     if (me && me.authenticated) {
+      _currentUser  = me.user;
+      _isSuperAdmin = me.user.role === 'super_admin' || !!me.user.breakGlass;
       const info = document.getElementById('topbar-info');
       if (info) info.textContent = me.user.name;
       const em = document.getElementById('account-email');
@@ -96,6 +100,9 @@ async function showApp() {
       const rl = document.getElementById('account-role');
       if (rl) rl.textContent = me.user.breakGlass ? 'Signed in with admin key'
         : (me.user.role === 'super_admin' ? 'Super Admin' : 'Recruiter');
+      // Team management is super-admin only — reveal the nav item.
+      const teamNav = document.getElementById('nav-team');
+      if (teamNav) teamNav.style.display = _isSuperAdmin ? '' : 'none';
     } else if (authToken) {
       sessionStorage.removeItem('zeushire_auth'); authToken = '';
       return showLoginGate();
@@ -103,7 +110,7 @@ async function showApp() {
   } catch {}
   document.getElementById('login-gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const valid = ['ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding'];
+  const valid = ['ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding', 'team'];
   const hash  = window.location.hash.replace('#', '');
   gotoPage(valid.includes(hash) ? hash : 'ow-list');
 }
@@ -165,6 +172,7 @@ function gotoPage(page) {
                   : page === 'holidays' ? 'holidays'
                   : page === 'calendar-sync' ? 'calendar-sync'
                   : page === 'branding' ? 'branding'
+                  : page === 'team' ? 'team'
                   : 'tw-list';
   document.querySelectorAll('.sidebar-item').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.page === activeNav)
@@ -184,6 +192,138 @@ function gotoPage(page) {
   if (page === 'holidays')       renderHolidaysPage();
   if (page === 'calendar-sync') renderCalendarSyncPage();
   if (page === 'branding')      renderBrandingPage();
+  if (page === 'team')          renderTeamPage();
+}
+
+// ── Team / User management page (super_admin only) ───────────
+
+let _teamData = { users: [], invites: [] };
+
+async function renderTeamPage() {
+  const main = document.getElementById('admin-main');
+  if (!_isSuperAdmin) {
+    main.innerHTML = `<div class="empty-state">🔒 Only administrators can manage the team.</div>`;
+    return;
+  }
+  main.innerHTML = '<div class="spinner" style="margin:80px auto"></div>';
+  try {
+    _teamData = await apiJSON('GET', '/api/users');
+  } catch (e) {
+    main.innerHTML = `<div class="empty-state">Could not load the team: ${esc(e.message)}</div>`;
+    return;
+  }
+  const { users, invites } = _teamData;
+
+  const userRows = users.map(u => `
+    <tr>
+      <td>
+        <div style="font-weight:600">${esc(u.name)} ${u.isMe ? '<span class="text-muted text-sm">(you)</span>' : ''}</div>
+        <div class="text-muted text-sm">${esc(u.email)}</div>
+      </td>
+      <td>
+        <select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px" ${u.isMe ? 'disabled' : ''}
+                onchange="changeUserRole('${esc(u.id)}', this.value)">
+          <option value="recruiter"   ${u.role === 'recruiter'   ? 'selected' : ''}>Recruiter</option>
+          <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
+        </select>
+      </td>
+      <td>
+        <span class="badge ${u.active ? 'badge-completed' : 'badge-pending'}">${u.active ? 'Active' : 'Disabled'}</span>
+      </td>
+      <td style="text-align:right;white-space:nowrap">
+        ${u.isMe ? '' : `
+          <button class="btn btn-ghost" style="font-size:13px" onclick="toggleUserActive('${esc(u.id)}', ${u.active ? 'false' : 'true'})">
+            ${u.active ? 'Disable' : 'Enable'}
+          </button>
+          <button class="btn btn-ghost" style="font-size:13px;color:var(--danger,#dc2626)" onclick="removeUser('${esc(u.id)}','${jsStr(u.name)}')">Remove</button>`}
+      </td>
+    </tr>`).join('');
+
+  const inviteRows = invites.length ? invites.map(i => `
+    <tr>
+      <td><div style="font-weight:600">${esc(i.email)}</div>
+          <div class="text-muted text-sm">Invited by ${esc(i.invitedByName || i.invitedBy || '—')}</div></td>
+      <td><span class="badge badge-in_progress">${i.role === 'super_admin' ? 'Super Admin' : 'Recruiter'}</span></td>
+      <td><span class="badge badge-pending">Pending — not logged in yet</span></td>
+      <td style="text-align:right">
+        <button class="btn btn-ghost" style="font-size:13px;color:var(--danger,#dc2626)" onclick="revokeUserInvite('${jsStr(i.email)}')">Revoke</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="4" class="text-muted text-sm" style="padding:16px">No pending invites.</td></tr>`;
+
+  main.innerHTML = `
+    <div class="flex justify-between items-center mb-16">
+      <h2>👥 Team</h2>
+    </div>
+    <p class="text-muted mb-16">Only people you invite here can sign in. Everyone signs in with their CTI Microsoft account — invite them by their <strong>@cti-usa.com</strong> email, then they gain access on their first login.</p>
+
+    <div class="card" style="padding:16px;margin-bottom:24px">
+      <h3 style="margin-top:0">Invite someone</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="invite-email" type="email" placeholder="name@cti-usa.com" style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px" />
+        <select id="invite-role" style="max-width:170px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px">
+          <option value="recruiter">Recruiter</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+        <button class="btn btn-primary" onclick="sendInvite()">Send Invite</button>
+      </div>
+      <div id="invite-msg" class="text-sm" style="margin-top:8px"></div>
+    </div>
+
+    <h3>Members</h3>
+    <div class="table-wrap card" style="margin-bottom:28px">
+      <table>
+        <thead><tr><th>Person</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    </div>
+
+    <h3>Pending invites</h3>
+    <div class="table-wrap card">
+      <table>
+        <thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody>${inviteRows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function sendInvite() {
+  const email = (document.getElementById('invite-email').value || '').trim().toLowerCase();
+  const role  = document.getElementById('invite-role').value;
+  const msg   = document.getElementById('invite-msg');
+  msg.style.color = ''; msg.textContent = '';
+  if (!email) { msg.style.color = 'var(--danger,#dc2626)'; msg.textContent = 'Enter an email address.'; return; }
+  try {
+    await apiJSON('POST', '/api/users/invite', { email, role });
+    msg.style.color = 'var(--success,#16a34a)';
+    msg.textContent = `Invite created for ${email}. They can now sign in with Microsoft.`;
+    document.getElementById('invite-email').value = '';
+    renderTeamPage();
+  } catch (e) {
+    msg.style.color = 'var(--danger,#dc2626)';
+    msg.textContent = e.message;
+  }
+}
+
+async function revokeUserInvite(email) {
+  if (!confirm(`Revoke the invite for ${email}?`)) return;
+  try { await apiJSON('DELETE', '/api/users/invite/' + encodeURIComponent(email)); renderTeamPage(); }
+  catch (e) { alert(e.message); }
+}
+
+async function changeUserRole(id, role) {
+  try { await apiJSON('PATCH', '/api/users/' + id, { role }); renderTeamPage(); }
+  catch (e) { alert(e.message); renderTeamPage(); }
+}
+
+async function toggleUserActive(id, active) {
+  try { await apiJSON('PATCH', '/api/users/' + id, { active }); renderTeamPage(); }
+  catch (e) { alert(e.message); }
+}
+
+async function removeUser(id, name) {
+  if (!confirm(`Permanently remove ${name}? They will lose access immediately. Their interviews and bookings remain in the system.`)) return;
+  try { await apiJSON('DELETE', '/api/users/' + id); renderTeamPage(); }
+  catch (e) { alert(e.message); }
 }
 
 // ── Premium Talent page ───────────────────────────────────
