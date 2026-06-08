@@ -159,6 +159,14 @@ async function apiJSON(method, path, body = null) {
 
 // ── Navigation ────────────────────────────────────────────────
 
+// Mobile off-canvas sidebar toggle.
+function toggleSidebar() {
+  document.querySelector('.admin-body')?.classList.toggle('sidebar-open');
+}
+function closeSidebar() {
+  document.querySelector('.admin-body')?.classList.remove('sidebar-open');
+}
+
 function toggleSidebarGroup(btn) {
   const expanded = btn.getAttribute('aria-expanded') === 'true';
   btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
@@ -181,6 +189,7 @@ function gotoPage(page) {
   );
   const main = document.getElementById('admin-main');
   main.classList.remove('flush-top'); // pages opt-in to a sticky full-width header
+  closeSidebar(); // collapse the mobile drawer when navigating
   main.innerHTML = '<div class="spinner" style="margin:auto;margin-top:80px"></div>';
 
   if (page === 'ow-list')        renderOWListPage();

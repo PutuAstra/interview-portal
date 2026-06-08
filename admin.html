@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#B01A18" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20250609a" />
+  <link rel="stylesheet" href="style.css?v=20250609b" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
   <style>
     /* Circular crop box for logo */
@@ -56,11 +56,14 @@
 <div id="app" style="display:none">
 
   <div class="topbar">
-    <div class="topbar-brand" style="gap:12px">
-      <img src="cti-logo.png" alt="CTI" style="height:40px;width:auto;flex-shrink:0" />
-      <div style="display:flex;flex-direction:column;line-height:1.25">
-        <span style="font-size:13px;font-weight:700">CTI Group Worldwide Services, Inc.</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:400">ZeusHire Admin Portal</span>
+    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+      <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+      <div class="topbar-brand" style="gap:12px;min-width:0">
+        <img src="cti-logo.png" alt="CTI" style="height:40px;width:auto;flex-shrink:0" />
+        <div style="display:flex;flex-direction:column;line-height:1.25;min-width:0">
+          <span class="topbar-company" style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">CTI Group Worldwide Services, Inc.</span>
+          <span style="font-size:11px;color:var(--muted);font-weight:400">ZeusHire Admin Portal</span>
+        </div>
       </div>
     </div>
     <div style="position:relative;display:flex;align-items:center">
@@ -112,6 +115,8 @@
       <div class="spinner" style="margin:auto"></div>
     </main>
 
+    <div class="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
   </div>
 
 </div><!-- /app -->
@@ -162,7 +167,7 @@
       <h2 id="modal-interview-title">Interview</h2>
       <button class="btn btn-ghost" onclick="closeModal('modal-sessions')">✕</button>
     </div>
-    <div style="flex:1;min-height:0;overflow-y:auto;padding:0 24px 20px">
+    <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:auto;padding:0 24px 20px">
 
     <!-- Invite pane -->
     <div id="session-pane-invite" style="display:none;padding-top:20px">
@@ -545,6 +550,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250609a"></script>
+<script src="admin.js?v=20250609b"></script>
 </body>
 </html>
