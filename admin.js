@@ -1329,6 +1329,7 @@ async function renderTWListPage() {
     </div>
 
     <div class="tw-table-header">
+      <span>#</span>
       <span>Candidate</span>
       <span>Position</span>
       <span style="cursor:pointer;user-select:none" onclick="toggleTWSort()">Scheduled <span id="tw-sort-indicator">↓</span></span>
@@ -1403,10 +1404,10 @@ function filterAndRenderTWSessions() {
     el.innerHTML = `<div class="empty-state">${_allTWSessions.length ? 'No sessions match your filter.' : 'No sessions scheduled yet.'}</div>`;
     return;
   }
-  el.innerHTML = list.map(renderTWSessionRow).join('');
+  el.innerHTML = list.map((s, i) => renderTWSessionRow(s, i)).join('');
 }
 
-function renderTWSessionRow(s) {
+function renderTWSessionRow(s, idx) {
   const dt = s.scheduledAt ? new Date(s.scheduledAt) : null;
   const dateStr = dt ? dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
   const timeStr = dt ? dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
@@ -1463,6 +1464,7 @@ function renderTWSessionRow(s) {
 
   return `
     <div class="tw-session-row">
+      <div class="text-muted" style="font-size:12px">${(idx ?? 0) + 1}</div>
       <div style="min-width:0">
         <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</div>
         <div class="text-muted" style="font-size:11px">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.teamsGenerated ? ' &nbsp;·&nbsp; <span style="color:#6264a7">Teams</span>' : ''}</div>
