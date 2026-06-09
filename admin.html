@@ -529,6 +529,24 @@
   </div>
 </div>
 
+<!-- Modal: Client Overview (CV summary shown to clients instead of the résumé) -->
+<div class="modal-overlay" id="modal-overview">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <h2>📝 Client Overview</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-overview')">✕</button>
+    </div>
+    <p class="text-muted text-sm mb-8">Shown to clients in the talent library <strong>instead of the résumé</strong> — a short professional summary. Generate it from the résumé with AI (it automatically excludes email, phone, and address) or write/edit it yourself.</p>
+    <textarea id="ov-text" rows="8" placeholder="A short professional summary of the candidate (no contact details)…" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;line-height:1.55;resize:vertical;box-sizing:border-box"></textarea>
+    <div id="ov-msg" class="text-sm" style="margin-top:8px"></div>
+    <div class="mt-16 flex gap-8">
+      <button class="btn btn-outline" id="ov-gen-btn" onclick="generateOverview()">✨ Generate from résumé</button>
+      <button class="btn btn-primary" id="ov-save-btn" onclick="saveOverview()">Save</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-overview')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Client Library Links -->
 <div class="modal-overlay" id="modal-clientlinks">
   <div class="modal" style="max-width:560px">
@@ -554,6 +572,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250609ac"></script>
+<script src="admin.js?v=20250609ad"></script>
 </body>
 </html>

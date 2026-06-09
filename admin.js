@@ -571,12 +571,52 @@ function renderPremiumCard(p) {
       ${interestHTML}
       <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
         <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="openReview('${p.token}','${jsStr(p.candidateName)}')">Review</button>
+        <button class="btn btn-outline" style="font-size:12px;padding:5px 12px${pr.overview ? ';border-color:rgba(22,163,74,0.5);color:#16a34a' : ''}" title="Client-facing Overview (replaces résumé)" onclick="openOverviewModal('${p.token}','${jsStr(p.candidateName)}')">📝 Overview${pr.overview ? ' ✓' : ''}</button>
         ${avail
           ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Taken</button>`
           : `<button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="premiumMarkAvailable('${p.token}','${jsStr(p.candidateName)}')">↩ Back to Available</button>`}
         <button class="btn btn-ghost btn-rm" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
       </div>
     </div>`;
+}
+
+function openOverviewModal(token, name) {
+  const modal = document.getElementById('modal-overview');
+  modal.dataset.token = token;
+  const item = (_premiumList || []).find(p => p.token === token);
+  document.getElementById('ov-text').value = item?.premium?.overview || '';
+  document.getElementById('ov-msg').textContent = '';
+  openModal('modal-overview');
+}
+
+async function generateOverview() {
+  const token = document.getElementById('modal-overview').dataset.token;
+  const btn = document.getElementById('ov-gen-btn');
+  const msg = document.getElementById('ov-msg');
+  btn.disabled = true; btn.textContent = '✨ Generating…';
+  msg.style.color = ''; msg.textContent = 'Reading the résumé and summarizing…';
+  try {
+    const r = await apiJSON('POST', `/api/session/${token}/premium/overview/generate`);
+    document.getElementById('ov-text').value = r.overview || '';
+    msg.style.color = 'var(--success,#16a34a)';
+    msg.textContent = 'Draft generated — review/edit, then Save.';
+  } catch (e) {
+    msg.style.color = 'var(--danger,#dc2626)';
+    msg.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Generate from résumé';
+  }
+}
+
+async function saveOverview() {
+  const token = document.getElementById('modal-overview').dataset.token;
+  const overview = document.getElementById('ov-text').value.trim();
+  try {
+    await apiJSON('POST', `/api/session/${token}/premium/overview`, { overview });
+    toast('Overview saved', 'success');
+    closeModal('modal-overview');
+    loadPremium();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function removePremiumInterest(token, clientToken, label) {

@@ -219,7 +219,9 @@ async function route(request) {
   // ── Premium Talent Library ──
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'taken' && m === 'POST') return markPremiumTaken(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'available' && m === 'POST') return markPremiumAvailable(seg[1], request);
-  if (seg[0] === 'session' && seg[2] === 'premium' && m === 'POST')   return addToPremium(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'overview' && seg[4] === 'generate' && m === 'POST') return generatePremiumOverview(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'overview' && m === 'POST') return setPremiumOverview(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg.length === 3 && m === 'POST')   return addToPremium(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && seg.length === 3 && m === 'DELETE') return removeFromPremium(seg[1], request);
   if (seg[0] === 'premium' && seg.length === 1 && m === 'GET')        return listPremium(request);
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'POST')     return createClientLib(request);
@@ -3712,7 +3714,7 @@ async function getClientLib(clientToken) {
       category:           s.premium.category,
       department:         s.premium.department,
       role:               s.premium.role,
-      hasResume:          !!s.resumeItemId,
+      overview:           s.premium.overview || '',
       videos,
       alreadyInterested,
     };
@@ -3739,6 +3741,10 @@ async function getClientLibVideo(clientToken, token, qIndex) {
 }
 
 async function getClientLibResume(clientToken, token) {
+  // Privacy: clients no longer get the résumé file (it contains contact info).
+  // They see the contact-free Overview instead. Endpoint kept but access denied.
+  return jsonRes({ error: 'Résumé is not shared with clients. See the candidate Overview.' }, 403);
+  // eslint-disable-next-line no-unreachable
   const { err, session } = await clientLibCandidate(clientToken, token);
   if (err) return err;
   if (!session.resumeItemId) return jsonRes({ notFound: true });
@@ -3808,6 +3814,79 @@ async function clientExpressInterest(clientToken, token, request) {
     await kvPut(`session:${token}`, session);
   }
   return jsonRes({ ok: true });
+}
+
+// Manually set/edit the client-facing Overview text on a premium candidate.
+async function setPremiumOverview(token, request) {
+  await requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
+  const { overview } = await request.json().catch(() => ({}));
+  session.premium.overview = String(overview || '').slice(0, 2000);
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true, overview: session.premium.overview });
+}
+
+// AI-generate a contact-free CV Overview from the candidate's résumé (PDF) and
+// store it on the premium record. Explicitly strips email/phone/address.
+async function generatePremiumOverview(token, request) {
+  await requireAdmin(request);
+  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
+    return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured.' }, 500);
+  }
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
+  if (!session.resumeItemId) return jsonRes({ error: 'This candidate has no résumé to summarize. Type an overview manually.' }, 400);
+  const ext = (session.resumeExt || 'pdf').toLowerCase();
+  if (ext !== 'pdf') return jsonRes({ error: 'Auto-generate needs a PDF résumé. Type the overview manually for this candidate.' }, 400);
+
+  // Download the résumé bytes via Graph and base64-encode (chunked, safe for big buffers).
+  let b64;
+  try {
+    const at = await getAccessToken();
+    const item = await fetch(`https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
+      { headers: { 'Authorization': `Bearer ${at}` } }).then(r => r.json());
+    const url = item['@microsoft.graph.downloadUrl'];
+    if (!url) return jsonRes({ error: 'Résumé file unavailable' }, 404);
+    const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    b64 = btoa(bin);
+  } catch (e) {
+    return jsonRes({ error: 'Could not read résumé: ' + e.message }, 502);
+  }
+
+  const prompt = `You are summarizing a job candidate's résumé for a hiring client. Write a concise professional overview (4–6 sentences, third person) covering their experience, key skills, education, and what makes them suitable. STRICT: do NOT include any email address, phone/mobile/home number, home address, links, or any personal contact details. Output ONLY the overview prose — no headings, no contact info.`;
+
+  const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
+  let text = '';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return jsonRes({ error: 'AI error: ' + (data.error?.message || res.status) }, 502);
+    text = (data.content?.[0]?.text || '').trim();
+  } catch (e) {
+    return jsonRes({ error: 'AI request failed: ' + e.message }, 502);
+  }
+  if (!text) return jsonRes({ error: 'AI returned no summary — try again or type one manually.' }, 502);
+
+  session.premium.overview = text.slice(0, 2000);
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true, overview: session.premium.overview });
 }
 
 // Remove a client's "interested" mark from a premium candidate. With a
