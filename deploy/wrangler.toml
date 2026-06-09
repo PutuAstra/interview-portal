@@ -23,3 +23,9 @@ id = "b4851c26e9db4b348fe8debc8b045283"
 # Preserve the existing hourly cron (reminder emails + data-retention purge).
 [triggers]
 crons = ["0 * * * *"]
+
+# Capture console logs/errors (cron runs, recording fetches, email failures, …)
+# in the Cloudflare dashboard → interview-api → Logs, for troubleshooting.
+[observability]
+enabled = true
+
