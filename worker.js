@@ -109,6 +109,7 @@ async function route(request) {
   if (seg[0] === 'users' && seg.length === 1 && m === 'GET')  return listUsers(request);
   if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 2 && m === 'POST')   return inviteUser(request);
   if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 3 && m === 'DELETE') return revokeInvite(decodeURIComponent(seg[2]), request);
+  if (seg[0] === 'audit' && seg.length === 1 && m === 'GET') return getAuditLog(request);
   if (seg[0] === 'users' && seg[1] === 'backfill-owner' && seg.length === 2 && m === 'POST') return backfillOwner(request);
   if (seg[0] === 'users' && seg.length === 2 && m === 'PATCH')  return updateUser(seg[1], request);
   if (seg[0] === 'users' && seg.length === 2 && m === 'DELETE') return deleteUser(seg[1], request);
@@ -537,6 +538,30 @@ async function authLogout(request) {
   return jsonRes({ ok: true });
 }
 
+// ── Audit log ─────────────────────────────────────────────────
+// Best-effort append-only record of sensitive admin actions (access/ownership
+// changes). Capped to the most recent 500 entries. Never throws.
+async function logAudit(actor, action, detail) {
+  try {
+    const entry = {
+      ts: Date.now(),
+      by: (actor && (actor.email || actor.id)) || 'unknown',
+      action,
+      detail: detail || '',
+    };
+    const log = (await kvGet('audit:log')) || [];
+    log.unshift(entry);
+    if (log.length > 500) log.length = 500;
+    await kvPut('audit:log', log);
+  } catch (e) { console.error('[audit] failed:', e.message); }
+}
+
+async function getAuditLog(request) {
+  await requireSuperAdmin(request);
+  const log = (await kvGet('audit:log')) || [];
+  return jsonRes({ entries: log.slice(0, 200) });
+}
+
 // ── Team management (super_admin only) ────────────────────────
 // Returns active users + pending (not-yet-logged-in) invites.
 async function listUsers(request) {
@@ -580,6 +605,7 @@ async function inviteUser(request) {
   try { await sendTeamInviteEmail(invite); emailSent = true; }
   catch (e) { emailError = e.message; console.error('[invite] email failed for', email, '-', e.message); }
 
+  await logAudit(me, 'invite_user', `${email} (${viewScope})`);
   return jsonRes({ ...invite, emailSent, emailError }, 201);
 }
 
@@ -624,11 +650,12 @@ async function sendTeamInviteEmail(invite) {
 
 // Revoke a pending invite (before the person has logged in).
 async function revokeInvite(email, request) {
-  await requireSuperAdmin(request);
+  const me = await requireSuperAdmin(request);
   email = String(email || '').trim().toLowerCase();
   await INTERVIEW_DATA.delete(`invite:${email}`);
   const il = (await kvGet('invite:list')) || [];
   await kvPut('invite:list', il.filter(e => e !== email));
+  await logAudit(me, 'revoke_invite', email);
   return jsonRes({ ok: true });
 }
 
@@ -659,6 +686,7 @@ async function updateUser(userId, request) {
   if (body.calendarEmail !== undefined) user.calendarEmail = String(body.calendarEmail || '').trim().toLowerCase() || user.email;
   await kvPut(`user:${userId}`, user);
 
+  await logAudit(me, 'update_user', `${user.email}: role=${user.role}, scope=${user.viewScope || 'own'}, active=${user.active !== false}`);
   // If access was revoked, kill any live sessions belonging to this user is best-effort
   // (sessions self-expire and resolveUser re-checks active flag on every request, so a
   // disabled user is locked out on their next API call regardless).
@@ -683,6 +711,7 @@ async function deleteUser(userId, request) {
   if (user.email) await INTERVIEW_DATA.delete(`user:byEmail:${user.email}`);
   const ids = (await kvGet('user:list')) || [];
   await kvPut('user:list', ids.filter(id => id !== userId));
+  await logAudit(me, 'delete_user', user.email);
   return jsonRes({ ok: true });
 }
 
@@ -753,6 +782,8 @@ async function backfillOwner(request) {
     }
   }
 
+  await logAudit(me, force ? 'reassign_all_records' : 'assign_unowned_records',
+    `to ${targetId} (${counts.interviews} interviews, ${counts.sessions} sessions, ${counts.twSessions} two-way, ${counts.bookingLinks} links, ${counts.bookings} bookings)`);
   return jsonRes({ ok: true, ownerId: targetId, force, updated: counts });
 }
 

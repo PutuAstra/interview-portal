@@ -228,6 +228,17 @@ async function renderTeamPage() {
   }
   const { users, invites } = _teamData;
 
+  // Audit log (best-effort — endpoint may not be deployed yet on older workers).
+  let auditEntries = [];
+  try { auditEntries = (await apiJSON('GET', '/api/audit')).entries || []; } catch (e) {}
+  const auditRows = auditEntries.length ? auditEntries.map(a => `
+    <tr>
+      <td class="text-muted text-sm" style="white-space:nowrap">${new Date(a.ts).toLocaleString()}</td>
+      <td class="text-sm">${esc(a.by)}</td>
+      <td class="text-sm"><span class="badge badge-in_progress">${esc(a.action)}</span></td>
+      <td class="text-sm">${esc(a.detail || '')}</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="text-muted text-sm" style="padding:14px">No activity recorded yet.</td></tr>`;
+
   const userRows = users.map(u => {
     const isAdminAccess = u.role !== 'super_admin' && u.viewScope === 'manage_all';
     const selStyle = 'background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px';
@@ -337,6 +348,17 @@ async function renderTeamPage() {
           Reassign <strong>all</strong> existing records (including ones that already belong to another recruiter)
         </label>
         <div id="assign-msg" class="text-sm" style="margin-top:8px"></div>
+      </div>
+    </details>
+
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">Activity log (${auditEntries.length})</summary>
+      <p class="text-muted text-sm" style="margin:4px 0 0">Audit trail of access &amp; ownership changes (most recent first).</p>
+      <div class="table-wrap card" style="padding:0;margin-top:10px">
+        <table>
+          <thead><tr><th>When</th><th>By</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody>${auditRows}</tbody>
+        </table>
       </div>
     </details>
    </div>`;
