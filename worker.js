@@ -224,6 +224,7 @@ async function route(request) {
   if (seg[0] === 'premium' && seg.length === 1 && m === 'GET')        return listPremium(request);
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'POST')     return createClientLib(request);
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'GET')      return listClientLibs(request);
+  if (seg[0] === 'clientlib' && seg.length === 2 && m === 'DELETE')   return deleteClientLib(seg[1], request);
   if (seg[0] === 'clientlib' && seg[2] === 'video'    && m === 'GET') return getClientLibVideo(seg[1], seg[3], parseInt(seg[4]));
   if (seg[0] === 'clientlib' && seg[2] === 'resume'   && m === 'GET') return getClientLibResume(seg[1], seg[3]);
   if (seg[0] === 'clientlib' && seg[2] === 'interest' && m === 'POST') return clientExpressInterest(seg[1], seg[3], request);
@@ -3660,6 +3661,15 @@ async function listClientLibs(request) {
     return meta ? { clientToken: t, label: meta.label, createdAt: meta.createdAt } : null;
   }))).filter(Boolean);
   return jsonRes({ links });
+}
+
+// Revoke a client library link — the URL stops working immediately.
+async function deleteClientLib(token, request) {
+  await requireAdmin(request);
+  await INTERVIEW_DATA.delete(`clientlib:${token}`);
+  const list = (await kvGet('clientlib:list')) || [];
+  await kvPut('clientlib:list', list.filter(t => t !== token));
+  return jsonRes({ ok: true });
 }
 
 // PUBLIC (client token). HARD ACL: only premium talent with status

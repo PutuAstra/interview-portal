@@ -616,10 +616,20 @@ async function refreshClientLinks() {
             </div>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
+            <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--red)" title="Revoke this link" onclick="revokeClientLink('${l.clientToken}','${jsStr(l.label)}')">🗑</button>
           </div>`;
         }).join('')
       : '<div class="empty-state" style="padding:16px">No client links yet.</div>';
   } catch (e) { el.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}</div>`; }
+}
+
+async function revokeClientLink(token, label) {
+  if (!confirm(`Revoke the client link "${label}"? The URL will stop working immediately.`)) return;
+  try {
+    await apiJSON('DELETE', `/api/clientlib/${token}`);
+    toast('Client link revoked', 'success');
+    refreshClientLinks();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function createClientLinkFromModal() {
