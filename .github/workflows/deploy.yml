@@ -1,11 +1,16 @@
 name: Deploy API Worker
 
-# MANUAL ONLY for now (Actions tab → "Deploy API Worker" → Run workflow).
-# This lets us verify the very first wrangler deploy against production safely.
-# Once a manual run is confirmed good, a `push:` trigger can be added for full
-# auto-deploy on changes to worker.js.
+# Auto-deploys the API worker whenever worker.js (or its deploy config) lands on
+# main — gated by syntax-check + unit tests. Can also be run manually.
+# Frontend files (admin.js/take.html/etc.) deploy separately via Cloudflare's
+# git integration for the static site, so they're intentionally NOT triggers here.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker.js'
+      - 'deploy/wrangler.toml'
 
 jobs:
   deploy:
@@ -14,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       # Gate: never deploy a worker that fails syntax-check or unit tests.
       - name: Syntax check
