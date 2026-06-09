@@ -112,7 +112,7 @@ async function showApp() {
   } catch {}
   document.getElementById('login-gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const valid = ['ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding', 'team'];
+  const valid = ['dashboard', 'ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding', 'team'];
   const hash  = window.location.hash.replace('#', '');
   gotoPage(valid.includes(hash) ? hash : 'ow-list');
 }
@@ -175,7 +175,8 @@ function toggleSidebarGroup(btn) {
 
 function gotoPage(page) {
   history.replaceState(null, '', '#' + page);
-  const activeNav = ['ow-create', 'ow-list'].includes(page) ? 'ow-list'
+  const activeNav = page === 'dashboard' ? 'dashboard'
+                  : ['ow-create', 'ow-list'].includes(page) ? 'ow-list'
                   : page === 'premium' ? 'premium'
                   : page === 'scripts' ? 'scripts'
                   : ['booking', 'booking-create', 'booking-edit'].includes(page) ? 'booking'
@@ -192,6 +193,7 @@ function gotoPage(page) {
   closeSidebar(); // collapse the mobile drawer when navigating
   main.innerHTML = '<div class="spinner" style="margin:auto;margin-top:80px"></div>';
 
+  if (page === 'dashboard')      renderDashboardPage();
   if (page === 'ow-list')        renderOWListPage();
   if (page === 'ow-create')      renderOWCreatePage();
   if (page === 'premium')        renderPremiumPage();
@@ -629,6 +631,97 @@ async function emailClientLink(clientToken) {
 
 function buildLibraryUrl(clientToken) {
   return siteFileUrl('library.html', `?c=${clientToken}`);
+}
+
+// ── Dashboard / Analytics ─────────────────────────────────────
+
+async function renderDashboardPage() {
+  const main = document.getElementById('admin-main');
+  main.innerHTML = '<div class="spinner" style="margin:60px auto"></div>';
+  let d;
+  try {
+    d = await apiJSON('GET', '/api/analytics');
+  } catch (e) {
+    main.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const ow = d.oneWay;
+  const card = (label, value, sub) => `
+    <div class="card" style="padding:16px;flex:1 1 180px;min-width:160px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);font-weight:600">${label}</div>
+      <div style="font-size:28px;font-weight:800;margin-top:4px">${value}</div>
+      ${sub ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${sub}</div>` : ''}
+    </div>`;
+
+  const bar = (label, n, total, color) => {
+    const pct = total ? Math.round((n / total) * 100) : 0;
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span style="color:var(--text-2)">${label}</span><span style="color:var(--muted)">${n}${total ? ` · ${pct}%` : ''}</span>
+        </div>
+        <div style="height:8px;background:var(--bg);border-radius:5px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:5px"></div>
+        </div>
+      </div>`;
+  };
+
+  const starRows = [5, 4, 3, 2, 1].map(n =>
+    bar('★'.repeat(n), ow.starDist[n] || 0, ow.completed || 0, '#f59e0b')
+  ).join('');
+
+  const perInterviewRows = (d.perInterview || []).map(p => `
+    <tr>
+      <td style="font-weight:600">${esc(p.title)}</td>
+      <td style="text-align:center">${p.total}</td>
+      <td style="text-align:center">${p.completed}</td>
+      <td style="text-align:center;color:#16a34a">${p.forward}</td>
+    </tr>`).join('') || `<tr><td colspan="4" class="text-muted text-sm" style="padding:12px">No interviews yet.</td></tr>`;
+
+  main.innerHTML = `
+    <h2 class="mb-16">📊 Dashboard</h2>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      ${card('Candidates invited', ow.invited)}
+      ${card('Completed', ow.completed, `${ow.completionRate}% completion rate`)}
+      ${card('Moving forward', ow.decisions.forward, `${ow.decisions.notForward} not forward`)}
+      ${card('Avg. time to complete', ow.avgCompleteHours != null ? ow.avgCompleteHours + ' h' : '—')}
+      ${card('Consent captured', `${ow.invited ? Math.round((ow.consent / ow.invited) * 100) : 0}%`, `${ow.consent}/${ow.invited}`)}
+    </div>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+      <div class="card" style="flex:1 1 320px;min-width:280px;padding:18px">
+        <h3 style="margin-top:0">One-Way funnel</h3>
+        ${bar('Invited', ow.invited, ow.invited, 'var(--accent)')}
+        ${bar('In progress', ow.inProgress, ow.invited, '#3b82f6')}
+        ${bar('Completed', ow.completed, ow.invited, '#16a34a')}
+        ${bar('Pending', ow.pending, ow.invited, '#94a3b8')}
+      </div>
+      <div class="card" style="flex:1 1 320px;min-width:280px;padding:18px">
+        <h3 style="margin-top:0">Decisions <span class="text-muted text-sm" style="font-weight:400">(of completed)</span></h3>
+        ${bar('✓ Moving forward', ow.decisions.forward, ow.completed, '#16a34a')}
+        ${bar('✗ Not moving forward', ow.decisions.notForward, ow.completed, '#dc2626')}
+        ${bar('Awaiting decision', ow.decisions.undecided, ow.completed, '#94a3b8')}
+      </div>
+      <div class="card" style="flex:1 1 280px;min-width:240px;padding:18px">
+        <h3 style="margin-top:0">Star ratings</h3>
+        ${starRows}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+      ${card('Two-way scheduled', d.twoWay.scheduled, `${d.twoWay.completed} completed · ${d.twoWay.cancelled} cancelled`)}
+      ${card('Bookings', d.bookings.confirmed, `${d.bookings.links} active link(s)`)}
+      ${card('Premium Talent', d.premium)}
+    </div>
+
+    <div class="table-wrap card" style="padding:0">
+      <table>
+        <thead><tr><th>Interview</th><th style="text-align:center">Candidates</th><th style="text-align:center">Completed</th><th style="text-align:center">Forward</th></tr></thead>
+        <tbody>${perInterviewRows}</tbody>
+      </table>
+    </div>`;
 }
 
 // ── One-Way: List page ────────────────────────────────────────

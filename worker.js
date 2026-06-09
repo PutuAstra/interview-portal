@@ -113,6 +113,9 @@ async function route(request) {
   if (seg[0] === 'users' && seg.length === 2 && m === 'PATCH')  return updateUser(seg[1], request);
   if (seg[0] === 'users' && seg.length === 2 && m === 'DELETE') return deleteUser(seg[1], request);
 
+  if (seg[0] === 'analytics' && seg.length === 1 && m === 'GET') {
+    return getAnalytics(request);
+  }
   if (seg[0] === 'interviews' && seg.length === 1) {
     if (m === 'GET')  return listInterviews(request);
     if (m === 'POST') return createInterview(request);
@@ -1140,6 +1143,85 @@ async function createInterview(request) {
   await kvPut('interview:list', list);
 
   return jsonRes(interview, 201);
+}
+
+// Aggregated metrics for the Dashboard. Honors the caller's visibility scope:
+// recruiters see only their own records; admins/super-admins see everything.
+async function getAnalytics(request) {
+  const user = await requireAdmin(request);
+
+  let invited = 0, pending = 0, inProgress = 0, completed = 0, consent = 0;
+  let forward = 0, notForward = 0, undecided = 0;
+  let completeMsSum = 0, completeMsCount = 0;
+  const starDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const perInterview = [];
+
+  const interviewIds = (await kvGet('interview:list')) || [];
+  for (const iid of interviewIds) {
+    const iv = await kvGet(`interview:${iid}`);
+    if (!iv || !canAccess(iv, user, 'view')) continue;
+    const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
+    let ivTotal = 0, ivCompleted = 0, ivForward = 0;
+    for (const t of tokens) {
+      const s = await kvGet(`session:${t}`);
+      if (!s) continue;
+      invited++; ivTotal++;
+      if (s.status === 'completed') { completed++; ivCompleted++; }
+      else if (s.status === 'in_progress') inProgress++;
+      else pending++;
+      if (s.consentedAt) consent++;
+      if (s.status === 'completed' && s.completedAt && s.createdAt) {
+        completeMsSum += (s.completedAt - s.createdAt); completeMsCount++;
+      }
+      if (s.reviewDecision === 'move_forward') { forward++; ivForward++; }
+      else if (s.reviewDecision === 'not_moving_forward') notForward++;
+      else if (s.status === 'completed') undecided++;
+      if (s.reviewStars >= 1 && s.reviewStars <= 5) starDist[s.reviewStars]++;
+    }
+    perInterview.push({ title: iv.title, total: ivTotal, completed: ivCompleted, forward: ivForward });
+  }
+  perInterview.sort((a, b) => b.total - a.total);
+
+  // Two-way (direct invite) sessions
+  const twIds = (await kvGet('tw-session:list')) || [];
+  let twScheduled = 0, twCompleted = 0, twCancelled = 0;
+  for (const id of twIds) {
+    const s = await kvGet(`tw-session:${id}`);
+    if (!s || !canAccess(s, user, 'view')) continue;
+    if (s.status === 'completed') twCompleted++;
+    else if (s.status === 'cancelled') twCancelled++;
+    else twScheduled++;
+  }
+
+  // Booking links + confirmed bookings (owner-scoped)
+  const linkTokens = (await kvGet('booking:link:list')) || [];
+  let bookings = 0, bookingLinks = 0;
+  for (const t of linkTokens) {
+    const link = await kvGet(`booking:link:${t}`);
+    if (!link || !canAccess(link, user, 'view')) continue;
+    bookingLinks++;
+    const ids = (await kvGet(`booking:link:${t}:bookings`)) || [];
+    for (const id of ids) {
+      const b = await kvGet(`booking:booking:${id}`);
+      if (b && b.status !== 'cancelled') bookings++;
+    }
+  }
+
+  const premium = ((await kvGet('premium:list')) || []).length;
+  const completionRate  = invited ? Math.round((completed / invited) * 100) : 0;
+  const avgCompleteHours = completeMsCount ? +((completeMsSum / completeMsCount) / 3600000).toFixed(1) : null;
+
+  return jsonRes({
+    oneWay: {
+      interviews: perInterview.length, invited, pending, inProgress, completed,
+      completionRate, avgCompleteHours, consent,
+      decisions: { forward, notForward, undecided }, starDist,
+    },
+    perInterview: perInterview.slice(0, 10),
+    twoWay: { scheduled: twScheduled, completed: twCompleted, cancelled: twCancelled },
+    bookings: { confirmed: bookings, links: bookingLinks },
+    premium,
+  });
 }
 
 async function listInterviews(request) {
