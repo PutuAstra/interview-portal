@@ -2174,7 +2174,7 @@ function filterAndRenderSessions() {
     if (query && !s.candidateName.toLowerCase().includes(query) &&
         !(s.candidateEmail || '').toLowerCase().includes(query)) return false;
     if (_decisionFilter !== 'all' && s.reviewDecision !== _decisionFilter) return false;
-    if (_starFilter > 0 && (s.reviewStars || 0) < _starFilter) return false;
+    if (_starFilter > 0 && (s.reviewStars || 0) !== _starFilter) return false;
     return true;
   });
 
