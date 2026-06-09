@@ -1,0 +1,30 @@
+name: Deploy API Worker
+
+# MANUAL ONLY for now (Actions tab → "Deploy API Worker" → Run workflow).
+# This lets us verify the very first wrangler deploy against production safely.
+# Once a manual run is confirmed good, a `push:` trigger can be added for full
+# auto-deploy on changes to worker.js.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Gate: never deploy a worker that fails syntax-check or unit tests.
+      - name: Syntax check
+        run: node --check worker.js
+      - name: Unit tests
+        run: npm test
+
+      - name: Deploy interview-api
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config deploy/wrangler.toml

@@ -1,0 +1,25 @@
+# Deploy config for the API worker (interview-api).
+#
+# Kept in this subfolder ON PURPOSE so it never collides with the root
+# wrangler.jsonc that Cloudflare's git integration uses to build the STATIC
+# site (interview-portal). This file is used ONLY by the GitHub Action
+# (.github/workflows/deploy.yml) to deploy the API worker.
+#
+# keep_vars = true preserves all vars + secrets configured in the Cloudflare
+# dashboard (CLIENT_SECRET, ADMIN_KEY, TENANT_ID, EMAIL_SENDER, ONEDRIVE_USER,
+# ANTHROPIC_API_KEY, GROQ_API_KEY, …) across deploys, so they are never wiped.
+
+name = "interview-api"
+main = "../worker.js"
+compatibility_date = "2026-05-21"
+workers_dev = true
+keep_vars = true
+
+# The single KV binding the worker uses (verified — no other bindings exist).
+[[kv_namespaces]]
+binding = "INTERVIEW_DATA"
+id = "b4851c26e9db4b348fe8debc8b045283"
+
+# Preserve the existing hourly cron (reminder emails + data-retention purge).
+[triggers]
+crons = ["0 * * * *"]
