@@ -2613,7 +2613,7 @@ function renderSessionRow(s, num) {
       <div style="display:flex;align-items:center">
         <span style="font-size:12px;color:var(--text-2)">${invitedDate}</span>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center">
+      <div style="display:flex;align-items:center;justify-content:flex-start">
         <span class="badge badge-${s.status}">${s.status.replace('_', ' ')}</span>
       </div>
       <div style="display:flex;align-items:center;justify-content:center">
