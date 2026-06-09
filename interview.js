@@ -167,11 +167,31 @@ function showIntro() {
         </ul>
       </div>
 
-      <button class="btn btn-primary btn-lg mt-24"
-        onclick="${profileComplete() ? startAfterProfile() : 'showProfileUpload()'}">
+      <label style="display:flex;gap:9px;align-items:flex-start;text-align:left;margin-top:22px;font-size:12px;color:var(--text-2);line-height:1.5;cursor:pointer">
+        <input type="checkbox" id="consent-box" onchange="document.getElementById('start-btn').disabled=!this.checked"
+          style="margin-top:2px;width:17px;height:17px;flex-shrink:0;accent-color:var(--accent);cursor:pointer">
+        <span>${assess
+          ? 'I consent to the processing and <strong>AI-assisted review</strong> of my answers for this application. I understand a human reviewer makes the final hiring decision.'
+          : 'I consent to the <strong>recording</strong> of my video and audio responses and to <strong>AI-assisted review</strong> of my answers for this application. I understand a human reviewer makes the final hiring decision.'}</span>
+      </label>
+
+      <button class="btn btn-primary btn-lg mt-16" id="start-btn" disabled
+        onclick="acceptConsentAndStart()">
         ${startLabel}
       </button>
     </div>`;
+
+  // What to run after consent is given.
+  _startNextAction = profileComplete()
+    ? (isAssessmentOnly() ? () => showQuestion(0) : () => showSetup())
+    : () => showProfileUpload();
+}
+
+let _startNextAction = null;
+function acceptConsentAndStart() {
+  // Record consent (fire-and-forget — never block the candidate on it).
+  try { fetch(`${WORKER_URL}/api/session/${token}/consent`, { method: 'POST' }).catch(() => {}); } catch (e) {}
+  if (_startNextAction) _startNextAction();
 }
 
 // ── Profile Upload Step ───────────────────────────────────────

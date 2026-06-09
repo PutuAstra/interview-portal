@@ -141,6 +141,9 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'remind' && m === 'POST') {
     return remindSessionNow(seg[1], request);
   }
+  if (seg[0] === 'session' && seg[2] === 'consent' && m === 'POST') {
+    return recordConsent(seg[1], request);
+  }
   if (seg[0] === 'session' && seg[2] === 'upload' && m === 'POST') {
     return uploadVideo(seg[1], parseInt(seg[3]), request);
   }
@@ -958,7 +961,13 @@ async function handleScheduled() {
     }
   }
 
-  return { ok: true, sentTotal, errors };
+  // Data-retention purge (no-op unless retentionDays is configured). Wrapped so
+  // a purge failure never affects reminder delivery.
+  let retention = { enabled: false, purged: 0 };
+  try { retention = await purgeExpiredData(); }
+  catch (e) { console.error('[retention] purge failed:', e.message); }
+
+  return { ok: true, sentTotal, errors, retention };
 }
 
 // Manual reminder: admin clicks "Remind now" for a single pending candidate.
@@ -1586,6 +1595,72 @@ async function completeSession(token) {
   session.completedAt = Date.now();
   await kvPut(`session:${token}`, session);
   return jsonRes({ ok: true });
+}
+
+// Candidate consent — recorded (token-based, no admin auth) when the candidate
+// agrees to recording + AI-assisted review before starting. Stored on the
+// session for audit (consentedAt + version of the notice they accepted).
+const CONSENT_VERSION = '2026-06-09';
+async function recordConsent(token, request) {
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (!session.consentedAt) {
+    session.consentedAt = Date.now();
+    session.consentVersion = CONSENT_VERSION;
+    await kvPut(`session:${token}`, session);
+  }
+  return jsonRes({ ok: true });
+}
+
+// ── Data retention auto-purge (privacy/compliance) ────────────
+// OFF by default — only runs when recruiter:settings.retentionDays > 0.
+// Permanently deletes COMPLETED one-way sessions (and their OneDrive media)
+// older than the retention window. Premium-Talent candidates are preserved.
+async function purgeExpiredData() {
+  const settings = (await kvGet('recruiter:settings')) || {};
+  const days = parseInt(settings.retentionDays, 10) || 0;
+  if (days <= 0) return { enabled: false, purged: 0 };
+
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const premium = new Set((await kvGet('premium:list')) || []);
+  let purged = 0;
+
+  const interviewIds = (await kvGet('interview:list')) || [];
+  for (const iid of interviewIds) {
+    const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
+    const keep = [];
+    for (const token of tokens) {
+      const s = await kvGet(`session:${token}`);
+      if (!s) continue;
+      const ts = s.completedAt || s.createdAt || 0;
+      const isPremium = premium.has(token) || !!s.premium;
+      if (s.status === 'completed' && ts && ts < cutoff && !isPremium) {
+        await purgeSessionMedia(s);
+        await INTERVIEW_DATA.delete(`session:${token}`);
+        purged++;
+      } else {
+        keep.push(token);
+      }
+    }
+    if (keep.length !== tokens.length) await kvPut(`interview:${iid}:sessions`, keep);
+  }
+  console.log(`[retention] purged ${purged} session(s) older than ${days}d`);
+  return { enabled: true, purged };
+}
+
+// Best-effort delete of a session's OneDrive media (videos, résumé, photo).
+async function purgeSessionMedia(s) {
+  try {
+    const at = await getAccessToken();
+    const ids = [];
+    for (const r of (s.responses || [])) if (r.driveItemId) ids.push(r.driveItemId);
+    if (s.resumeItemId) ids.push(s.resumeItemId);
+    if (s.profilePhotoItemId) ids.push(s.profilePhotoItemId);
+    for (const id of ids) {
+      await fetch(`https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${id}`,
+        { method: 'DELETE', headers: { 'Authorization': `Bearer ${at}` } }).catch(() => {});
+    }
+  } catch (e) { console.error('[retention] media purge failed:', e.message); }
 }
 
 async function getVideoUrl(token, qIndex, request) {

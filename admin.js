@@ -3029,6 +3029,10 @@ async function openReview(token, candidateName) {
         })()
       : `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)">✅ No proctoring flags ${integrityChip(100)}</div>`;
 
+    const consentHTML = session.consentedAt
+      ? `<div style="margin-top:8px;font-size:11px;color:var(--muted)">📝 Consent recorded ${new Date(session.consentedAt).toLocaleString()}${session.consentVersion ? ` · v${esc(session.consentVersion)}` : ''}</div>`
+      : `<div style="margin-top:8px;font-size:11px;color:var(--muted)">📝 Consent: not recorded (pre-dates consent capture)</div>`;
+
     const analysisSection = cachedAnalysis?.notFound
       ? `<div style="margin-top:8px;text-align:center">
            <button class="btn btn-primary" onclick="runAnalysis('${token}')" id="analyze-btn">🤖 Analyze English Proficiency</button>
@@ -3148,6 +3152,7 @@ async function openReview(token, candidateName) {
           ${writtenHTML}
           ${reviewerHTML}
           ${proctoringHTML}
+          ${consentHTML}
         </div>
         <div style="flex-shrink:0;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
           ${analysisSection}
@@ -5075,7 +5080,17 @@ function renderBrandingContent() {
         </div>
       </div>
 
-      <div style="display:flex;gap:8px">
+      <div class="card" style="margin-top:16px;padding:16px">
+        <h3 style="margin-top:0">🔒 Data Retention</h3>
+        <p class="text-muted text-sm" style="margin-top:0">Automatically and permanently delete completed candidates and their recordings after a set period (privacy/compliance). Premium Talent candidates are never auto-deleted. <strong>0 = keep forever (off).</strong></p>
+        <label style="font-size:12px;color:var(--muted)">Delete completed candidates after</label>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <input type="number" id="retention-days" min="0" max="3650" value="${parseInt(s.retentionDays, 10) || 0}" style="width:110px" />
+          <span class="text-sm text-muted">days (0 = off)</span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:16px">
         <button class="btn btn-primary" onclick="saveBrandingSettings()">💾 Save Branding</button>
         <button class="btn btn-ghost" onclick="renderBrandingContent()">Reset</button>
       </div>
@@ -5119,8 +5134,9 @@ async function saveBrandingSettings() {
   const outcomeFwdBody    = document.getElementById('em-fwd-body')?.value.trim()    || '';
   const outcomeRejSubject = document.getElementById('em-rej-subject')?.value.trim() || '';
   const outcomeRejBody    = document.getElementById('em-rej-body')?.value.trim()    || '';
+  const retentionDays     = parseInt(document.getElementById('retention-days')?.value, 10) || 0;
   try {
-    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody });
+    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody, retentionDays });
     _brandingSettings = updated;
     toast('Branding saved!', 'success');
     renderBrandingContent();
