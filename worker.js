@@ -220,7 +220,7 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'taken' && m === 'POST') return markPremiumTaken(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'available' && m === 'POST') return markPremiumAvailable(seg[1], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && m === 'POST')   return addToPremium(seg[1], request);
-  if (seg[0] === 'session' && seg[2] === 'premium' && m === 'DELETE') return removeFromPremium(seg[1], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg.length === 3 && m === 'DELETE') return removeFromPremium(seg[1], request);
   if (seg[0] === 'premium' && seg.length === 1 && m === 'GET')        return listPremium(request);
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'POST')     return createClientLib(request);
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'GET')      return listClientLibs(request);
