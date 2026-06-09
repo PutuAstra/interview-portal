@@ -1180,10 +1180,15 @@ async function createInterview(request) {
   return jsonRes(interview, 201);
 }
 
-// Aggregated metrics for the Dashboard. Honors the caller's visibility scope:
-// recruiters see only their own records; admins/super-admins see everything.
+// Aggregated metrics for the Dashboard. Honors the caller's visibility scope.
+// Reads are parallelized (Promise.all) and the result is cached 60s per
+// viewer, so it loads fast even with thousands of sessions.
 async function getAnalytics(request) {
   const user = await requireAdmin(request);
+
+  const cacheKey = `analytics:cache:${user.id || 'admin'}:${user.role}:${user.viewScope || 'own'}`;
+  const cached = await kvGet(cacheKey);
+  if (cached && cached.at && (Date.now() - cached.at) < 60000) return jsonRes(cached.data);
 
   let invited = 0, pending = 0, inProgress = 0, completed = 0, consent = 0;
   let forward = 0, notForward = 0, undecided = 0;
@@ -1191,15 +1196,18 @@ async function getAnalytics(request) {
   const starDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   const perInterview = [];
 
+  // One-way: fetch interviews in parallel, keep accessible ones, then fetch
+  // each interview's sessions in parallel.
   const interviewIds = (await kvGet('interview:list')) || [];
-  for (const iid of interviewIds) {
-    const iv = await kvGet(`interview:${iid}`);
-    if (!iv || !canAccess(iv, user, 'view')) continue;
-    const tokens = (await kvGet(`interview:${iid}:sessions`)) || [];
+  const interviews = await Promise.all(interviewIds.map(id => kvGet(`interview:${id}`)));
+  const accessible = interviews.filter(iv => iv && canAccess(iv, user, 'view'));
+  const tokenLists = await Promise.all(accessible.map(iv => kvGet(`interview:${iv.id}:sessions`)));
+
+  await Promise.all(accessible.map(async (iv, idx) => {
+    const tokens = tokenLists[idx] || [];
+    const sessions = (await Promise.all(tokens.map(t => kvGet(`session:${t}`)))).filter(Boolean);
     let ivTotal = 0, ivCompleted = 0, ivForward = 0;
-    for (const t of tokens) {
-      const s = await kvGet(`session:${t}`);
-      if (!s) continue;
+    for (const s of sessions) {
       invited++; ivTotal++;
       if (s.status === 'completed') { completed++; ivCompleted++; }
       else if (s.status === 'in_progress') inProgress++;
@@ -1214,39 +1222,35 @@ async function getAnalytics(request) {
       if (s.reviewStars >= 1 && s.reviewStars <= 5) starDist[s.reviewStars]++;
     }
     perInterview.push({ title: iv.title, total: ivTotal, completed: ivCompleted, forward: ivForward });
-  }
+  }));
   perInterview.sort((a, b) => b.total - a.total);
 
-  // Two-way (direct invite) sessions
+  // Two-way (direct invite) sessions — parallel.
   const twIds = (await kvGet('tw-session:list')) || [];
+  const twSessions = (await Promise.all(twIds.map(id => kvGet(`tw-session:${id}`))))
+    .filter(s => s && canAccess(s, user, 'view'));
   let twScheduled = 0, twCompleted = 0, twCancelled = 0;
-  for (const id of twIds) {
-    const s = await kvGet(`tw-session:${id}`);
-    if (!s || !canAccess(s, user, 'view')) continue;
+  for (const s of twSessions) {
     if (s.status === 'completed') twCompleted++;
     else if (s.status === 'cancelled') twCancelled++;
     else twScheduled++;
   }
 
-  // Booking links + confirmed bookings (owner-scoped)
+  // Booking links + confirmed bookings (owner-scoped) — parallel.
   const linkTokens = (await kvGet('booking:link:list')) || [];
-  let bookings = 0, bookingLinks = 0;
-  for (const t of linkTokens) {
-    const link = await kvGet(`booking:link:${t}`);
-    if (!link || !canAccess(link, user, 'view')) continue;
-    bookingLinks++;
-    const ids = (await kvGet(`booking:link:${t}:bookings`)) || [];
-    for (const id of ids) {
-      const b = await kvGet(`booking:booking:${id}`);
-      if (b && b.status !== 'cancelled') bookings++;
-    }
-  }
+  const links = await Promise.all(linkTokens.map(t => kvGet(`booking:link:${t}`)));
+  const ownedTokens = linkTokens.filter((t, i) => links[i] && canAccess(links[i], user, 'view'));
+  const bookingIdLists = await Promise.all(ownedTokens.map(t => kvGet(`booking:link:${t}:bookings`)));
+  const allBookingIds = [...new Set(bookingIdLists.flatMap(ids => ids || []))];
+  const allBookings = await Promise.all(allBookingIds.map(id => kvGet(`booking:booking:${id}`)));
+  const bookings = allBookings.filter(b => b && b.status !== 'cancelled').length;
+  const bookingLinks = ownedTokens.length;
 
   const premium = ((await kvGet('premium:list')) || []).length;
   const completionRate  = invited ? Math.round((completed / invited) * 100) : 0;
   const avgCompleteHours = completeMsCount ? +((completeMsSum / completeMsCount) / 3600000).toFixed(1) : null;
 
-  return jsonRes({
+  const result = {
     oneWay: {
       interviews: perInterview.length, invited, pending, inProgress, completed,
       completionRate, avgCompleteHours, consent,
@@ -1256,7 +1260,10 @@ async function getAnalytics(request) {
     twoWay: { scheduled: twScheduled, completed: twCompleted, cancelled: twCancelled },
     bookings: { confirmed: bookings, links: bookingLinks },
     premium,
-  });
+  };
+
+  try { await INTERVIEW_DATA.put(cacheKey, JSON.stringify({ at: Date.now(), data: result }), { expirationTtl: 120 }); } catch {}
+  return jsonRes(result);
 }
 
 async function listInterviews(request) {
