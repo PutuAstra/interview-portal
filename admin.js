@@ -750,10 +750,10 @@ function filterAndRenderInterviews() {
 function renderInterviewCard(interview) {
   const qCount = interview.questions?.length || 0;
   const created = new Date(interview.createdAt).toLocaleDateString();
-  const c = interview._counts || { total: 0, pending: 0, completed: 0 };
+  const c = interview._counts || { total: 0, pending: 0, inProgress: 0, completed: 0 };
 
   const candidateLine = c.total > 0
-    ? `<span style="font-weight:600">${c.total} Candidate${c.total !== 1 ? 's' : ''}</span> <span class="text-muted">&nbsp;·&nbsp; ${c.pending} Pending &nbsp;·&nbsp; ${c.completed} Completed</span>`
+    ? `<span style="font-weight:600">${c.total} Candidate${c.total !== 1 ? 's' : ''}</span> <span class="text-muted">&nbsp;·&nbsp; ${c.pending} Pending &nbsp;·&nbsp; ${c.inProgress || 0} In Progress &nbsp;·&nbsp; ${c.completed} Completed</span>`
     : `<span class="text-muted">No candidates yet</span>`;
 
   return `

@@ -1146,6 +1146,7 @@ async function listInterviews(request) {
     interview._counts = {
       total: valid.length,
       pending: valid.filter(s => s.status === 'pending').length,
+      inProgress: valid.filter(s => s.status === 'in_progress').length,
       completed: valid.filter(s => s.status === 'completed').length,
     };
     return interview;
