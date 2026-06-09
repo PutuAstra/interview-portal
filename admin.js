@@ -896,7 +896,19 @@ function toggleCompareMode() {
     btn.classList.toggle('btn-primary', _compareMode);
     btn.classList.toggle('btn-ghost', !_compareMode);
   }
+  const selBtn = document.getElementById('compare-selectall-btn');
+  if (selBtn) { selBtn.style.display = _compareMode ? 'inline-flex' : 'none'; selBtn.textContent = 'Select all'; }
   filterAndRenderSessions();
+}
+
+// Toggle-select every completed candidate currently shown.
+function selectAllCompare() {
+  const boxes = [...document.querySelectorAll('#sessions-list input[type=checkbox][data-token]')];
+  if (!boxes.length) return;
+  const allChecked = boxes.every(b => b.checked);
+  boxes.forEach(b => { b.checked = !allChecked; toggleCompareToken(b.dataset.token, b.checked); });
+  const selBtn = document.getElementById('compare-selectall-btn');
+  if (selBtn) selBtn.textContent = allChecked ? 'Select all' : 'Clear all';
 }
 
 function toggleCompareToken(token, checked) {
@@ -2342,7 +2354,7 @@ function renderSessionRow(s, num) {
     : `<span style="font-size:11px;font-weight:700;color:var(--muted)">${candidateInitials(s.candidateName)}</span>`;
 
   const compareCell = _compareMode && s.status === 'completed'
-    ? `<input type="checkbox" ${_compareTokens.has(s.token) ? 'checked' : ''}
+    ? `<input type="checkbox" data-token="${s.token}" ${_compareTokens.has(s.token) ? 'checked' : ''}
         onchange="toggleCompareToken('${s.token}', this.checked)"
         style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:auto">`
     : `<div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">${num}</div>`;
