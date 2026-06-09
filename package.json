@@ -1,0 +1,9 @@
+{
+  "name": "interview-portal",
+  "private": true,
+  "description": "CTI ZeusHire — video interview portal (static site + Cloudflare Worker API)",
+  "scripts": {
+    "check": "node --check worker.js && node --check admin.js && node --check interview.js",
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,27 @@
+name: CI
+
+# Runs on every push and PR. Catches syntax errors (the class of bug that has
+# repeatedly slipped through manual edits) and any regression in the
+# per-recruiter access-control logic, BEFORE worker.js is deployed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax-check all JavaScript
+        run: |
+          node --check worker.js
+          node --check admin.js
+          node --check interview.js
+
+      - name: Run unit tests
+        run: npm test

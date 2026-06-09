@@ -2259,6 +2259,7 @@ function filterAndRenderSessions() {
   const aiArrow     = _sessionSortCol === 'ai' ? (_sessionSortDir === 'desc' ? '↓' : '↑') : '⇅';
   const toolbar = completed.length ? `
     <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap">
+      <span title="The AI score is an assistive English-proficiency signal only. It does not screen, rank, or reject candidates automatically — every hiring decision is made by a human reviewer." style="font-size:11px;color:var(--muted);margin-right:auto;display:inline-flex;align-items:center;gap:4px;cursor:help">ⓘ AI score is advisory only — humans decide</span>
       <button class="btn btn-ghost" style="font-size:12px" onclick="sortByAI()">🤖 Sort by AI score <span>${aiArrow}</span></button>
       <button class="btn btn-outline" style="font-size:12px" id="score-all-btn" onclick="scoreAllCandidates()"${unscored ? '' : ' disabled'}>${unscored ? `🤖 Score all (${unscored})` : '✓ All scored'}</button>
     </div>` : '';
@@ -2838,6 +2839,9 @@ function renderAnalysisPanel(analysis, token) {
 
   return `
     <div id="analysis-panel">
+      <div style="font-size:11px;color:var(--muted);background:rgba(148,163,184,0.08);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:12px;line-height:1.45">
+        ⓘ This is an AI-generated <strong>assistive</strong> assessment of spoken English only. It is not a hiring decision and must not be used on its own to screen or reject a candidate — a human reviewer makes the final call.
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <h3 style="margin:0;font-size:15px">English Analysis</h3>
         <div style="display:flex;gap:8px;align-items:center">
