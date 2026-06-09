@@ -616,7 +616,7 @@ async function refreshClientLinks() {
             </div>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
-            <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--red)" title="Revoke this link" onclick="revokeClientLink('${l.clientToken}','${jsStr(l.label)}')">🗑</button>
+            <button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Revoke this link" onclick="revokeClientLink('${l.clientToken}','${jsStr(l.label)}')">🗑</button>
           </div>`;
         }).join('')
       : '<div class="empty-state" style="padding:16px">No client links yet.</div>';
