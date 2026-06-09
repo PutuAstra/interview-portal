@@ -2261,8 +2261,8 @@ function filterAndRenderSessions() {
 
   // Compare mode: a Select-all bar at the top of the list, by the checkboxes.
   const selectAllBar = _compareMode ? `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 14px;margin-bottom:6px">
-      <input type="checkbox" id="compare-selectall-box" onclick="selectAllCompare()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+    <div style="display:grid;grid-template-columns:32px 1fr;gap:12px;align-items:center;padding:6px 16px;margin-bottom:6px">
+      <input type="checkbox" id="compare-selectall-box" onclick="selectAllCompare()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:auto">
       <label for="compare-selectall-box" style="font-size:13px;cursor:pointer;color:var(--text)">Select all</label>
     </div>` : '';
 
