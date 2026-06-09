@@ -963,7 +963,7 @@ async function openCompareModal(tokens) {
           : '<span style="color:var(--muted);font-size:11px">No decision</span>';
 
         return `
-          <div style="flex:1;min-width:0;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          <div style="flex:1 1 200px;min-width:200px;max-width:260px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
             <div style="padding:10px 12px;background:var(--card);border-bottom:1px solid var(--border)">
               <div style="font-size:13px;font-weight:700">${esc(s.candidateName)}</div>
               <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
