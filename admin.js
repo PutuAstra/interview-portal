@@ -927,6 +927,16 @@ function launchCompare() {
   openCompareModal(tokens);
 }
 
+// Play / pause every candidate video in the comparison modal at once.
+function playAllCompare() {
+  const vids = document.querySelectorAll('#compare-content video');
+  if (!vids.length) return;
+  vids.forEach(v => { try { v.muted = false; v.currentTime = 0; const p = v.play(); if (p) p.catch(() => {}); } catch (e) {} });
+}
+function pauseAllCompare() {
+  document.querySelectorAll('#compare-content video').forEach(v => { try { v.pause(); } catch (e) {} });
+}
+
 async function openCompareModal(tokens) {
   openModal('modal-compare');
   const content = document.getElementById('compare-content');
@@ -995,6 +1005,10 @@ async function openCompareModal(tokens) {
         <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span style="font-size:12px;color:var(--muted);font-weight:600">Question:</span>
           ${tabsHTML}
+          <span style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="playAllCompare()">▶ Play all</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px" onclick="pauseAllCompare()">⏸ Pause all</button>
+          </span>
         </div>
         <div style="padding:16px 20px">
           ${questions[activeQ] ? `<p style="font-size:13px;font-weight:600;margin:0 0 14px">${esc(questions[activeQ].text)}</p>` : ''}
