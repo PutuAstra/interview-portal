@@ -896,19 +896,18 @@ function toggleCompareMode() {
     btn.classList.toggle('btn-primary', _compareMode);
     btn.classList.toggle('btn-ghost', !_compareMode);
   }
-  const selBtn = document.getElementById('compare-selectall-btn');
-  if (selBtn) { selBtn.style.display = _compareMode ? 'inline-flex' : 'none'; selBtn.textContent = 'Select all'; }
   filterAndRenderSessions();
 }
 
-// Toggle-select every completed candidate currently shown.
+// Select/clear every completed candidate currently shown (driven by the
+// master checkbox at the top of the list).
 function selectAllCompare() {
+  const master = document.getElementById('compare-selectall-box');
   const boxes = [...document.querySelectorAll('#sessions-list input[type=checkbox][data-token]')];
   if (!boxes.length) return;
-  const allChecked = boxes.every(b => b.checked);
-  boxes.forEach(b => { b.checked = !allChecked; toggleCompareToken(b.dataset.token, b.checked); });
-  const selBtn = document.getElementById('compare-selectall-btn');
-  if (selBtn) selBtn.textContent = allChecked ? 'Select all' : 'Clear all';
+  const check = master ? master.checked : !boxes.every(b => b.checked);
+  boxes.forEach(b => { b.checked = check; toggleCompareToken(b.dataset.token, b.checked); });
+  if (master) master.checked = check;
 }
 
 function toggleCompareToken(token, checked) {
@@ -2246,7 +2245,14 @@ function filterAndRenderSessions() {
       <button class="btn btn-outline" style="font-size:12px" id="score-all-btn" onclick="scoreAllCandidates()"${unscored ? '' : ' disabled'}>${unscored ? `🤖 Score all (${unscored})` : '✓ All scored'}</button>
     </div>` : '';
 
-  el.innerHTML = toolbar + list.map((s, i) => renderSessionRow(s, i + 1)).join('');
+  // Compare mode: a Select-all bar at the top of the list, by the checkboxes.
+  const selectAllBar = _compareMode ? `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;margin-bottom:8px;border:1px solid var(--accent);border-radius:8px;background:rgba(176,26,24,0.07)">
+      <input type="checkbox" id="compare-selectall-box" onclick="selectAllCompare()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+      <label for="compare-selectall-box" style="font-size:12px;cursor:pointer;color:var(--text)">Select all completed candidates in view</label>
+    </div>` : '';
+
+  el.innerHTML = toolbar + selectAllBar + list.map((s, i) => renderSessionRow(s, i + 1)).join('');
   // Lazy-load profile photos for candidates who uploaded one
   list.filter(s => s.profilePhotoItemId).forEach(s => loadAvatarPhoto(s.token));
 }
