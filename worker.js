@@ -148,6 +148,9 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'consent' && m === 'POST') {
     return recordConsent(seg[1], request);
   }
+  if (seg[0] === 'session' && seg[2] === 'verify-identity' && m === 'POST') {
+    return recordVerify(seg[1], request);
+  }
   if (seg[0] === 'session' && seg[2] === 'upload' && m === 'POST') {
     return uploadVideo(seg[1], parseInt(seg[3]), request);
   }
@@ -1365,13 +1368,22 @@ async function getSession(token, request) {
     brandLogoUrl:    settings.brandLogoUrl    || '',
   };
 
+  // Candidate identity verification config (Google Sign-In). Only "enabled"
+  // when an admin has turned it on AND set a Google Client ID. clientId is a
+  // public OAuth identifier, safe to send to the candidate's browser.
+  const verify = {
+    enabled:  !!(settings.requireCandidateIdentity && settings.googleClientId),
+    clientId: settings.googleClientId || '',
+    done:     !!(session.identity && session.identity.verifiedAt),
+  };
+
   // Authenticated staff (SSO session OR break-glass admin key) get the FULL
   // session — the review modal needs responses, decision, analysis, etc.
   // Visibility scope is enforced so a recruiter can't read another's candidate.
   const user = request ? await resolveUser(request) : null;
   if (user) {
     if (!canAccess(session, user, 'view')) return jsonRes({ error: 'Forbidden' }, 403);
-    return jsonRes({ session, interview, branding });
+    return jsonRes({ session, interview, branding, verify });
   }
 
   // PUBLIC (token-only, candidate browser): expose ONLY the fields the candidate
@@ -1392,7 +1404,42 @@ async function getSession(token, request) {
     ...interview,
     questions: (interview.questions || []).map(({ correctIndex, ...q }) => q),
   } : interview;
-  return jsonRes({ session: publicSession, interview: publicInterview, branding });
+  return jsonRes({ session: publicSession, interview: publicInterview, branding, verify });
+}
+
+// Candidate identity verification: validate a Google Sign-In ID token, check
+// whether the verified email matches the invited candidate, and stamp the
+// result on the session. Token-based (no admin auth) — the candidate calls it.
+async function recordVerify(token, request) {
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  const { credential } = await request.json().catch(() => ({}));
+  if (!credential) return jsonRes({ error: 'Missing credential' }, 400);
+
+  const settings = (await kvGet('recruiter:settings')) || {};
+  let info;
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential));
+    if (!r.ok) return jsonRes({ error: 'Invalid Google token' }, 400);
+    info = await r.json();
+  } catch (e) {
+    return jsonRes({ error: 'Could not reach Google to verify token' }, 502);
+  }
+
+  // The token must have been issued for OUR client, and the email confirmed.
+  if (settings.googleClientId && info.aud !== settings.googleClientId) {
+    return jsonRes({ error: 'Token was not issued for this app' }, 400);
+  }
+  if (info.email_verified !== true && info.email_verified !== 'true') {
+    return jsonRes({ error: 'Google has not verified this email' }, 400);
+  }
+
+  const verifiedEmail = String(info.email || '').toLowerCase();
+  const invitedEmail  = String(session.candidateEmail || '').toLowerCase();
+  const matched = !!invitedEmail && verifiedEmail === invitedEmail;
+  session.identity = { email: verifiedEmail, name: info.name || '', matched, verifiedAt: Date.now() };
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true, matched, email: verifiedEmail });
 }
 
 // ─────────────────────────────────────────────────────────────

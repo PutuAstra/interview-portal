@@ -2571,6 +2571,13 @@ function renderSessionRow(s, num) {
     mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length} · ${Math.round(p * 100)}%</span>`;
   }
 
+  // Identity-verification chip (candidate Google sign-in).
+  const idHTML = (s.identity && s.identity.verifiedAt)
+    ? (s.identity.matched
+        ? `<span title="Identity verified as ${esc(s.identity.email)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(22,163,74,0.5);color:#16a34a;background:rgba(22,163,74,0.12);white-space:nowrap">🪪 Verified</span>`
+        : `<span title="Identity MISMATCH — signed in as ${esc(s.identity.email)}, differs from the invited email" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(220,38,38,0.5);color:#dc2626;background:rgba(220,38,38,0.12);white-space:nowrap">⚠ ID mismatch</span>`)
+    : '';
+
   // Premium Talent chip.
   const premHTML = s.premium
     ? `<span title="In Premium Talent (${esc(s.premium.status)}) — ${esc(s.premium.category)} / ${esc(s.premium.department)} / ${esc(s.premium.role)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(245,158,11,0.5);color:#f59e0b;background:rgba(245,158,11,0.12);white-space:nowrap">⭐ Premium${s.premium.status === 'Taken' ? ' · Taken' : ''}</span>`
@@ -2592,7 +2599,7 @@ function renderSessionRow(s, num) {
         <div style="min-width:0">
           <div style="display:flex;align-items:center;gap:8px;min-width:0">
             <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.candidateName)}</span>
-            ${(integrityHTML || aiHTML || mcqHTML || premHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center">${integrityHTML}${aiHTML}${mcqHTML}${premHTML}${fbHTML}</span>` : ''}
+            ${(integrityHTML || aiHTML || mcqHTML || idHTML || premHTML || fbHTML) ? `<span style="display:flex;gap:4px;flex-shrink:0;align-items:center;flex-wrap:wrap">${integrityHTML}${aiHTML}${mcqHTML}${idHTML}${premHTML}${fbHTML}</span>` : ''}
           </div>
           <div class="text-muted" style="font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.candidateEmail ? esc(s.candidateEmail) : ''}${s.expiresAt ? ` <span style="color:${Date.now() > s.expiresAt ? 'var(--red)' : 'var(--muted)'}">· ⏰ ${new Date(s.expiresAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>` : ''}</div>
         </div>
@@ -3183,6 +3190,10 @@ async function openReview(token, candidateName) {
       ? `<div style="margin-top:8px;font-size:11px;color:var(--muted)">📝 Consent recorded ${new Date(session.consentedAt).toLocaleString()}${session.consentVersion ? ` · v${esc(session.consentVersion)}` : ''}</div>`
       : `<div style="margin-top:8px;font-size:11px;color:var(--muted)">📝 Consent: not recorded (pre-dates consent capture)</div>`;
 
+    const identityHTML = (session.identity && session.identity.verifiedAt)
+      ? `<div style="margin-top:6px;font-size:11px;color:${session.identity.matched ? '#16a34a' : '#d97706'}">🪪 Identity ${session.identity.matched ? 'verified' : '⚠ MISMATCH'} — signed in as ${esc(session.identity.email)} (${new Date(session.identity.verifiedAt).toLocaleString()})</div>`
+      : '';
+
     const analysisSection = cachedAnalysis?.notFound
       ? `<div style="margin-top:8px;text-align:center">
            <button class="btn btn-primary" onclick="runAnalysis('${token}')" id="analyze-btn">🤖 Analyze English Proficiency</button>
@@ -3303,6 +3314,7 @@ async function openReview(token, candidateName) {
           ${reviewerHTML}
           ${proctoringHTML}
           ${consentHTML}
+          ${identityHTML}
         </div>
         <div style="flex-shrink:0;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
           ${analysisSection}
@@ -5231,6 +5243,18 @@ function renderBrandingContent() {
       </div>
 
       <div class="card" style="margin-top:16px;padding:16px">
+        <h3 style="margin-top:0">🪪 Candidate Identity Verification</h3>
+        <p class="text-muted text-sm" style="margin-top:0">Require candidates to sign in with <strong>Google</strong> before starting, to confirm they are who you invited. A mismatch with the invited email is allowed but flagged in the candidate list/review. Leave off for a frictionless link-only flow.</p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px">
+          <input type="checkbox" id="require-identity" ${s.requireCandidateIdentity ? 'checked' : ''} />
+          Require Google identity verification
+        </label>
+        <label style="font-size:12px;color:var(--muted)">Google OAuth Client ID</label>
+        <input type="text" id="google-client-id" value="${esc(s.googleClientId || '')}" placeholder="…apps.googleusercontent.com" style="width:100%;margin-top:4px" />
+        <p class="text-muted text-sm" style="margin-top:6px">Create it in Google Cloud Console → Credentials → OAuth client ID (Web), with origin <code>${esc(location.origin)}</code>. Verification only activates when this is set <em>and</em> the box above is checked.</p>
+      </div>
+
+      <div class="card" style="margin-top:16px;padding:16px">
         <h3 style="margin-top:0">🔒 Data Retention</h3>
         <p class="text-muted text-sm" style="margin-top:0">Automatically and permanently delete completed candidates and their recordings after a set period (privacy/compliance). Premium Talent candidates are never auto-deleted. <strong>0 = keep forever (off).</strong></p>
         <label style="font-size:12px;color:var(--muted)">Delete completed candidates after</label>
@@ -5285,8 +5309,10 @@ async function saveBrandingSettings() {
   const outcomeRejSubject = document.getElementById('em-rej-subject')?.value.trim() || '';
   const outcomeRejBody    = document.getElementById('em-rej-body')?.value.trim()    || '';
   const retentionDays     = parseInt(document.getElementById('retention-days')?.value, 10) || 0;
+  const requireCandidateIdentity = !!document.getElementById('require-identity')?.checked;
+  const googleClientId    = (document.getElementById('google-client-id')?.value || '').trim();
   try {
-    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody, retentionDays });
+    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody, retentionDays, requireCandidateIdentity, googleClientId });
     _brandingSettings = updated;
     toast('Branding saved!', 'success');
     renderBrandingContent();

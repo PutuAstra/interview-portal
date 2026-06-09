@@ -9,6 +9,8 @@ const WORKER_URL = 'https://interview-api.putuastrawijaya.workers.dev';
 let session = null;
 let interview = null;
 let branding = {};
+let verifyCfg = { enabled: false };   // candidate identity verification (Google)
+let identityVerified = false;          // set true once the candidate signs in
 let currentQ = 0;
 let retakesUsed = {}; // { [questionIndex]: number }
 let mediaStream = null;
@@ -61,6 +63,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     session   = data.session;
     interview = data.interview;
     branding  = data.branding || {};
+    verifyCfg = data.verify || { enabled: false };
 
     applyBranding(branding);
 
@@ -167,8 +170,17 @@ function showIntro() {
         </ul>
       </div>
 
+      ${verifyCfg.enabled ? `
+      <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);text-align:left">
+        <p style="font-size:13px;font-weight:600;margin:0 0 4px">Verify your identity</p>
+        <p class="text-muted" style="font-size:12px;margin:0 0 10px">Please confirm it's really you by signing in with Google before you begin.</p>
+        ${verifyCfg.done
+          ? `<p style="color:#16a34a;font-size:13px;margin:0">✓ Identity already verified</p>`
+          : `<div id="gbtn"></div><div id="gverify-status" style="font-size:12px;margin-top:8px;color:var(--muted)"></div>`}
+      </div>` : ''}
+
       <label style="display:flex;gap:9px;align-items:flex-start;text-align:left;margin-top:22px;font-size:12px;color:var(--text-2);line-height:1.5;cursor:pointer">
-        <input type="checkbox" id="consent-box" onchange="document.getElementById('start-btn').disabled=!this.checked"
+        <input type="checkbox" id="consent-box" onchange="updateStartGate()"
           style="margin-top:2px;width:17px;height:17px;flex-shrink:0;accent-color:var(--accent);cursor:pointer">
         <span>${assess
           ? 'I consent to the processing and <strong>AI-assisted review</strong> of my answers for this application. I understand a human reviewer makes the final hiring decision.'
@@ -181,17 +193,73 @@ function showIntro() {
       </button>
     </div>`;
 
-  // What to run after consent is given.
+  // What to run after consent (+ identity, if required) is given.
   _startNextAction = profileComplete()
     ? (isAssessmentOnly() ? () => showQuestion(0) : () => showSetup())
     : () => showProfileUpload();
+
+  if (verifyCfg.done) identityVerified = true;
+  if (verifyCfg.enabled && !verifyCfg.done) initGoogleVerify();
 }
 
 let _startNextAction = null;
+
+// Enable Start only when consent is checked AND (if required) identity verified.
+function updateStartGate() {
+  const consent = document.getElementById('consent-box')?.checked;
+  const idOK = !verifyCfg.enabled || identityVerified || verifyCfg.done;
+  const btn = document.getElementById('start-btn');
+  if (btn) btn.disabled = !(consent && idOK);
+}
+
 function acceptConsentAndStart() {
   // Record consent (fire-and-forget — never block the candidate on it).
   try { fetch(`${WORKER_URL}/api/session/${token}/consent`, { method: 'POST' }).catch(() => {}); } catch (e) {}
   if (_startNextAction) _startNextAction();
+}
+
+// ── Google identity verification (candidate-side SSO) ─────────
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src; s.async = true; s.defer = true;
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function initGoogleVerify() {
+  loadScript('https://accounts.google.com/gsi/client').then(() => {
+    if (!window.google || !google.accounts || !google.accounts.id) return;
+    google.accounts.id.initialize({ client_id: verifyCfg.clientId, callback: onGoogleCredential });
+    const el = document.getElementById('gbtn');
+    if (el) google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', text: 'signin_with' });
+  }).catch(() => {
+    const s = document.getElementById('gverify-status');
+    if (s) { s.style.color = 'var(--red)'; s.textContent = 'Could not load Google Sign-In. Please refresh and try again.'; }
+  });
+}
+
+async function onGoogleCredential(resp) {
+  const s = document.getElementById('gverify-status');
+  if (s) { s.style.color = 'var(--muted)'; s.textContent = 'Verifying…'; }
+  try {
+    const r = await fetch(`${WORKER_URL}/api/session/${token}/verify-identity`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: resp.credential }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Verification failed');
+    identityVerified = true;
+    if (s) {
+      s.style.color = d.matched ? '#16a34a' : '#d97706';
+      s.textContent = d.matched ? '✓ Verified — thank you.' : '✓ Signed in (this differs from your invited email — that is okay).';
+    }
+    updateStartGate();
+  } catch (e) {
+    if (s) { s.style.color = 'var(--red)'; s.textContent = e.message || 'Verification failed.'; }
+  }
 }
 
 // ── Profile Upload Step ───────────────────────────────────────
