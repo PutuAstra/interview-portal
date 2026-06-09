@@ -896,6 +896,10 @@ function toggleCompareMode() {
     btn.classList.toggle('btn-primary', _compareMode);
     btn.classList.toggle('btn-ghost', !_compareMode);
   }
+  // Reset the launch button — it must never linger after cancelling (selection
+  // is cleared, so clicking a stale "Compare N" button would error).
+  const launch = document.getElementById('compare-launch-btn');
+  if (launch) { launch.style.display = 'none'; launch.textContent = '⚖ Compare 0 Candidates'; }
   filterAndRenderSessions();
 }
 
