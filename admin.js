@@ -575,7 +575,7 @@ function renderPremiumCard(p) {
         ${avail
           ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Taken</button>`
           : `<button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="premiumMarkAvailable('${p.token}','${jsStr(p.candidateName)}')">↩ Back to Available</button>`}
-        <button class="btn btn-ghost btn-rm" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
+        <button class="btn btn-ghost" style="padding:5px 8px;font-size:16px;line-height:1" title="Remove from Premium Talent" onclick="removeFromPremium('${p.token}')">🗑</button>
       </div>
     </div>`;
 }
