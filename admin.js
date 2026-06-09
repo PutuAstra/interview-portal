@@ -2261,9 +2261,9 @@ function filterAndRenderSessions() {
 
   // Compare mode: a Select-all bar at the top of the list, by the checkboxes.
   const selectAllBar = _compareMode ? `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;margin-bottom:8px;border:1px solid var(--accent);border-radius:8px;background:rgba(176,26,24,0.07)">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 14px;margin-bottom:6px">
       <input type="checkbox" id="compare-selectall-box" onclick="selectAllCompare()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
-      <label for="compare-selectall-box" style="font-size:12px;cursor:pointer;color:var(--text)">Select all completed candidates in view</label>
+      <label for="compare-selectall-box" style="font-size:13px;cursor:pointer;color:var(--text)">Select all</label>
     </div>` : '';
 
   el.innerHTML = toolbar + selectAllBar + list.map((s, i) => renderSessionRow(s, i + 1)).join('');
