@@ -228,6 +228,7 @@ async function route(request) {
   if (seg[0] === 'clientlib' && seg[2] === 'video'    && m === 'GET') return getClientLibVideo(seg[1], seg[3], parseInt(seg[4]));
   if (seg[0] === 'clientlib' && seg[2] === 'resume'   && m === 'GET') return getClientLibResume(seg[1], seg[3]);
   if (seg[0] === 'clientlib' && seg[2] === 'interest' && m === 'POST') return clientExpressInterest(seg[1], seg[3], request);
+  if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'interest' && m === 'DELETE') return clearPremiumInterest(seg[1], seg[4], request);
   if (seg[0] === 'clientlib' && seg[2] === 'email'    && m === 'POST') return sendClientLibEmail(seg[1], request);
   if (seg[0] === 'clientlib' && seg.length === 2      && m === 'GET') return getClientLib(seg[1]);
 
@@ -3807,6 +3808,19 @@ async function clientExpressInterest(clientToken, token, request) {
     await kvPut(`session:${token}`, session);
   }
   return jsonRes({ ok: true });
+}
+
+// Remove a client's "interested" mark from a premium candidate. With a
+// clientToken, removes just that client; without one, clears all interests.
+async function clearPremiumInterest(token, clientToken, request) {
+  await requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
+  session.premium.interests = clientToken
+    ? (session.premium.interests || []).filter(i => i.clientToken !== clientToken)
+    : [];
+  await kvPut(`session:${token}`, session);
+  return jsonRes({ ok: true, interests: session.premium.interests });
 }
 
 // ── Recruiter Settings ────────────────────────────────────────

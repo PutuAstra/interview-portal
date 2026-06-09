@@ -547,8 +547,10 @@ function renderPremiumCard(p) {
     : `<span style="font-size:10px;font-weight:700;color:var(--muted);background:rgba(148,163,184,0.12);border:1px solid var(--border);padding:2px 8px;border-radius:10px">🔒 Taken</span>`;
   const interestHTML = interests.length
     ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(99,100,167,0.1);border:1px solid rgba(99,100,167,0.3);border-radius:8px">
-         <div style="font-size:11px;font-weight:700;color:#a7a8d8;margin-bottom:3px">💬 ${interests.length} client${interests.length !== 1 ? 's' : ''} interested</div>
-         <div style="font-size:11px;color:var(--text-2)">${interests.map(i => esc(i.clientLabel || 'Client')).join(', ')}</div>
+         <div style="font-size:11px;font-weight:700;color:#a7a8d8;margin-bottom:5px">💬 ${interests.length} client${interests.length !== 1 ? 's' : ''} interested</div>
+         <div style="display:flex;flex-wrap:wrap;gap:5px">
+           ${interests.map(i => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-2);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 4px 2px 9px">${esc(i.clientLabel || 'Client')}<button class="btn btn-ghost" style="padding:0 4px;font-size:12px;line-height:1" title="Remove this interest mark" onclick="removePremiumInterest('${p.token}','${esc(i.clientToken)}','${jsStr(i.clientLabel || 'Client')}')">✕</button></span>`).join('')}
+         </div>
        </div>`
     : '';
   return `
@@ -575,6 +577,15 @@ function renderPremiumCard(p) {
         <button class="btn btn-ghost btn-rm" style="font-size:12px;padding:5px 10px;color:var(--red)" onclick="removeFromPremium('${p.token}')">Remove</button>
       </div>
     </div>`;
+}
+
+async function removePremiumInterest(token, clientToken, label) {
+  if (!confirm(`Remove "${label}"'s interest mark from this candidate?`)) return;
+  try {
+    await apiJSON('DELETE', `/api/session/${token}/premium/interest/${clientToken}`);
+    toast('Interest removed', 'success');
+    loadPremium();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function premiumMarkTaken(token, name) {
