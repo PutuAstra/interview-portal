@@ -538,10 +538,11 @@
     </div>
     <p class="text-muted text-sm mb-16">Each link lets a client browse only <strong>Available</strong> premium talent (filter by category/department/role) and mark <strong>Interested</strong>. No login required.</p>
     <div class="form-group">
-      <label>New client link</label>
-      <input type="text" id="clientlink-label" placeholder="Label — e.g. Royal Caribbean — Jakarta" style="width:100%;margin-bottom:8px;box-sizing:border-box" />
+      <label>Client Name</label>
+      <input type="text" id="clientlink-label" placeholder="e.g. Royal Caribbean — Jakarta" style="width:100%;margin-bottom:10px;box-sizing:border-box" />
+      <label>Client Email <span style="text-transform:none;font-weight:400;color:var(--muted)">(optional — emails the link on create)</span></label>
       <div style="display:flex;gap:8px">
-        <input type="text" id="clientlink-email" placeholder="Client email (optional — emails the link on create)" style="flex:1" />
+        <input type="text" id="clientlink-email" placeholder="client@example.com" style="flex:1" />
         <button class="btn btn-primary" onclick="createClientLinkFromModal()" style="white-space:nowrap">+ Create</button>
       </div>
     </div>
