@@ -31,6 +31,7 @@ let _reviewStars = 0;
 let _sessionSortCol = null;
 let _sessionSortDir = 'desc';
 let _scriptClients = [];
+let _lastFilteredSessions = []; // candidates currently shown (for CSV export)
 let _currentUser = null;     // { name, email, role, breakGlass }
 let _isSuperAdmin = false;
 
@@ -1016,6 +1017,39 @@ function toggleCompareMode() {
   const launch = document.getElementById('compare-launch-btn');
   if (launch) { launch.style.display = 'none'; launch.textContent = '⚖ Compare 0 Candidates'; }
   filterAndRenderSessions();
+}
+
+// Export the currently-shown (filtered + sorted) candidates as CSV.
+function exportCandidatesCSV() {
+  const rows = (_lastFilteredSessions && _lastFilteredSessions.length) ? _lastFilteredSessions : _allSessions;
+  if (!rows || !rows.length) return toast('No candidates to export', 'warning');
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const day = ms => ms ? new Date(ms).toISOString().slice(0, 10) : '';
+  const header = ['#', 'Name', 'Email', 'Status', 'Invited', 'Completed', 'Decision', 'Stars', 'AI score', 'Consent'];
+  const lines = [header.join(',')];
+  rows.forEach((s, i) => {
+    lines.push([
+      i + 1,
+      q(s.candidateName),
+      q(s.candidateEmail || ''),
+      q(s.status || ''),
+      q(day(s.createdAt)),
+      q(day(s.completedAt)),
+      q(s.reviewDecision || ''),
+      q(s.reviewStars || ''),
+      q(s.aiScore ?? ''),
+      q(s.consentedAt ? 'yes' : ''),
+    ].join(','));
+  });
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const name = (document.getElementById('modal-interview-title')?.textContent || 'candidates').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  a.href = url;
+  a.download = `${name}-candidates.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length} candidate${rows.length !== 1 ? 's' : ''}`, 'success');
 }
 
 // Select/clear every completed candidate currently shown (driven by the
@@ -2386,6 +2420,7 @@ function filterAndRenderSessions() {
       <label for="compare-selectall-box" style="font-size:13px;cursor:pointer;color:var(--text)">Select all</label>
     </div>` : '';
 
+  _lastFilteredSessions = list;
   el.innerHTML = toolbar + selectAllBar + list.map((s, i) => renderSessionRow(s, i + 1)).join('');
   // Lazy-load profile photos for candidates who uploaded one
   list.filter(s => s.profilePhotoItemId).forEach(s => loadAvatarPhoto(s.token));
