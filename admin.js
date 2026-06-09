@@ -2800,6 +2800,30 @@ async function deleteCompletedSession(token, name) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+// Bulk reminder: email every PENDING candidate in this interview at once.
+async function remindAllPending() {
+  const targets = (_allSessions || []).filter(s => s.status === 'pending' && s.candidateEmail);
+  if (!targets.length) return toast('No pending candidates with an email to remind', 'warning');
+  if (!confirm(`Send a reminder email now to all ${targets.length} pending candidate(s)?`)) return;
+
+  let done = 0, failed = 0;
+  const total = targets.length;
+  const queue = [...targets];
+  toast(`Sending reminders… 0/${total}`, 'info');
+
+  const worker = async () => {
+    while (queue.length) {
+      const s = queue.shift();
+      try { await apiJSON('POST', `/api/session/${s.token}/remind`); done++; }
+      catch { failed++; }
+      toast(`Sending reminders… ${done + failed}/${total}`, 'info');
+    }
+  };
+  // 4 in parallel to stay well within rate limits while finishing quickly.
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  toast(`Reminders sent: ${done}${failed ? ` · ${failed} failed` : ''}`, failed ? 'warning' : 'success');
+}
+
 async function remindSession(token, name, btn) {
   if (!confirm(`Send a reminder email to ${name} now?`)) return;
   const prev = btn ? btn.textContent : null;
