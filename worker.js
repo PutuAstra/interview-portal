@@ -154,6 +154,9 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'upload' && m === 'POST') {
     return uploadVideo(seg[1], parseInt(seg[3]), request);
   }
+  if (seg[0] === 'session' && seg[2] === 'upload-audio' && m === 'POST') {
+    return uploadAnswerAudio(seg[1], parseInt(seg[3]), request);
+  }
   if (seg[0] === 'session' && seg[2] === 'answer' && m === 'POST') {
     return submitWrittenAnswer(seg[1], parseInt(seg[3]), request);
   }
@@ -1668,6 +1671,52 @@ async function uploadVideo(token, qIndex, request) {
   return jsonRes({ ok: true, webUrl });
 }
 
+const MAX_AUDIO_BYTES = 30 * 1024 * 1024; // 30 MB — audio-only is tiny in practice
+
+// Store the tiny audio-only track for an answer, used ONLY for transcription
+// (Whisper's 25 MB cap is easily blown by full video). Public (token-only),
+// mirrors uploadVideo's guards. The video remains the client-facing artifact.
+async function uploadAnswerAudio(token, qIndex, request) {
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  if (sessionExpired(session)) return jsonRes({ error: 'This interview link has expired' }, 403);
+
+  const interview = await kvGet(`interview:${session.interviewId}`);
+  const qCount = interview?.questions?.length || 0;
+  if (!Number.isInteger(qIndex) || qIndex < 0 || (qCount && qIndex >= qCount)) {
+    return jsonRes({ error: 'Invalid question index' }, 400);
+  }
+
+  const declared = parseInt(request.headers.get('Content-Length') || '0', 10);
+  if (declared && declared > MAX_AUDIO_BYTES) return jsonRes({ error: 'Audio too large' }, 413);
+
+  const blob = await request.arrayBuffer();
+  if (!blob.byteLength)                 return jsonRes({ error: 'Empty upload' }, 400);
+  if (blob.byteLength > MAX_AUDIO_BYTES) return jsonRes({ error: 'Audio too large' }, 413);
+
+  const safeName   = session.candidateName.replace(/[^a-zA-Z0-9 _-]/g, '').trim();
+  const shortToken = token.slice(0, 8);
+  const filePath   = `CTI Interviews/${interview?.title || 'Interview'}/${safeName} (${shortToken})/Q${qIndex + 1}-audio.webm`;
+
+  let audioItemId = null;
+  try {
+    const accessToken = await getAccessToken();
+    const fileItem = await uploadToOneDrive(filePath, blob, accessToken, 'audio/webm');
+    audioItemId = fileItem.id;
+  } catch (e) {
+    return jsonRes({ error: 'Audio upload failed: ' + e.message }, 500);
+  }
+
+  // Attach to the matching response (create a stub if the video isn't recorded yet).
+  session.responses = session.responses || [];
+  const existing = session.responses.find(r => r.questionIndex === qIndex);
+  if (existing) existing.audioItemId = audioItemId;
+  else session.responses.push({ questionIndex: qIndex, audioItemId, uploadedAt: Date.now() });
+  await kvPut(`session:${token}`, session);
+
+  return jsonRes({ ok: true });
+}
+
 // Store a written (text) or multiple-choice answer. Public (token-only), mirrors
 // uploadVideo's guards. MCQ answers are auto-scored against the question's
 // correctIndex when one was set.
@@ -1830,7 +1879,10 @@ async function purgeSessionMedia(s) {
   try {
     const at = await getAccessToken();
     const ids = [];
-    for (const r of (s.responses || [])) if (r.driveItemId) ids.push(r.driveItemId);
+    for (const r of (s.responses || [])) {
+      if (r.driveItemId) ids.push(r.driveItemId);
+      if (r.audioItemId) ids.push(r.audioItemId);
+    }
     if (s.resumeItemId) ids.push(s.resumeItemId);
     if (s.profilePhotoItemId) ids.push(s.profilePhotoItemId);
     for (const id of ids) {
@@ -2607,7 +2659,7 @@ async function analyzeSession(token, request) {
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
 
-  const responses = (session.responses || []).filter(r => r.driveItemId);
+  const responses = (session.responses || []).filter(r => r.audioItemId || r.driveItemId);
   if (!responses.length) return jsonRes({ error: 'No recordings found for this session.' }, 400);
 
   const interview  = await kvGet(`interview:${session.interviewId}`);
@@ -2615,21 +2667,25 @@ async function analyzeSession(token, request) {
   const accessToken = await getAccessToken();
 
   // ── Step 1: resolve @microsoft.graph.downloadUrl for every response ──
+  // Prefer the compact audio-only file (tiny, never hits Whisper's 25 MB cap);
+  // fall back to the full video for answers recorded before audio capture.
   const downloadItems = await Promise.all(responses.map(async r => {
+    const itemId  = r.audioItemId || r.driveItemId;
+    const isAudio = !!r.audioItemId;
     try {
       const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${r.driveItemId}`,
+        `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${itemId}`,
         { headers: { 'Authorization': `Bearer ${accessToken}` } }
       );
       const item = await res.json();
-      return { qIndex: r.questionIndex, url: item['@microsoft.graph.downloadUrl'] || null };
+      return { qIndex: r.questionIndex, url: item['@microsoft.graph.downloadUrl'] || null, isAudio };
     } catch {
-      return { qIndex: r.questionIndex, url: null };
+      return { qIndex: r.questionIndex, url: null, isAudio };
     }
   }));
 
-  // ── Step 2: download each video + transcribe via Groq Whisper (parallel) ──
-  const transcripts = await Promise.all(downloadItems.map(async ({ qIndex, url }) => {
+  // ── Step 2: download each recording + transcribe via Groq Whisper (parallel) ──
+  const transcripts = await Promise.all(downloadItems.map(async ({ qIndex, url, isAudio }) => {
     const qText = questions[qIndex]?.text || `Question ${qIndex + 1}`;
 
     if (!url) {
@@ -2642,9 +2698,10 @@ async function analyzeSession(token, request) {
       }
       const blob = await videoRes.blob();
 
-      // Groq Whisper limit is 25 MB
+      // Groq Whisper limit is 25 MB. Audio-only files stay well under it; only
+      // legacy video-only answers (recorded before audio capture) can exceed it.
       if (blob.size > 24 * 1024 * 1024) {
-        return { qIndex, qText, transcript: '[Recording too large to transcribe (>24 MB)]', error: true };
+        return { qIndex, qText, transcript: '[Recording too large to transcribe — please re-record this answer]', error: true };
       }
 
       const form = new FormData();

@@ -16,6 +16,8 @@ let retakesUsed = {}; // { [questionIndex]: number }
 let mediaStream = null;
 let recorder = null;
 let chunks = [];
+let audioRecorder = null;   // parallel audio-only recorder (tiny file for transcription)
+let audioChunks = [];
 let recordingTimer = null;
 let timeLeft = 0;
 let proctoringLog = [];   // [{type, questionIndex, timestamp}]
@@ -1405,6 +1407,7 @@ async function startRecording() {
   await acquireMic(); // guarantee the mic is live before capturing
   attachProctoringListeners();
   chunks = [];
+  audioChunks = [];
 
   // Prefer the watermarked canvas stream (keeps CTI branding + background blur
   // baked into the saved video). But mobile browsers throttle requestAnimationFrame
@@ -1435,6 +1438,20 @@ async function startRecording() {
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
   recorder.onstop = handleRecordingStop;
   recorder.start(1000);
+
+  // Parallel AUDIO-ONLY recorder: a tiny file used solely for transcription.
+  // Whisper caps uploads at 25 MB and a full 720p video easily exceeds that on
+  // longer answers — audio-only Opus at 24 kbps stays a few hundred KB.
+  audioRecorder = null;
+  try {
+    if (micTrack) {
+      const audioOnly = new MediaStream([micTrack]);
+      const aMime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+      audioRecorder = new MediaRecorder(audioOnly, aMime ? { mimeType: aMime, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 });
+      audioRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+      audioRecorder.start(1000);
+    }
+  } catch (e) { audioRecorder = null; /* fall back to video transcription */ }
 
   // Show timer
   timeLeft = q.duration;
@@ -1481,6 +1498,7 @@ function updateTimerDisplay() {
 function stopRecording() {
   clearInterval(recordingTimer);
   if (recorder?.state !== 'inactive') recorder.stop();
+  try { if (audioRecorder && audioRecorder.state !== 'inactive') audioRecorder.stop(); } catch (e) {}
 }
 
 async function handleRecordingStop() {
@@ -1501,6 +1519,7 @@ async function handleRecordingStop() {
       body: blob,
     });
     if (!res.ok) throw new Error('Upload failed');
+    await uploadAnswerAudio();   // best-effort; never blocks the answer
     clearOverlay();
     showAfterRecording();
   } catch {
@@ -1511,6 +1530,21 @@ async function handleRecordingStop() {
         <button class="btn btn-primary" onclick="retryUpload()">Retry</button>
       </div>`);
   }
+}
+
+// Upload the tiny audio-only track for this answer (for transcription). Silent,
+// best-effort: if it fails or isn't supported, analysis falls back to the video.
+async function uploadAnswerAudio() {
+  try {
+    if (!audioChunks.length) return;
+    const aBlob = new Blob(audioChunks, { type: (audioRecorder && audioRecorder.mimeType) || 'audio/webm' });
+    if (!aBlob.size) return;
+    await fetch(`${WORKER_URL}/api/session/${token}/upload-audio/${currentQ}`, {
+      method: 'POST',
+      headers: { 'Content-Type': aBlob.type || 'audio/webm' },
+      body: aBlob,
+    });
+  } catch (e) { /* ignore — video transcription remains the fallback */ }
 }
 
 async function retryUpload() {
@@ -1528,6 +1562,7 @@ async function retryUpload() {
       body: blob,
     });
     if (!res.ok) throw new Error('Upload failed');
+    await uploadAnswerAudio();
     clearOverlay();
     showAfterRecording();
   } catch {
