@@ -3850,9 +3850,10 @@ ${sourceText}
 Output EXACTLY this structure (plain text, no markdown headings):
 - A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area).
 - Then a blank line.
-- Then 3–5 short bullet points, each on its OWN line starting with "• " (key skills, notable experience, education). Keep each bullet under ~15 words.
+- Then 3–6 short bullet points, each on its OWN line starting with "• ". Keep each bullet under ~18 words.
+  IMPORTANT: include the NAMES of past employers / properties / companies / ships / hotels / restaurants where they worked, with the role and (if stated) duration — e.g. "• Pastry Chef at Carnival Cruise Line (2 yrs)". Then add bullets for key skills and education.
 
-Keep the whole thing under ~130 words. Write in third person, based ONLY on the source — do not invent facts.
+Keep the whole thing under ~150 words. Write in third person, based ONLY on the source — do not invent facts; if a property/employer name isn't in the source, don't make one up.
 STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details. Use ONLY the bullet character "• " (never ❖ or *). Output only the overview.`;
 
   let text = '';
