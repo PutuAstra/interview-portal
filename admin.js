@@ -637,13 +637,27 @@ async function _extractImage(buf, mime) {
   return data.text || '';
 }
 
+// HEIC/HEIF (iPhone photos) can't be decoded by the browser or Tesseract, so
+// convert to JPEG first, then OCR.
+async function _extractHeic(buf) {
+  const heic2any = await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js', () => window.heic2any);
+  let out = await heic2any({ blob: new Blob([buf], { type: 'image/heic' }), toType: 'image/jpeg', quality: 0.92 });
+  if (Array.isArray(out)) out = out[0];
+  return _extractImage(await out.arrayBuffer(), 'image/jpeg');
+}
+
 // Detect the résumé type by magic bytes (reliable regardless of content-type),
 // then extract plain text in the browser. statusCb reports the active step.
 async function extractResumeText(token, statusCb) {
   const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: authHeaders() });
   if (!res.ok) throw new Error('No résumé on file for this candidate.');
   const buf = await res.arrayBuffer();
-  const sig = Array.from(new Uint8Array(buf).slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const bytes = new Uint8Array(buf);
+  const sig = Array.from(bytes.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const ascii = (start, len) => Array.from(bytes.slice(start, start + len)).map(b => String.fromCharCode(b)).join('');
+  // HEIC/HEIF are ISO-BMFF containers: "ftyp" box at offset 4 + a heic-family brand.
+  const isHeic = ascii(4, 4) === 'ftyp' &&
+    ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1', 'heif'].includes(ascii(8, 4).toLowerCase());
   let text;
   if (sig.startsWith('25504446')) {            // %PDF
     statusCb && statusCb('Reading the PDF résumé…');
@@ -651,6 +665,9 @@ async function extractResumeText(token, statusCb) {
   } else if (sig.startsWith('504b0304')) {      // PK.. (zip = .docx)
     statusCb && statusCb('Reading the Word résumé…');
     text = await _extractDocx(buf);
+  } else if (isHeic) {                          // HEIC/HEIF (iPhone)
+    statusCb && statusCb('Converting the HEIC photo, then OCR — this can take ~20s…');
+    text = await _extractHeic(buf);
   } else if (sig.startsWith('ffd8ff')) {        // JPEG
     statusCb && statusCb('Reading the image résumé (OCR — this can take ~15s)…');
     text = await _extractImage(buf, 'image/jpeg');
@@ -660,7 +677,7 @@ async function extractResumeText(token, statusCb) {
   } else if (sig.startsWith('d0cf11e0')) {      // legacy OLE .doc
     throw new Error('Old .doc format can\'t be read here. Save it as PDF or .docx, or type the overview manually.');
   } else {
-    throw new Error('Unsupported résumé format. Use PDF, .docx, or a JPG/PNG image.');
+    throw new Error('Unsupported résumé format. Use PDF, .docx, or a JPG/PNG/HEIC image.');
   }
   return (text || '').replace(/\s+/g, ' ').trim();
 }

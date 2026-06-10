@@ -2815,7 +2815,7 @@ async function uploadResume(token, request) {
 
     const fileName    = file.name || 'resume.pdf';
     const ext         = fileName.split('.').pop().toLowerCase() || 'pdf';
-    const mimeMap     = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
+    const mimeMap     = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif' };
     const contentType = mimeMap[ext] || 'application/octet-stream';
     const interview   = await kvGet(`interview:${session.interviewId}`);
     const safeName    = session.candidateName.replace(/[^a-zA-Z0-9 _-]/g, '').trim();
@@ -2884,7 +2884,7 @@ async function getResumeFile(token, request) {
   const fileRes = await fetch(url);
   if (!fileRes.ok) return jsonRes({ error: 'Résumé fetch failed' }, 502);
   const ext = (session.resumeExt || 'pdf').toLowerCase();
-  const ctMap = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
+  const ctMap = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif' };
   const ct = ctMap[ext] || (fileRes.headers.get('content-type') || 'application/octet-stream');
   return new Response(fileRes.body, {
     status: 200,
