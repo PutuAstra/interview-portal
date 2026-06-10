@@ -9,8 +9,8 @@
 //    CLIENT_SECRET     — Azure app client secret
 //    ONEDRIVE_USER     — OneDrive owner email for video file storage (e.g. putu.astra@cti-usa.com)
 //    EMAIL_SENDER      — Recruiter calendar owner + email from-address (corporate-recruiter@cti-usa.com)
-//    ANTHROPIC_API_KEY — Anthropic Claude API key (paid plan) — for analysis + question generation
-//    GROQ_API_KEY      — Groq API key (free) — for Whisper audio transcription
+//    GROQ_API_KEY      — Groq API key (free) — Whisper transcription + LLM
+//                        rating, question generation, and premium overviews
 //
 //  Required KV binding (Worker Settings → Bindings → KV Namespace):
 //    INTERVIEW_DATA  → interview-data
@@ -917,11 +917,30 @@ async function listTemplates(request) {
   return jsonRes(QUESTION_TEMPLATES_DATA);
 }
 
+// Shared text LLM completion via Groq (OpenAI-compatible, free tier). Returns
+// the assistant's text. Throws on error.
+async function groqChat(prompt, maxTokens = 1024) {
+  if (typeof GROQ_API_KEY === 'undefined' || !GROQ_API_KEY) throw new Error('GROQ_API_KEY is not configured');
+  const key = (GROQ_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || ('Groq error ' + res.status));
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
 async function generateQuestions(request) {
   await requireAdmin(request);
-  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
-    return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured.' }, 500);
-  }
   const { jobTitle, jobDescription, count = 5 } = await request.json();
   if (!jobTitle) return jsonRes({ error: 'jobTitle required' }, 400);
 
@@ -936,22 +955,9 @@ Respond with ONLY valid JSON — no commentary:
 }
 Duration: 60–180s based on complexity. thinkTime: 15–30s. maxRetakes: 1.`;
 
-  const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         anthropicKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model:      'claude-3-haiku-20240307',
-      max_tokens: 1024,
-      messages:   [{ role: 'user', content: prompt }],
-    }),
-  });
-  const data = await res.json();
-  const raw = data.content?.[0]?.text || '{}';
+  let raw;
+  try { raw = await groqChat(prompt, 1024); }
+  catch (e) { return jsonRes({ error: 'AI error: ' + e.message }, 500); }
   try {
     const match = raw.match(/\{[\s\S]*\}/);
     return jsonRes(JSON.parse(match ? match[0] : raw));
@@ -2589,14 +2595,11 @@ async function createTeamsMeeting(session, organizerEmail) {
 }
 
 // ── English Analysis (One-Way Interview) ──────────────────────
-// Required Worker secrets: GROQ_API_KEY (transcription), ANTHROPIC_API_KEY (analysis)
+// Required Worker secrets: GROQ_API_KEY (transcription + rating)
 
 async function analyzeSession(token, request) {
   await requireAdmin(request);
 
-  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
-    return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured in Worker secrets.' }, 500);
-  }
   if (typeof GROQ_API_KEY === 'undefined' || !GROQ_API_KEY) {
     return jsonRes({ error: 'GROQ_API_KEY is not configured in Worker secrets.' }, 500);
   }
@@ -2719,37 +2722,14 @@ Respond with ONLY a valid JSON object — no commentary before or after:
 
 For "recommendation", output exactly one of: "strong" (clear move-forward), "consider" (borderline), or "weak" (likely not a fit) — based on overall English proficiency and the substance of the answers.`;
 
-  // Use Anthropic Claude for analysis
-  // Strip ALL non-printable characters from the key (handles invisible paste artifacts)
-  const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
-  let claudeRes;
+  // LLM rating via Groq (free). Transcription above already used Groq Whisper.
+  let rawText;
   try {
-    claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-3-haiku-20240307',
-        max_tokens: 1024,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
-  } catch (fetchErr) {
-    console.error('[analyze] Anthropic fetch error:', fetchErr.message);
-    return jsonRes({ error: 'Claude header error: ' + fetchErr.message + ' — re-enter ANTHROPIC_API_KEY in Cloudflare' }, 500);
+    rawText = await groqChat(prompt, 1024);
+  } catch (e) {
+    console.error('[analyze] Groq error:', e.message);
+    return jsonRes({ error: 'Analysis failed: ' + e.message }, 500);
   }
-
-  if (!claudeRes.ok) {
-    const e = await claudeRes.json().catch(() => ({}));
-    console.error('[analyze] Claude error:', JSON.stringify(e));
-    return jsonRes({ error: 'Analysis failed: ' + (e.error?.message || claudeRes.status) }, 500);
-  }
-
-  const claudeData = await claudeRes.json();
-  const rawText = claudeData.content?.[0]?.text || '{}';
 
   let analysis;
   try {
@@ -3831,64 +3811,44 @@ async function setPremiumOverview(token, request) {
 // store it on the premium record. Explicitly strips email/phone/address.
 async function generatePremiumOverview(token, request) {
   await requireAdmin(request);
-  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
-    return jsonRes({ error: 'ANTHROPIC_API_KEY is not configured.' }, 500);
-  }
   const session = await kvGet(`session:${token}`);
   if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
-  if (!session.resumeItemId) return jsonRes({ error: 'This candidate has no résumé to summarize. Type an overview manually.' }, 400);
-  const ext = (session.resumeExt || 'pdf').toLowerCase();
-  if (ext !== 'pdf') return jsonRes({ error: 'Auto-generate needs a PDF résumé. Type the overview manually for this candidate.' }, 400);
 
-  // Download the résumé bytes via Graph and base64-encode (chunked, safe for big buffers).
-  let b64;
-  try {
-    const at = await getAccessToken();
-    const item = await fetch(`https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${session.resumeItemId}`,
-      { headers: { 'Authorization': `Bearer ${at}` } }).then(r => r.json());
-    const url = item['@microsoft.graph.downloadUrl'];
-    if (!url) return jsonRes({ error: 'Résumé file unavailable' }, 404);
-    const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
-    let bin = '';
-    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
-    b64 = btoa(bin);
-  } catch (e) {
-    return jsonRes({ error: 'Could not read résumé: ' + e.message }, 502);
+  // Groq can't read résumé PDFs, so we build the overview from the candidate's
+  // own interview answers. The English Analysis step transcribes those answers
+  // and stores them at session:{token}:analysis — that's our source text.
+  const analysis = await kvGet(`session:${token}:analysis`);
+  const qparts = (analysis?.questions || [])
+    .map(q => {
+      const t = (q.transcript || '').trim();
+      if (!t || q.error) return '';
+      return `Q: ${q.qText || ''}\nA: ${t}`;
+    })
+    .filter(Boolean);
+
+  if (!qparts.length) {
+    return jsonRes({ error: 'No interview transcript yet. Run "English Analysis" first (it transcribes the answers), then generate — or type an overview manually.' }, 400);
   }
 
-  const prompt = `Summarize this job candidate's résumé for a hiring client, in a clean, easy-to-scan format.
+  const sourceText = qparts.join('\n\n').slice(0, 8000);
+  const prompt = `Below are a job candidate's recorded interview answers. Write a concise profile for a hiring client, in a clean, easy-to-scan format.
+
+INTERVIEW:
+${sourceText}
 
 Output EXACTLY this structure (plain text, no markdown headings):
-- A 1–2 sentence summary paragraph (who they are, total experience, strongest area).
+- A 1–2 sentence summary paragraph (who they are, apparent experience level, strongest area).
 - Then a blank line.
-- Then 3–5 short bullet points, each on its OWN line starting with "• " (key skills, notable experience, education). Keep each bullet under ~15 words.
+- Then 3–5 short bullet points, each on its OWN line starting with "• " (key skills, notable experience, communication style). Keep each bullet under ~15 words.
 
-Keep the whole thing under ~130 words. Write in third person.
+Keep the whole thing under ~130 words. Write in third person, based ONLY on what the answers reveal — do not invent facts.
 STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details. Use ONLY the bullet character "• " (never ❖ or *). Output only the overview.`;
 
-  const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
   let text = '';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
-            { type: 'text', text: prompt },
-          ],
-        }],
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) return jsonRes({ error: 'AI error: ' + (data.error?.message || res.status) }, 502);
-    text = (data.content?.[0]?.text || '').trim();
+    text = (await groqChat(prompt, 500)).trim();
   } catch (e) {
-    return jsonRes({ error: 'AI request failed: ' + e.message }, 502);
+    return jsonRes({ error: 'AI error: ' + e.message }, 502);
   }
   if (!text) return jsonRes({ error: 'AI returned no summary — try again or type one manually.' }, 502);
 
