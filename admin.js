@@ -3503,7 +3503,7 @@ async function openReview(token, candidateName) {
           ${consentHTML}
           ${identityHTML}
         </div>
-        <div style="flex-shrink:0;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
+        <div style="flex-shrink:0;max-height:42vh;overflow-y:auto;padding:14px 20px;border-top:1px solid var(--border);background:var(--card)">
           ${analysisSection}
         </div>
       </div>
