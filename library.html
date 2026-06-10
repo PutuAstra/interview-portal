@@ -128,7 +128,7 @@ function cardHTML(c) {
            ${(c.videos.length > 1) ? `<div style="font-size:11px;color:var(--muted)">+ ${c.videos.length - 1} more answer${c.videos.length - 1 !== 1 ? 's' : ''} — <a href="#" onclick="loadAllVideos('${c.token}',this);return false" style="color:var(--accent)">show all</a></div>` : ''}
            <div id="more-${c.token}"></div>`
         : `<div class="text-muted text-sm">No video answers</div>`}
-      ${c.overview ? `<div id="ov-${c.token}" style="display:none;font-size:13px;color:var(--text-2);line-height:1.55;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:4px">${esc(c.overview)}</div>` : ''}
+      ${c.overview ? `<div id="ov-${c.token}" style="display:none;font-size:13px;color:var(--text-2);line-height:1.55;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:4px">${formatOverview(c.overview)}</div>` : ''}
       <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
         ${c.overview ? `<button class="btn btn-outline" style="font-size:12px;padding:6px 12px" onclick="toggleOverview('${c.token}',this)">📋 Overview</button>` : ''}
         <button class="btn btn-primary" id="int-${c.token}" style="font-size:12px;padding:6px 14px" ${c.alreadyInterested ? 'disabled' : ''} onclick="markInterested('${c.token}','${jsAttr(c.candidateName)}')">
@@ -136,6 +136,22 @@ function cardHTML(c) {
         </button>
       </div>
     </div>`;
+}
+
+// Render the overview nicely: an intro paragraph + bullet list. Handles text
+// that uses ❖, •, *, "- " markers or newlines.
+function formatOverview(text) {
+  const raw = String(text || '').trim();
+  // Normalize all bullet markers to a single delimiter, then split.
+  const parts = raw
+    .replace(/\s*[❖•*]\s+/g, '\n')
+    .replace(/\n\s*-\s+/g, '\n')
+    .split(/\n+/).map(s => s.trim()).filter(Boolean);
+  if (parts.length <= 1) return `<p style="margin:0">${esc(raw)}</p>`;
+  const intro = parts[0];
+  const bullets = parts.slice(1);
+  return `<p style="margin:0 0 8px">${esc(intro)}</p>` +
+    `<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px">${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`;
 }
 
 function toggleOverview(token, btn) {

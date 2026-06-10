@@ -3856,7 +3856,15 @@ async function generatePremiumOverview(token, request) {
     return jsonRes({ error: 'Could not read résumé: ' + e.message }, 502);
   }
 
-  const prompt = `You are summarizing a job candidate's résumé for a hiring client. Write a concise professional overview (4–6 sentences, third person) covering their experience, key skills, education, and what makes them suitable. STRICT: do NOT include any email address, phone/mobile/home number, home address, links, or any personal contact details. Output ONLY the overview prose — no headings, no contact info.`;
+  const prompt = `Summarize this job candidate's résumé for a hiring client, in a clean, easy-to-scan format.
+
+Output EXACTLY this structure (plain text, no markdown headings):
+- A 1–2 sentence summary paragraph (who they are, total experience, strongest area).
+- Then a blank line.
+- Then 3–5 short bullet points, each on its OWN line starting with "• " (key skills, notable experience, education). Keep each bullet under ~15 words.
+
+Keep the whole thing under ~130 words. Write in third person.
+STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details. Use ONLY the bullet character "• " (never ❖ or *). Output only the overview.`;
 
   const anthropicKey = (ANTHROPIC_API_KEY || '').replace(/[^\x21-\x7E]/g, '');
   let text = '';
