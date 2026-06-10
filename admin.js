@@ -3186,6 +3186,10 @@ function renderAnalysisPanel(analysis, token) {
         <h3 style="margin:0;font-size:15px">English Analysis</h3>
         <div style="display:flex;gap:8px;align-items:center">
           ${ts ? `<span style="font-size:11px;color:var(--muted)">${ts}</span>` : ''}
+          ${(analysis.questions || []).some(q => /too large|download failed|recording unavailable/i.test(q.transcript || ''))
+            ? `<button class="btn btn-outline" id="salvage-btn" style="padding:4px 12px;font-size:12px"
+                 title="Extract the audio from the existing video in your browser, then re-analyze — for recordings made before audio capture"
+                 onclick="salvageAudio('${token}')">🛟 Salvage audio</button>` : ''}
           <button class="btn btn-outline" style="padding:4px 12px;font-size:12px"
             onclick="runAnalysis('${token}')">Re-analyze</button>
         </div>
@@ -3615,6 +3619,67 @@ async function removeFromPremium(token) {
     if (currentInterviewId) await loadSessions(currentInterviewId);
     if (document.getElementById('premium-list')) loadPremium();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// Decode a video's audio in the browser, downmix to mono + 16 kHz, and encode
+// a compact 16-bit WAV — tiny enough for Whisper's 25 MB cap. Used to salvage
+// recordings made before the candidate-side audio track existed.
+async function videoToWav(arrayBuffer) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  let decoded;
+  try { decoded = await ctx.decodeAudioData(arrayBuffer.slice(0)); }
+  finally { try { ctx.close(); } catch (e) {} }
+  const rate = 16000;
+  const frames = Math.max(1, Math.ceil(decoded.duration * rate));
+  const off = new OfflineAudioContext(1, frames, rate);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start(0);
+  const rendered = await off.startRendering();
+  const samples = rendered.getChannelData(0);
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  ws(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  let o = 44;
+  for (let i = 0; i < samples.length; i++) { const s = Math.max(-1, Math.min(1, samples[i])); view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true); o += 2; }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+// Salvage path: extract audio for every answer that has no audio track yet, then
+// re-run analysis. Works on recordings made before candidate-side audio capture.
+async function salvageAudio(token) {
+  const btn = document.getElementById('salvage-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const { session } = await fetch(`${WORKER_URL}/api/session/${token}`, { headers: authHeaders() }).then(r => r.json());
+    const targets = (session?.responses || [])
+      .filter(r => r.driveItemId && !r.audioItemId)
+      .map(r => r.questionIndex)
+      .sort((a, b) => a - b);
+    if (!targets.length) { toast('Nothing to salvage — answers already have audio.', 'info'); if (btn) btn.disabled = false; return; }
+    for (const qi of targets) {
+      if (btn) btn.textContent = `🛟 Q${qi + 1}…`;
+      const res = await fetch(`${WORKER_URL}/api/session/${token}/video-file/${qi}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`Q${qi + 1}: could not fetch video`);
+      const wav = await videoToWav(await res.arrayBuffer());
+      if (wav.size > 24 * 1024 * 1024) throw new Error(`Q${qi + 1} answer is too long to salvage (>24 MB of audio).`);
+      const up = await fetch(`${WORKER_URL}/api/session/${token}/upload-audio/${qi}`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'audio/wav' }, body: wav,
+      });
+      if (!up.ok) throw new Error(`Q${qi + 1}: audio upload failed`);
+    }
+    toast('Audio extracted — re-analyzing…', 'success');
+    await runAnalysis(token);
+  } catch (e) {
+    toast(e.message || 'Salvage failed', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '🛟 Salvage audio'; }
+  }
 }
 
 async function runAnalysis(token) {

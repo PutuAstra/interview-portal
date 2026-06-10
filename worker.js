@@ -166,6 +166,9 @@ async function route(request) {
   if (seg[0] === 'session' && seg[2] === 'video' && m === 'GET') {
     return getVideoUrl(seg[1], parseInt(seg[3]), request);
   }
+  if (seg[0] === 'session' && seg[2] === 'video-file' && m === 'GET') {
+    return getVideoFile(seg[1], parseInt(seg[3]), request);
+  }
 
   // Two-way sessions
   if (seg[0] === 'tw-sessions' && seg[1] === 'unified' && seg.length === 2 && m === 'GET') {
@@ -1694,14 +1697,20 @@ async function uploadAnswerAudio(token, qIndex, request) {
   if (!blob.byteLength)                 return jsonRes({ error: 'Empty upload' }, 400);
   if (blob.byteLength > MAX_AUDIO_BYTES) return jsonRes({ error: 'Audio too large' }, 413);
 
+  // Format from Content-Type (candidate uploads webm/Opus; browser salvage WAV).
+  const ct = (request.headers.get('Content-Type') || 'audio/webm').toLowerCase();
+  const extMap = { 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3' };
+  const audioExt  = extMap[ct.split(';')[0].trim()] || 'webm';
+  const audioMime = audioExt === 'wav' ? 'audio/wav' : (audioExt === 'webm' ? 'audio/webm' : ct.split(';')[0].trim());
+
   const safeName   = session.candidateName.replace(/[^a-zA-Z0-9 _-]/g, '').trim();
   const shortToken = token.slice(0, 8);
-  const filePath   = `CTI Interviews/${interview?.title || 'Interview'}/${safeName} (${shortToken})/Q${qIndex + 1}-audio.webm`;
+  const filePath   = `CTI Interviews/${interview?.title || 'Interview'}/${safeName} (${shortToken})/Q${qIndex + 1}-audio.${audioExt}`;
 
   let audioItemId = null;
   try {
     const accessToken = await getAccessToken();
-    const fileItem = await uploadToOneDrive(filePath, blob, accessToken, 'audio/webm');
+    const fileItem = await uploadToOneDrive(filePath, blob, accessToken, audioMime);
     audioItemId = fileItem.id;
   } catch (e) {
     return jsonRes({ error: 'Audio upload failed: ' + e.message }, 500);
@@ -1710,8 +1719,8 @@ async function uploadAnswerAudio(token, qIndex, request) {
   // Attach to the matching response (create a stub if the video isn't recorded yet).
   session.responses = session.responses || [];
   const existing = session.responses.find(r => r.questionIndex === qIndex);
-  if (existing) existing.audioItemId = audioItemId;
-  else session.responses.push({ questionIndex: qIndex, audioItemId, uploadedAt: Date.now() });
+  if (existing) { existing.audioItemId = audioItemId; existing.audioExt = audioExt; }
+  else session.responses.push({ questionIndex: qIndex, audioItemId, audioExt, uploadedAt: Date.now() });
   await kvPut(`session:${token}`, session);
 
   return jsonRes({ ok: true });
@@ -1918,6 +1927,30 @@ async function getVideoUrl(token, qIndex, request) {
   } catch (e) {
     return jsonRes({ error: 'Could not fetch video URL: ' + e.message }, 500);
   }
+}
+
+// Stream the answer video bytes back through the worker (CORS-enabled) so the
+// admin can read them with fetch() — used for browser-side audio salvage of
+// large recordings made before audio capture existed.
+async function getVideoFile(token, qIndex, request) {
+  await requireAdmin(request);
+  const session = await kvGet(`session:${token}`);
+  if (!session) return jsonRes({ error: 'Session not found' }, 404);
+  const response = (session.responses || []).find(r => r.questionIndex === qIndex);
+  if (!response?.driveItemId) return jsonRes({ error: 'Video not found' }, 404);
+  const accessToken = await getAccessToken();
+  const item = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${response.driveItemId}`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  ).then(r => r.json());
+  const url = item['@microsoft.graph.downloadUrl'];
+  if (!url) return jsonRes({ error: 'Video unavailable' }, 404);
+  const fileRes = await fetch(url);
+  if (!fileRes.ok) return jsonRes({ error: 'Video fetch failed' }, 502);
+  return new Response(fileRes.body, {
+    status: 200,
+    headers: { 'Content-Type': 'video/webm', 'Cache-Control': 'private, max-age=300' },
+  });
 }
 
 // ── Two-way session handlers ──────────────────────────────────
@@ -2672,20 +2705,21 @@ async function analyzeSession(token, request) {
   const downloadItems = await Promise.all(responses.map(async r => {
     const itemId  = r.audioItemId || r.driveItemId;
     const isAudio = !!r.audioItemId;
+    const ext     = isAudio ? (r.audioExt || 'webm') : 'webm';
     try {
       const res = await fetch(
         `https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/items/${itemId}`,
         { headers: { 'Authorization': `Bearer ${accessToken}` } }
       );
       const item = await res.json();
-      return { qIndex: r.questionIndex, url: item['@microsoft.graph.downloadUrl'] || null, isAudio };
+      return { qIndex: r.questionIndex, url: item['@microsoft.graph.downloadUrl'] || null, isAudio, ext };
     } catch {
-      return { qIndex: r.questionIndex, url: null, isAudio };
+      return { qIndex: r.questionIndex, url: null, isAudio, ext };
     }
   }));
 
   // ── Step 2: download each recording + transcribe via Groq Whisper (parallel) ──
-  const transcripts = await Promise.all(downloadItems.map(async ({ qIndex, url, isAudio }) => {
+  const transcripts = await Promise.all(downloadItems.map(async ({ qIndex, url, isAudio, ext }) => {
     const qText = questions[qIndex]?.text || `Question ${qIndex + 1}`;
 
     if (!url) {
@@ -2705,7 +2739,7 @@ async function analyzeSession(token, request) {
       }
 
       const form = new FormData();
-      form.append('file', blob, `q${qIndex + 1}.webm`);
+      form.append('file', blob, `q${qIndex + 1}.${ext || 'webm'}`);
       form.append('model', 'whisper-large-v3');
       form.append('language', 'en');
 
