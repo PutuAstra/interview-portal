@@ -299,10 +299,10 @@ function showProfileUpload() {
           ondrop="event.preventDefault();this.style.borderColor='var(--border)';handleResumeFile(event.dataTransfer.files[0])">
           <div id="resume-drop-label" style="color:var(--muted);font-size:13px">
             📄 Click or drag your resume here<br>
-            <span style="font-size:11px">PDF, DOC, DOCX · max 10 MB</span>
+            <span style="font-size:11px">PDF, DOC, DOCX, JPG, PNG · max 10 MB</span>
           </div>
         </div>
-        <input type="file" id="resume-file-input" accept=".pdf,.doc,.docx" style="display:none"
+        <input type="file" id="resume-file-input" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style="display:none"
           onchange="handleResumeFile(this.files[0])" />
       </div>` : ''}
 

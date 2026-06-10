@@ -589,46 +589,80 @@ function openOverviewModal(token, name) {
   openModal('modal-overview');
 }
 
-// Lazy-load pdf.js (from CDN) once, so we can extract résumé text in the browser
-// — Groq can't read PDFs server-side, so we send it the plain text.
-let _pdfjsReady = null;
-function loadPdfJs() {
-  if (_pdfjsReady) return _pdfjsReady;
-  _pdfjsReady = new Promise((resolve, reject) => {
-    if (window.pdfjsLib) return resolve(window.pdfjsLib);
-    const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+// Lazy-load a CDN script once. `ready` returns the global it exposes (or null);
+// we resolve when that global is present.
+const _scriptCache = {};
+function loadScriptOnce(url, ready) {
+  if (_scriptCache[url]) return _scriptCache[url];
+  _scriptCache[url] = new Promise((resolve, reject) => {
+    const have = ready();
+    if (have) return resolve(have);
     const s = document.createElement('script');
-    s.src = base + '/pdf.min.js';
-    s.onload = () => {
-      try {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + '/pdf.worker.min.js';
-        resolve(window.pdfjsLib);
-      } catch (e) { reject(e); }
-    };
-    s.onerror = () => reject(new Error('Could not load the PDF reader.'));
+    s.src = url;
+    s.onload = () => { const g = ready(); g ? resolve(g) : reject(new Error('Library loaded but unavailable.')); };
+    s.onerror = () => { _scriptCache[url] = null; reject(new Error('Could not load a required library (network?).')); };
     document.head.appendChild(s);
   });
-  return _pdfjsReady;
+  return _scriptCache[url];
 }
 
-async function extractResumeText(token) {
-  const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('No résumé on file for this candidate.');
-  const ct = (res.headers.get('content-type') || '').toLowerCase();
-  const buf = await res.arrayBuffer();
-  if (!ct.includes('pdf')) {
-    throw new Error('Auto-generate needs a PDF résumé. For Word/other files, type the overview manually.');
-  }
-  const pdfjsLib = await loadPdfJs();
+async function _loadPdfJs() {
+  const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+  const lib = await loadScriptOnce(base + '/pdf.min.js', () => window.pdfjsLib);
+  lib.GlobalWorkerOptions.workerSrc = base + '/pdf.worker.min.js';
+  return lib;
+}
+
+async function _extractPdf(buf) {
+  const pdfjsLib = await _loadPdfJs();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
   let text = '';
   const maxPages = Math.min(pdf.numPages, 8);
   for (let i = 1; i <= maxPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
+    const content = await (await pdf.getPage(i)).getTextContent();
     text += content.items.map(it => it.str).join(' ') + '\n';
   }
-  return text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+async function _extractDocx(buf) {
+  const mammoth = await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', () => window.mammoth);
+  const r = await mammoth.extractRawText({ arrayBuffer: buf });
+  return r.value || '';
+}
+
+async function _extractImage(buf, mime) {
+  const Tesseract = await loadScriptOnce('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', () => window.Tesseract);
+  const { data } = await Tesseract.recognize(new Blob([buf], { type: mime }), 'eng');
+  return data.text || '';
+}
+
+// Detect the résumé type by magic bytes (reliable regardless of content-type),
+// then extract plain text in the browser. statusCb reports the active step.
+async function extractResumeText(token, statusCb) {
+  const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('No résumé on file for this candidate.');
+  const buf = await res.arrayBuffer();
+  const sig = Array.from(new Uint8Array(buf).slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('');
+  let text;
+  if (sig.startsWith('25504446')) {            // %PDF
+    statusCb && statusCb('Reading the PDF résumé…');
+    text = await _extractPdf(buf);
+  } else if (sig.startsWith('504b0304')) {      // PK.. (zip = .docx)
+    statusCb && statusCb('Reading the Word résumé…');
+    text = await _extractDocx(buf);
+  } else if (sig.startsWith('ffd8ff')) {        // JPEG
+    statusCb && statusCb('Reading the image résumé (OCR — this can take ~15s)…');
+    text = await _extractImage(buf, 'image/jpeg');
+  } else if (sig.startsWith('89504e47')) {      // PNG
+    statusCb && statusCb('Reading the image résumé (OCR — this can take ~15s)…');
+    text = await _extractImage(buf, 'image/png');
+  } else if (sig.startsWith('d0cf11e0')) {      // legacy OLE .doc
+    throw new Error('Old .doc format can\'t be read here. Save it as PDF or .docx, or type the overview manually.');
+  } else {
+    throw new Error('Unsupported résumé format. Use PDF, .docx, or a JPG/PNG image.');
+  }
+  return (text || '').replace(/\s+/g, ' ').trim();
 }
 
 async function generateOverview() {
@@ -639,7 +673,8 @@ async function generateOverview() {
   msg.style.color = ''; msg.textContent = 'Reading the résumé…';
   try {
     let resumeText = '';
-    try { resumeText = await extractResumeText(token); } catch (e) { /* fall back to interview answers on the server */ }
+    try { resumeText = await extractResumeText(token, t => { msg.textContent = t; }); }
+    catch (e) { /* fall back to interview answers on the server */ }
     if (resumeText && resumeText.length >= 80) msg.textContent = 'Summarizing the résumé…';
     else msg.textContent = 'No readable résumé text — summarizing interview answers instead…';
     const r = await apiJSON('POST', `/api/session/${token}/premium/overview/generate`, { resumeText });
