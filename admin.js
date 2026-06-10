@@ -589,14 +589,60 @@ function openOverviewModal(token, name) {
   openModal('modal-overview');
 }
 
+// Lazy-load pdf.js (from CDN) once, so we can extract résumé text in the browser
+// — Groq can't read PDFs server-side, so we send it the plain text.
+let _pdfjsReady = null;
+function loadPdfJs() {
+  if (_pdfjsReady) return _pdfjsReady;
+  _pdfjsReady = new Promise((resolve, reject) => {
+    if (window.pdfjsLib) return resolve(window.pdfjsLib);
+    const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+    const s = document.createElement('script');
+    s.src = base + '/pdf.min.js';
+    s.onload = () => {
+      try {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + '/pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      } catch (e) { reject(e); }
+    };
+    s.onerror = () => reject(new Error('Could not load the PDF reader.'));
+    document.head.appendChild(s);
+  });
+  return _pdfjsReady;
+}
+
+async function extractResumeText(token) {
+  const res = await fetch(`${WORKER_URL}/api/session/${token}/resume-file`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('No résumé on file for this candidate.');
+  const ct = (res.headers.get('content-type') || '').toLowerCase();
+  const buf = await res.arrayBuffer();
+  if (!ct.includes('pdf')) {
+    throw new Error('Auto-generate needs a PDF résumé. For Word/other files, type the overview manually.');
+  }
+  const pdfjsLib = await loadPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  let text = '';
+  const maxPages = Math.min(pdf.numPages, 8);
+  for (let i = 1; i <= maxPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 async function generateOverview() {
   const token = document.getElementById('modal-overview').dataset.token;
   const btn = document.getElementById('ov-gen-btn');
   const msg = document.getElementById('ov-msg');
   btn.disabled = true; btn.textContent = '✨ Generating…';
-  msg.style.color = ''; msg.textContent = 'Reading the résumé and summarizing…';
+  msg.style.color = ''; msg.textContent = 'Reading the résumé…';
   try {
-    const r = await apiJSON('POST', `/api/session/${token}/premium/overview/generate`);
+    let resumeText = '';
+    try { resumeText = await extractResumeText(token); } catch (e) { /* fall back to interview answers on the server */ }
+    if (resumeText && resumeText.length >= 80) msg.textContent = 'Summarizing the résumé…';
+    else msg.textContent = 'No readable résumé text — summarizing interview answers instead…';
+    const r = await apiJSON('POST', `/api/session/${token}/premium/overview/generate`, { resumeText });
     document.getElementById('ov-text').value = r.overview || '';
     msg.style.color = 'var(--success,#16a34a)';
     msg.textContent = 'Draft generated — review/edit, then Save.';

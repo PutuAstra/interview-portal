@@ -3814,34 +3814,45 @@ async function generatePremiumOverview(token, request) {
   const session = await kvGet(`session:${token}`);
   if (!session?.premium) return jsonRes({ error: 'Not a premium candidate' }, 404);
 
-  // Groq can't read résumé PDFs, so we build the overview from the candidate's
-  // own interview answers. The English Analysis step transcribes those answers
-  // and stores them at session:{token}:analysis — that's our source text.
-  const analysis = await kvGet(`session:${token}:analysis`);
-  const qparts = (analysis?.questions || [])
-    .map(q => {
-      const t = (q.transcript || '').trim();
-      if (!t || q.error) return '';
-      return `Q: ${q.qText || ''}\nA: ${t}`;
-    })
-    .filter(Boolean);
+  // Groq can't parse PDFs server-side, so the admin extracts the résumé text in
+  // the browser (pdf.js) and posts it here as `resumeText`. If that's missing,
+  // we fall back to the candidate's transcribed interview answers (stored by
+  // English Analysis at session:{token}:analysis).
+  let resumeText = '';
+  try { resumeText = ((await request.json()) || {}).resumeText || ''; } catch {}
+  resumeText = String(resumeText).replace(/\s+/g, ' ').trim();
 
-  if (!qparts.length) {
-    return jsonRes({ error: 'No interview transcript yet. Run "English Analysis" first (it transcribes the answers), then generate — or type an overview manually.' }, 400);
+  let sourceLabel, sourceText;
+  if (resumeText.length >= 80) {
+    sourceLabel = 'résumé';
+    sourceText  = resumeText.slice(0, 12000);
+  } else {
+    const analysis = await kvGet(`session:${token}:analysis`);
+    const qparts = (analysis?.questions || [])
+      .map(q => {
+        const t = (q.transcript || '').trim();
+        if (!t || q.error) return '';
+        return `Q: ${q.qText || ''}\nA: ${t}`;
+      })
+      .filter(Boolean);
+    if (!qparts.length) {
+      return jsonRes({ error: 'Could not read the résumé text. Make sure a text-based PDF résumé is uploaded (scanned-image PDFs can\'t be read), or type an overview manually.' }, 400);
+    }
+    sourceLabel = 'interview answers';
+    sourceText  = qparts.join('\n\n').slice(0, 8000);
   }
 
-  const sourceText = qparts.join('\n\n').slice(0, 8000);
-  const prompt = `Below are a job candidate's recorded interview answers. Write a concise profile for a hiring client, in a clean, easy-to-scan format.
+  const prompt = `Below is a job candidate's ${sourceLabel}. Write a concise professional profile for a hiring client, in a clean, easy-to-scan format.
 
-INTERVIEW:
+${sourceLabel.toUpperCase()}:
 ${sourceText}
 
 Output EXACTLY this structure (plain text, no markdown headings):
-- A 1–2 sentence summary paragraph (who they are, apparent experience level, strongest area).
+- A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area).
 - Then a blank line.
-- Then 3–5 short bullet points, each on its OWN line starting with "• " (key skills, notable experience, communication style). Keep each bullet under ~15 words.
+- Then 3–5 short bullet points, each on its OWN line starting with "• " (key skills, notable experience, education). Keep each bullet under ~15 words.
 
-Keep the whole thing under ~130 words. Write in third person, based ONLY on what the answers reveal — do not invent facts.
+Keep the whole thing under ~130 words. Write in third person, based ONLY on the source — do not invent facts.
 STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details. Use ONLY the bullet character "• " (never ❖ or *). Output only the overview.`;
 
   let text = '';
