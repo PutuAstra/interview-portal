@@ -582,7 +582,7 @@ function renderPremiumCard(p) {
         <button class="btn btn-outline" style="font-size:12px;padding:5px 12px${pr.overview ? ';border-color:rgba(22,163,74,0.5);color:#16a34a' : ''}" title="Client-facing Overview (replaces résumé)" onclick="openOverviewModal('${p.token}','${jsStr(p.candidateName)}')">📝 Overview${pr.overview ? ' ✓' : ''}</button>
         ${avail
           ? `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="premiumMarkTaken('${p.token}','${jsStr(p.candidateName)}')">Taken</button>`
-          : `<button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="premiumMarkAvailable('${p.token}','${jsStr(p.candidateName)}')">↩ Back to Available</button>`}
+          : `<button class="btn btn-outline" style="font-size:12px;padding:5px 12px" title="Move back to Available" onclick="premiumMarkAvailable('${p.token}','${jsStr(p.candidateName)}')">↩ Available</button>`}
         <button class="btn btn-ghost" style="padding:5px 8px;font-size:16px;line-height:1" title="Remove from Premium Talent" onclick="removeFromPremium('${p.token}')">🗑</button>
       </div>
     </div>`;
