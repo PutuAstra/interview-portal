@@ -138,20 +138,38 @@ function cardHTML(c) {
     </div>`;
 }
 
-// Render the overview nicely: an intro paragraph + bullet list. Handles text
-// that uses ❖, •, *, "- " markers or newlines.
+// Render the overview nicely: an intro paragraph, optional section headers
+// (lines ending with ":"), and bullet lists. Handles ❖, •, *, "- " markers.
 function formatOverview(text) {
   const raw = String(text || '').trim();
-  // Normalize all bullet markers to a single delimiter, then split.
-  const parts = raw
-    .replace(/\s*[❖•*]\s+/g, '\n')
-    .replace(/\n\s*-\s+/g, '\n')
+  if (!raw) return '';
+  // Put every bullet on its own line, normalized to "• ".
+  const lines = raw
+    .replace(/\s*[❖•]\s+/g, '\n• ')
+    .replace(/\n\s*[-*]\s+/g, '\n• ')
     .split(/\n+/).map(s => s.trim()).filter(Boolean);
-  if (parts.length <= 1) return `<p style="margin:0">${esc(raw)}</p>`;
-  const intro = parts[0];
-  const bullets = parts.slice(1);
-  return `<p style="margin:0 0 8px">${esc(intro)}</p>` +
-    `<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px">${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`;
+
+  let html = '';
+  let inList = false;
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  const openList  = () => { if (!inList) { html += '<ul style="margin:0 0 8px;padding-left:18px;display:flex;flex-direction:column;gap:5px">'; inList = true; } };
+
+  for (const line of lines) {
+    if (line.startsWith('• ')) {
+      openList();
+      html += `<li>${esc(line.slice(2).trim())}</li>`;
+    } else if (/:$/.test(line) && line.length <= 40) {
+      // Section header (e.g. "Experience:", "Skills & Education:").
+      closeList();
+      html += `<p style="margin:10px 0 4px;font-weight:700;color:var(--text)">${esc(line)}</p>`;
+    } else {
+      // Intro / free paragraph.
+      closeList();
+      html += `<p style="margin:0 0 8px">${esc(line)}</p>`;
+    }
+  }
+  closeList();
+  return html || `<p style="margin:0">${esc(raw)}</p>`;
 }
 
 function toggleOverview(token, btn) {
