@@ -107,6 +107,7 @@ async function route(request) {
 
   // ── Team management (super_admin only) ──
   if (seg[0] === 'users' && seg.length === 1 && m === 'GET')  return listUsers(request);
+  if (seg[0] === 'users' && seg[1] === 'basic' && seg.length === 2 && m === 'GET') return listUsersBasic(request);
   if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 2 && m === 'POST')   return inviteUser(request);
   if (seg[0] === 'users' && seg[1] === 'invite' && seg.length === 3 && m === 'DELETE') return revokeInvite(decodeURIComponent(seg[2]), request);
   if (seg[0] === 'audit' && seg.length === 1 && m === 'GET') return getAuditLog(request);
@@ -125,6 +126,9 @@ async function route(request) {
     if (m === 'GET')    return getInterview(seg[1], request);
     if (m === 'PUT')    return updateInterview(seg[1], request);
     if (m === 'DELETE') return deleteInterview(seg[1], request);
+  }
+  if (seg[0] === 'interview' && seg[2] === 'access' && m === 'POST') {
+    return setInterviewAccess(seg[1], request);
   }
   if (seg[0] === 'interview' && seg[2] === 'sessions') {
     if (m === 'GET')  return listSessions(seg[1], request);
@@ -428,7 +432,10 @@ function canAccess(record, user, mode = 'manage') {
   const scope = user.viewScope || 'own';
   if (scope === 'manage_all') return true;
   if (scope === 'view_all' && mode === 'view') return true;
-  return record.ownerId === user.id;
+  if (record.ownerId === user.id) return true;
+  // Explicitly shared with this user (interview-level "add visibility").
+  if (Array.isArray(record.sharedWith) && record.sharedWith.includes(user.id)) return true;
+  return false;
 }
 
 // Phase 3 — dynamic calendar routing. Resolves which mailbox a record's Teams
@@ -589,6 +596,17 @@ async function listUsers(request) {
   const inviteEmails = (await kvGet('invite:list')) || [];
   const invites = (await Promise.all(inviteEmails.map(e => kvGet(`invite:${e}`)))).filter(Boolean);
   return jsonRes({ users, invites });
+}
+
+// Lightweight active-user list (id/name/email) for any admin — powers the
+// owner/share pickers. Not sensitive (internal teammates), unlike listUsers.
+async function listUsersBasic(request) {
+  await requireAdmin(request);
+  const ids = (await kvGet('user:list')) || [];
+  const users = (await Promise.all(ids.map(id => kvGet(`user:${id}`)))).filter(Boolean)
+    .filter(u => u.active !== false)
+    .map(u => ({ id: u.id, name: u.name || u.email, email: u.email }));
+  return jsonRes({ users });
 }
 
 // Create a pending invite for an @cti-usa.com email. They gain access on first SSO login.
@@ -1284,6 +1302,12 @@ async function getAnalytics(request) {
 async function listInterviews(request) {
   const user = await requireAdmin(request);
   const ids = (await kvGet('interview:list')) || [];
+  // id → display name map, for showing owner + shared recruiters on each card.
+  const uids = (await kvGet('user:list')) || [];
+  const nameMap = {};
+  (await Promise.all(uids.map(uid => kvGet(`user:${uid}`)))).filter(Boolean)
+    .forEach(u => { nameMap[u.id] = u.name || u.email; });
+  const nameOf = oid => !oid ? 'Unassigned' : (nameMap[oid] || (oid === 'admin' ? 'Admin' : 'Unknown'));
   const items = await Promise.all(ids.map(async id => {
     const interview = await kvGet(`interview:${id}`);
     if (!interview) return null;
@@ -1297,6 +1321,11 @@ async function listInterviews(request) {
       inProgress: valid.filter(s => s.status === 'in_progress').length,
       completed: valid.filter(s => s.status === 'completed').length,
     };
+    interview.sharedWith  = interview.sharedWith || [];
+    interview.ownerName   = nameOf(interview.ownerId);
+    interview.sharedNames = interview.sharedWith.map(nameOf);
+    interview._canManage  = canAccess(interview, user, 'manage');
+    interview._isMine     = interview.ownerId === user.id;
     return interview;
   }));
   return jsonRes(items.filter(Boolean));
@@ -1322,6 +1351,44 @@ async function updateInterview(id, request) {
   const updated = { ...existing, title, description: description || '', questions };
   await kvPut(`interview:${id}`, updated);
   return jsonRes(updated);
+}
+
+// Transfer ownership and/or set the shared-with list for an interview.
+// Anyone with manage access (owner, Admin, or Super Admin) may do this.
+async function setInterviewAccess(id, request) {
+  const user = await requireAdmin(request);
+  const iv = await kvGet(`interview:${id}`);
+  if (!iv) return jsonRes({ error: 'Not found' }, 404);
+  if (!canAccess(iv, user, 'manage')) return jsonRes({ error: 'Forbidden' }, 403);
+
+  const body = await request.json().catch(() => ({}));
+  const changes = [];
+
+  // Transfer ownership
+  if (body.ownerId !== undefined && body.ownerId !== null && body.ownerId !== iv.ownerId) {
+    const target = await kvGet(`user:${body.ownerId}`);
+    if (!target) return jsonRes({ error: 'Unknown user for transfer' }, 400);
+    iv.ownerId = body.ownerId;
+    // A new owner shouldn't also sit in the shared list.
+    if (Array.isArray(iv.sharedWith)) iv.sharedWith = iv.sharedWith.filter(x => x !== body.ownerId);
+    changes.push(`owner → ${target.name || target.email}`);
+  }
+
+  // Replace the shared-with list (validated, deduped, owner excluded)
+  if (Array.isArray(body.sharedWith)) {
+    const valid = [];
+    for (const sid of [...new Set(body.sharedWith)]) {
+      if (!sid || sid === iv.ownerId) continue;
+      const u = await kvGet(`user:${sid}`);
+      if (u) valid.push(sid);
+    }
+    iv.sharedWith = valid;
+    changes.push(`shared with ${valid.length} user${valid.length !== 1 ? 's' : ''}`);
+  }
+
+  await kvPut(`interview:${id}`, iv);
+  await logAudit(user, 'interview_access', `${iv.title}: ${changes.join('; ') || 'no change'}`);
+  return jsonRes({ ok: true, ownerId: iv.ownerId, sharedWith: iv.sharedWith || [] });
 }
 
 async function deleteInterview(id, request) {

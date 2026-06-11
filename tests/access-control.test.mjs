@@ -70,3 +70,12 @@ test('default mode is manage (strict) when omitted', () => {
   // A view_all recruiter calling without an explicit mode must NOT get edit rights.
   assert.equal(canAccess(theirs, viewAll), false);
 });
+
+test('shared-with grants access; non-shared own-scope recruiter is denied', () => {
+  const sharedWithMe = { ownerId: 'u2', sharedWith: ['u1'] };
+  assert.equal(canAccess(sharedWithMe, ownScope, 'view'), true);
+  assert.equal(canAccess(sharedWithMe, ownScope, 'manage'), true);
+  // Not in the list → still denied.
+  const sharedWithOther = { ownerId: 'u2', sharedWith: ['u3'] };
+  assert.equal(canAccess(sharedWithOther, ownScope, 'view'), false);
+});

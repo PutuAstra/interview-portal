@@ -1044,12 +1044,13 @@ function renderInterviewCard(interview) {
       <div class="flex justify-between items-center">
         <div>
           <h3>${esc(interview.title)}</h3>
-          <p class="text-muted text-sm" style="margin-top:4px">${qCount} question${qCount !== 1 ? 's' : ''} &nbsp;·&nbsp; Created ${created}</p>
+          <p class="text-muted text-sm" style="margin-top:4px">${qCount} question${qCount !== 1 ? 's' : ''} &nbsp;·&nbsp; Created ${created} &nbsp;·&nbsp; 👤 ${esc(interview.ownerName || 'Unassigned')}${interview._isMine ? ' <span style="opacity:0.7">(you)</span>' : ''}${(interview.sharedNames && interview.sharedNames.length) ? ` &nbsp;·&nbsp; 🔗 Shared with ${interview.sharedNames.map(esc).join(', ')}` : ''}</p>
           <p class="text-sm" style="margin-top:6px">${candidateLine}</p>
         </div>
         <div class="flex gap-8 items-center">
           <button class="btn btn-primary" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'candidates')">Candidates</button>
           <button class="btn btn-outline" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'invite')">Invite</button>
+          ${interview._canManage ? `<button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Owner &amp; sharing" onclick="openAccessModal('${interview.id}')">👥</button>` : ''}
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Edit" onclick="openEditInterview('${interview.id}')"><span style="display:inline-block;transform:scaleX(-1) rotate(45deg)">✏</span></button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:14px" title="Duplicate" onclick="cloneInterview('${interview.id}')">⧉</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:16px" title="Delete" onclick="deleteInterview('${interview.id}')">🗑</button>
@@ -1082,6 +1083,65 @@ async function cloneInterview(id) {
     loadInterviews();
   } catch (e) {
     toast(e.message, 'error');
+  }
+}
+
+// ── Interview owner & sharing ─────────────────────────────────
+let _accessUsers = null; // cached basic user list
+
+async function openAccessModal(id) {
+  const interview = _allInterviews.find(i => i.id === id);
+  if (!interview) return;
+  document.getElementById('modal-access').dataset.id = id;
+  const body = document.getElementById('access-body');
+  body.innerHTML = '<div class="spinner" style="margin:24px auto"></div>';
+  openModal('modal-access');
+  try {
+    if (!_accessUsers) _accessUsers = (await apiJSON('GET', '/api/users/basic')).users || [];
+    const shared = new Set(interview.sharedWith || []);
+    const ownerOpts = _accessUsers.map(u =>
+      `<option value="${esc(u.id)}" ${u.id === interview.ownerId ? 'selected' : ''}>${esc(u.name)}${u.email ? ` · ${esc(u.email)}` : ''}</option>`
+    ).join('');
+    const shareRows = _accessUsers
+      .filter(u => u.id !== interview.ownerId)
+      .map(u => `
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer">
+          <input type="checkbox" class="access-share" value="${esc(u.id)}" ${shared.has(u.id) ? 'checked' : ''} style="accent-color:var(--accent);width:15px;height:15px" />
+          <span>${esc(u.name)}${u.email ? ` <span class="text-muted">· ${esc(u.email)}</span>` : ''}</span>
+        </label>`).join('') || '<p class="text-muted text-sm">No other teammates to share with.</p>';
+    body.innerHTML = `
+      <div style="margin-bottom:16px">
+        <label class="text-sm" style="font-weight:600;display:block;margin-bottom:6px">Owner (transfer)</label>
+        <select id="access-owner" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px">${ownerOpts}</select>
+        <p class="text-muted text-sm" style="margin-top:4px">Transferring makes this person the new owner. They take over its candidates; you keep access only if you also share it with yourself.</p>
+      </div>
+      <div>
+        <label class="text-sm" style="font-weight:600;display:block;margin-bottom:2px">Also visible to</label>
+        <p class="text-muted text-sm" style="margin:0 0 6px">Shared teammates can see and work this interview without owning it.</p>
+        <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 12px">${shareRows}</div>
+      </div>
+      <div id="access-msg" class="text-sm" style="margin-top:10px"></div>`;
+  } catch (e) {
+    body.innerHTML = `<p class="text-sm" style="color:var(--danger,#dc2626)">${esc(e.message)}</p>`;
+  }
+}
+
+async function saveAccess() {
+  const id = document.getElementById('modal-access').dataset.id;
+  const ownerId = document.getElementById('access-owner')?.value;
+  const sharedWith = Array.from(document.querySelectorAll('.access-share:checked')).map(c => c.value);
+  const btn = document.getElementById('access-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    await apiJSON('POST', `/api/interview/${id}/access`, { ownerId, sharedWith });
+    toast('Access updated', 'success');
+    closeModal('modal-access');
+    loadInterviews();
+  } catch (e) {
+    const msg = document.getElementById('access-msg');
+    if (msg) { msg.style.color = 'var(--danger,#dc2626)'; msg.textContent = e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
   }
 }
 

@@ -547,6 +547,21 @@
   </div>
 </div>
 
+<!-- Modal: Interview owner & sharing -->
+<div class="modal-overlay" id="modal-access">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <h2>👥 Owner &amp; Sharing</h2>
+      <button class="btn btn-ghost" onclick="closeModal('modal-access')">✕</button>
+    </div>
+    <div id="access-body"></div>
+    <div class="mt-16 flex gap-8">
+      <button class="btn btn-primary" id="access-save-btn" onclick="saveAccess()">💾 Save</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-access')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Client Library Links -->
 <div class="modal-overlay" id="modal-clientlinks">
   <div class="modal" style="max-width:560px">
@@ -572,6 +587,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250611a"></script>
+<script src="admin.js?v=20250611b"></script>
 </body>
 </html>
