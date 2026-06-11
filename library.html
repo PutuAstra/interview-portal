@@ -28,11 +28,20 @@
     /* Candidate detail modal */
     .cm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto; z-index:1000; }
     .cm-overlay.open { display:flex; }
-    .cm-modal { background:var(--card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:640px; margin:auto; display:flex; flex-direction:column; max-height:calc(100vh - 48px); overflow:hidden; }
+    .cm-modal { background:var(--card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:1080px; margin:auto; display:flex; flex-direction:column; max-height:calc(100vh - 48px); overflow:hidden; }
     .cm-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid var(--border); }
-    .cm-body { padding:18px 20px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+    .cm-body { padding:18px 20px; overflow-y:auto; display:flex; gap:18px; align-items:flex-start; }
+    .cm-left { flex:1.5; min-width:0; display:flex; flex-direction:column; gap:10px; }
+    .cm-right { flex:1; min-width:0; }
+    .cm-vidgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; }
+    .cm-vcard { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg); display:flex; flex-direction:column; }
+    .cm-vcard video { width:100%; aspect-ratio:16/9; background:#000; display:block; }
+    .cm-vq { padding:8px 10px; font-size:11px; color:var(--text-2); line-height:1.4; }
+    .cm-vq b { color:var(--accent); }
+    .cm-ov { font-size:13px; color:var(--text-2); line-height:1.55; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
     .cm-footer { padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px; flex-shrink:0; }
     .cm-x { background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; line-height:1; padding:0 4px; }
+    @media (max-width:760px) { .cm-body { flex-direction:column; } .cm-left, .cm-right { width:100%; flex:none; } }
     @media (max-width:600px) { .cm-overlay { padding:0; } .cm-modal { max-width:none; min-height:100vh; max-height:100vh; border-radius:0; } }
   </style>
 </head>
@@ -227,13 +236,20 @@ function openCandidate(token) {
 
   const vids = c.videos || [];
   document.getElementById('cm-body').innerHTML = `
-    ${c.overview ? `<div style="font-size:13px;color:var(--text-2);line-height:1.55;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px">${formatOverview(c.overview)}</div>` : ''}
-    ${vids.length
-      ? `<div style="font-size:12px;font-weight:700;color:var(--text-2)">🎥 Recorded answers (${vids.length})</div>
-         <div style="display:flex;flex-direction:column;gap:12px">
-           ${vids.map(v => `<video id="cmvid-${v.questionIndex}" controls preload="none"></video>`).join('')}
-         </div>`
-      : `<div class="text-muted text-sm">No video answers</div>`}`;
+    <div class="cm-left">
+      <div style="font-size:12px;font-weight:700;color:var(--text-2)">🎥 Recorded answers (${vids.length})</div>
+      ${vids.length
+        ? `<div class="cm-vidgrid">${vids.map(v => `
+            <div class="cm-vcard">
+              <video id="cmvid-${v.questionIndex}" controls preload="none"></video>
+              <div class="cm-vq"><b>Q${v.questionIndex + 1}</b> · ${esc(v.text || ('Question ' + (v.questionIndex + 1)))}</div>
+            </div>`).join('')}</div>`
+        : `<div class="text-muted text-sm">No video answers</div>`}
+    </div>
+    <div class="cm-right">
+      <div style="font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:8px">📋 Overview</div>
+      ${c.overview ? `<div class="cm-ov">${formatOverview(c.overview)}</div>` : `<div class="text-muted text-sm">No overview available.</div>`}
+    </div>`;
 
   const ib = document.getElementById('cm-interest-btn');
   ib.disabled = !!c.alreadyInterested;
