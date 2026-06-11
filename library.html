@@ -15,12 +15,25 @@
     .lib-body { flex:1; max-width:1200px; margin:0 auto; padding:24px 20px; width:100%; box-sizing:border-box; }
     .lib-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .lib-filters select, .lib-filters input { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:8px 12px; color:var(--text); font-size:13px; }
-    .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
-    .cand-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:16px; display:flex; flex-direction:column; gap:10px; }
+    .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+    .cand-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:16px; display:flex; flex-direction:column; gap:12px; }
+    .cand-head { display:flex; align-items:center; gap:12px; min-width:0; }
+    .cand-avatar { width:52px; height:52px; border-radius:50%; flex-shrink:0; object-fit:cover; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--text-2); font-size:16px; overflow:hidden; }
+    .cand-avatar img { width:100%; height:100%; object-fit:cover; }
+    .cand-name { font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .cand-tags { display:flex; gap:5px; flex-wrap:wrap; }
     .cand-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:10px; background:var(--bg); border:1px solid var(--border); color:var(--text-2); }
     .cand-card video { width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; display:block; }
     .badge-client { display:inline-flex; align-items:center; gap:5px; background:rgba(245,158,11,0.12); color:#f59e0b; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid rgba(245,158,11,0.3); }
+    /* Candidate detail modal */
+    .cm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto; z-index:1000; }
+    .cm-overlay.open { display:flex; }
+    .cm-modal { background:var(--card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:640px; margin:auto; display:flex; flex-direction:column; max-height:calc(100vh - 48px); overflow:hidden; }
+    .cm-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid var(--border); }
+    .cm-body { padding:18px 20px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+    .cm-footer { padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px; flex-shrink:0; }
+    .cm-x { background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; line-height:1; padding:0 4px; }
+    @media (max-width:600px) { .cm-overlay { padding:0; } .cm-modal { max-width:none; min-height:100vh; max-height:100vh; border-radius:0; } }
   </style>
 </head>
 <body>
@@ -35,6 +48,23 @@
   </div>
   <div class="lib-body" id="lib-body">
     <div class="spinner" style="margin:80px auto"></div>
+  </div>
+</div>
+
+<!-- Candidate detail modal -->
+<div class="cm-overlay" id="cm-overlay" onclick="if(event.target===this)closeCandidate()">
+  <div class="cm-modal">
+    <div class="cm-header">
+      <div style="min-width:0">
+        <div class="cand-name" id="cm-name" style="font-size:18px"></div>
+        <div class="cand-tags" id="cm-tags" style="margin-top:6px"></div>
+      </div>
+      <button class="cm-x" onclick="closeCandidate()">✕</button>
+    </div>
+    <div class="cm-body" id="cm-body"></div>
+    <div class="cm-footer">
+      <button class="btn btn-primary" id="cm-interest-btn" onclick="markInterestedFromModal()"></button>
+    </div>
   </div>
 </div>
 
@@ -107,35 +137,45 @@ function renderGrid() {
     return;
   }
   grid.innerHTML = list.map(cardHTML).join('');
-  // Lazy-load each candidate's first video URL
-  list.forEach(c => loadCandidateVideo(c));
+  // Lazy-load each candidate's profile photo for the card avatar.
+  list.forEach(loadCardPhoto);
+}
+
+function initials(name) {
+  return String(name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+}
+
+function cardLabel(c) {
+  return c.alreadyInterested ? '✓ Interested · Review' : '🎥 Review';
 }
 
 function cardHTML(c) {
-  const firstVid = (c.videos || [])[0];
   return `
     <div class="cand-card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div style="font-size:16px;font-weight:700">${esc(c.candidateName)}</div>
+      <div class="cand-head">
+        <div class="cand-avatar" id="ph-${c.token}">${initials(c.candidateName)}</div>
+        <div style="min-width:0">
+          <div class="cand-name">${esc(c.candidateName)}</div>
+          <div class="cand-tags" style="margin-top:5px">
+            <span class="cand-tag">${esc(c.category)}</span>
+            <span class="cand-tag">${esc(c.department)}</span>
+            <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
+          </div>
+        </div>
       </div>
-      <div class="cand-tags">
-        <span class="cand-tag">${esc(c.category)}</span>
-        <span class="cand-tag">${esc(c.department)}</span>
-        <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
-      </div>
-      ${firstVid
-        ? `<video id="vid-${c.token}" controls preload="none" poster=""></video>
-           ${(c.videos.length > 1) ? `<div style="font-size:11px;color:var(--muted)">+ ${c.videos.length - 1} more answer${c.videos.length - 1 !== 1 ? 's' : ''} — <a href="#" onclick="loadAllVideos('${c.token}',this);return false" style="color:var(--accent)">show all</a></div>` : ''}
-           <div id="more-${c.token}"></div>`
-        : `<div class="text-muted text-sm">No video answers</div>`}
-      ${c.overview ? `<div id="ov-${c.token}" style="display:none;font-size:13px;color:var(--text-2);line-height:1.55;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:4px">${formatOverview(c.overview)}</div>` : ''}
-      <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-        ${c.overview ? `<button class="btn btn-outline" style="font-size:12px;padding:6px 12px" onclick="toggleOverview('${c.token}',this)">📋 Overview</button>` : ''}
-        <button class="btn btn-primary" id="int-${c.token}" style="font-size:12px;padding:6px 14px" ${c.alreadyInterested ? 'disabled' : ''} onclick="markInterested('${c.token}','${jsAttr(c.candidateName)}')">
-          ${c.alreadyInterested ? '✓ Interested' : '⭐ Interested'}
-        </button>
-      </div>
+      <button class="btn btn-primary" id="card-btn-${c.token}" style="width:100%;font-size:13px;padding:9px" onclick="openCandidate('${c.token}')">
+        ${cardLabel(c)}
+      </button>
     </div>`;
+}
+
+async function loadCardPhoto(c) {
+  if (!c.profilePhotoItemId) return;
+  try {
+    const { downloadUrl } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/photo/${c.token}`).then(r => r.json());
+    const el = document.getElementById('ph-' + c.token);
+    if (el && downloadUrl) el.innerHTML = `<img src="${downloadUrl}" alt="">`;
+  } catch {}
 }
 
 // Render the overview nicely: an intro paragraph, optional section headers
@@ -172,64 +212,71 @@ function formatOverview(text) {
   return html || `<p style="margin:0">${esc(raw)}</p>`;
 }
 
-function toggleOverview(token, btn) {
-  const el = document.getElementById('ov-' + token);
-  if (!el) return;
-  const show = el.style.display === 'none';
-  el.style.display = show ? 'block' : 'none';
-  if (btn) btn.textContent = show ? '📋 Hide Overview' : '📋 Overview';
-}
+// ── Candidate detail modal ──
+let _cmToken = null;
 
-async function loadCandidateVideo(c) {
-  const v = (c.videos || [])[0];
-  if (!v) return;
-  try {
-    const { downloadUrl } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/video/${c.token}/${v.questionIndex}`).then(r => r.json());
-    const el = document.getElementById(`vid-${c.token}`);
-    if (el && downloadUrl) el.src = downloadUrl;
-  } catch {}
-}
-
-async function loadAllVideos(token, linkEl) {
-  if (linkEl) linkEl.parentElement.style.display = 'none';
+function openCandidate(token) {
   const c = _candidates.find(x => x.token === token);
-  const more = document.getElementById(`more-${token}`);
-  if (!c || !more) return;
-  const rest = (c.videos || []).slice(1);
-  more.innerHTML = rest.map(v => `<video id="vid-${token}-${v.questionIndex}" controls preload="none" style="margin-top:8px"></video>`).join('');
-  for (const v of rest) {
+  if (!c) return;
+  _cmToken = token;
+  document.getElementById('cm-name').textContent = c.candidateName;
+  document.getElementById('cm-tags').innerHTML = `
+    <span class="cand-tag">${esc(c.category)}</span>
+    <span class="cand-tag">${esc(c.department)}</span>
+    <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>`;
+
+  const vids = c.videos || [];
+  document.getElementById('cm-body').innerHTML = `
+    ${c.overview ? `<div style="font-size:13px;color:var(--text-2);line-height:1.55;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px">${formatOverview(c.overview)}</div>` : ''}
+    ${vids.length
+      ? `<div style="font-size:12px;font-weight:700;color:var(--text-2)">🎥 Recorded answers (${vids.length})</div>
+         <div style="display:flex;flex-direction:column;gap:12px">
+           ${vids.map(v => `<video id="cmvid-${v.questionIndex}" controls preload="none"></video>`).join('')}
+         </div>`
+      : `<div class="text-muted text-sm">No video answers</div>`}`;
+
+  const ib = document.getElementById('cm-interest-btn');
+  ib.disabled = !!c.alreadyInterested;
+  ib.textContent = c.alreadyInterested ? '✓ Interested' : '⭐ Interested';
+
+  document.getElementById('cm-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // Lazy-load each answer video URL.
+  vids.forEach(async v => {
     try {
       const { downloadUrl } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/video/${token}/${v.questionIndex}`).then(r => r.json());
-      const el = document.getElementById(`vid-${token}-${v.questionIndex}`);
+      const el = document.getElementById('cmvid-' + v.questionIndex);
       if (el && downloadUrl) el.src = downloadUrl;
     } catch {}
-  }
+  });
 }
 
-async function viewResume(token) {
-  try {
-    const { downloadUrl, previewUrl, ext } = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/resume/${token}`).then(r => r.json());
-    if (!downloadUrl && !previewUrl) return alert('Résumé not available.');
-    const enc = encodeURIComponent(downloadUrl);
-    const viewer = previewUrl
-      || ((ext === 'doc' || ext === 'docx')
-        ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
-        : `https://docs.google.com/viewer?url=${enc}&embedded=true`);
-    window.open(viewer, '_blank');
-  } catch { alert('Could not open résumé.'); }
+function closeCandidate() {
+  const ov = document.getElementById('cm-overlay');
+  ov.querySelectorAll('video').forEach(v => { try { v.pause(); } catch {} });
+  ov.classList.remove('open');
+  document.body.style.overflow = '';
+  _cmToken = null;
 }
 
-async function markInterested(token, name) {
-  const btn = document.getElementById(`int-${token}`);
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCandidate(); });
+
+async function markInterestedFromModal() {
+  const token = _cmToken;
+  if (!token) return;
+  const btn = document.getElementById('cm-interest-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const res = await fetch(`${WORKER_URL}/api/clientlib/${clientToken}/interest/${token}`, { method: 'POST' });
     if (!res.ok) throw new Error();
-    if (btn) btn.textContent = '✓ Interested';
+    btn.textContent = '✓ Interested';
     const c = _candidates.find(x => x.token === token);
     if (c) c.alreadyInterested = true;
+    const cardBtn = document.getElementById('card-btn-' + token);
+    if (cardBtn) cardBtn.textContent = cardLabel(c);
   } catch {
-    if (btn) { btn.disabled = false; btn.textContent = '⭐ Interested'; }
+    btn.disabled = false; btn.textContent = '⭐ Interested';
     alert('Could not register interest. Please try again.');
   }
 }

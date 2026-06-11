@@ -238,6 +238,7 @@ async function route(request) {
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'GET')      return listClientLibs(request);
   if (seg[0] === 'clientlib' && seg.length === 2 && m === 'DELETE')   return deleteClientLib(seg[1], request);
   if (seg[0] === 'clientlib' && seg[2] === 'video'    && m === 'GET') return getClientLibVideo(seg[1], seg[3], parseInt(seg[4]));
+  if (seg[0] === 'clientlib' && seg[2] === 'photo'    && m === 'GET') return getClientLibPhoto(seg[1], seg[3]);
   if (seg[0] === 'clientlib' && seg[2] === 'resume'   && m === 'GET') return getClientLibResume(seg[1], seg[3]);
   if (seg[0] === 'clientlib' && seg[2] === 'interest' && m === 'POST') return clientExpressInterest(seg[1], seg[3], request);
   if (seg[0] === 'session' && seg[2] === 'premium' && seg[3] === 'interest' && m === 'DELETE') return clearPremiumInterest(seg[1], seg[4], request);
@@ -3899,6 +3900,14 @@ async function getClientLibVideo(clientToken, token, qIndex) {
   if (!response?.driveItemId) return jsonRes({ error: 'Video not found' }, 404);
   try { return jsonRes(await driveDownloadUrl(response.driveItemId)); }
   catch (e) { return jsonRes({ error: 'Could not retrieve video' }, 500); }
+}
+
+async function getClientLibPhoto(clientToken, token) {
+  const { err, session } = await clientLibCandidate(clientToken, token);
+  if (err) return err;
+  if (!session.profilePhotoItemId) return jsonRes({ notFound: true });
+  try { return jsonRes(await driveDownloadUrl(session.profilePhotoItemId)); }
+  catch (e) { return jsonRes({ error: 'Could not retrieve photo' }, 500); }
 }
 
 async function getClientLibResume(clientToken, token) {
