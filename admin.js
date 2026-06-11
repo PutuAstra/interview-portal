@@ -214,6 +214,7 @@ function gotoPage(page) {
 
 let _teamData = { users: [], invites: [] };
 let _auditAll = [];
+let _auditSort = { key: 'ts', dir: 'desc' }; // newest first by default
 const AUDIT_LABELS = {
   invite_user: 'Invite teammate', revoke_invite: 'Revoke invite', update_user: 'Update teammate', delete_user: 'Delete teammate',
   reassign_all_records: 'Reassign all records', assign_unowned_records: 'Assign unowned records',
@@ -247,10 +248,31 @@ function filterAuditLog() {
     (act === 'all' || a.action === act) &&
     (by === 'all' || a.by === by) &&
     (a.ts >= from && a.ts <= to));
+
+  // Sort by the chosen column/direction.
+  const { key, dir } = _auditSort;
+  const mul = dir === 'asc' ? 1 : -1;
+  filtered.sort((a, b) => {
+    if (key === 'ts') return (a.ts - b.ts) * mul;
+    const av = key === 'action' ? (AUDIT_LABELS[a.action] || a.action) : (a[key] || '');
+    const bv = key === 'action' ? (AUDIT_LABELS[b.action] || b.action) : (b[key] || '');
+    return String(av).localeCompare(String(bv)) * mul;
+  });
+  ['ts', 'by', 'action'].forEach(k => {
+    const el = document.getElementById('audit-arrow-' + k);
+    if (el) el.textContent = (key === k) ? (dir === 'asc' ? ' ▲' : ' ▼') : '';
+  });
+
   const body = document.getElementById('audit-tbody');
   const count = document.getElementById('audit-count');
   if (body) body.innerHTML = auditRowsHTML(filtered);
   if (count) count.textContent = filtered.length === _auditAll.length ? _auditAll.length : `${filtered.length} of ${_auditAll.length}`;
+}
+
+function setAuditSort(key) {
+  if (_auditSort.key === key) _auditSort.dir = _auditSort.dir === 'asc' ? 'desc' : 'asc';
+  else { _auditSort.key = key; _auditSort.dir = key === 'ts' ? 'desc' : 'asc'; }
+  filterAuditLog();
 }
 
 function clearAuditFilters() {
@@ -415,7 +437,12 @@ async function renderTeamPage() {
       </div>
       <div class="table-wrap card" style="padding:0">
         <table>
-          <thead><tr><th>When</th><th>By</th><th>Action</th><th>Detail</th></tr></thead>
+          <thead><tr>
+            <th onclick="setAuditSort('ts')" style="cursor:pointer;user-select:none">When<span id="audit-arrow-ts"> ▼</span></th>
+            <th onclick="setAuditSort('by')" style="cursor:pointer;user-select:none">By<span id="audit-arrow-by"></span></th>
+            <th onclick="setAuditSort('action')" style="cursor:pointer;user-select:none">Action<span id="audit-arrow-action"></span></th>
+            <th>Detail</th>
+          </tr></thead>
           <tbody id="audit-tbody">${auditRows}</tbody>
         </table>
       </div>
