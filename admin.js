@@ -754,6 +754,12 @@ async function premiumMarkAvailable(token, name) {
 // ── Client library links ──
 async function openClientLinksPanel() {
   const modal = document.getElementById('modal-clientlinks');
+  // Placement-type checkboxes (scopes a link to one or more categories).
+  const catBox = document.getElementById('clientlink-cats');
+  if (catBox) catBox.innerHTML = PREMIUM_CATEGORIES.map(c =>
+    `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:400;text-transform:none">
+       <input type="checkbox" class="cl-cat" value="${esc(c)}" style="accent-color:var(--accent);width:15px;height:15px" /> ${esc(c)}
+     </label>`).join('');
   openModal('modal-clientlinks');
   await refreshClientLinks();
 }
@@ -768,7 +774,7 @@ async function refreshClientLinks() {
           const url = buildLibraryUrl(l.clientToken);
           return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
             <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:600">${esc(l.label)}</div>
+              <div style="font-size:13px;font-weight:600">${esc(l.label)}${(l.categories && l.categories.length) ? ` <span style="font-size:10px;font-weight:600;color:var(--accent)">· ${l.categories.map(esc).join(', ')}</span>` : ` <span style="font-size:10px;color:var(--muted)">· All types</span>`}</div>
               <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(url)}</div>
             </div>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
@@ -792,11 +798,13 @@ async function revokeClientLink(token, label) {
 async function createClientLinkFromModal() {
   const label = (document.getElementById('clientlink-label').value || '').trim();
   const email = (document.getElementById('clientlink-email').value || '').trim();
+  const categories = [...document.querySelectorAll('.cl-cat:checked')].map(c => c.value);
   if (!label) return toast('Enter a client name/label', 'error');
   try {
-    const { clientToken } = await apiJSON('POST', '/api/clientlib', { label });
+    const { clientToken } = await apiJSON('POST', '/api/clientlib', { label, categories });
     document.getElementById('clientlink-label').value = '';
     document.getElementById('clientlink-email').value = '';
+    document.querySelectorAll('.cl-cat:checked').forEach(c => { c.checked = false; });
     const emails = email.split(/[,;\s]+/).filter(e => e.includes('@'));
     if (emails.length) {
       await apiJSON('POST', `/api/clientlib/${clientToken}/email`, { emails, url: buildLibraryUrl(clientToken) });

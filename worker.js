@@ -3814,13 +3814,18 @@ async function listPremium(request) {
 // ── Client library access (tokenized, no login) ──
 async function createClientLib(request) {
   const user = await requireAdmin(request);
-  const { label } = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
+  const label = (body.label || 'Client').slice(0, 80);
+  // Placement types (categories) this link is scoped to. Empty = all.
+  const categories = Array.isArray(body.categories)
+    ? [...new Set(body.categories.map(c => String(c).slice(0, 40).trim()).filter(Boolean))]
+    : [];
   const clientToken = uid();
-  await kvPut(`clientlib:${clientToken}`, { label: (label || 'Client').slice(0, 80), createdAt: Date.now() });
+  await kvPut(`clientlib:${clientToken}`, { label, categories, createdAt: Date.now() });
   const list = (await kvGet('clientlib:list')) || [];
   list.push(clientToken); await kvPut('clientlib:list', list);
-  await logAudit(user, 'clientlib_create', label || 'Client');
-  return jsonRes({ clientToken, label: label || 'Client' });
+  await logAudit(user, 'clientlib_create', `${label}${categories.length ? ' [' + categories.join(', ') + ']' : ''}`);
+  return jsonRes({ clientToken, label });
 }
 
 async function listClientLibs(request) {
@@ -3828,7 +3833,7 @@ async function listClientLibs(request) {
   const tokens = (await kvGet('clientlib:list')) || [];
   const links = (await Promise.all(tokens.map(async t => {
     const meta = await kvGet(`clientlib:${t}`);
-    return meta ? { clientToken: t, label: meta.label, createdAt: meta.createdAt } : null;
+    return meta ? { clientToken: t, label: meta.label, categories: meta.categories || [], createdAt: meta.createdAt } : null;
   }))).filter(Boolean);
   return jsonRes({ links });
 }
@@ -3857,9 +3862,12 @@ async function getClientLib(clientToken) {
     brandLogoUrl: settings.brandLogoUrl || '',
   };
 
+  const cats = meta.categories || [];
   const tokens = (await kvGet('premium:list')) || [];
   const sessions = await Promise.all(tokens.map(t => kvGet(`session:${t}`)));
-  const available = sessions.filter(s => s && s.premium && s.premium.status === 'Available');
+  const available = sessions.filter(s =>
+    s && s.premium && s.premium.status === 'Available' &&
+    (!cats.length || cats.includes(s.premium.category)));
 
   const candidates = await Promise.all(available.map(async s => {
     const interview = await kvGet(`interview:${s.interviewId}`);
