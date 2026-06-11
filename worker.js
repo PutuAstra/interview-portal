@@ -1201,11 +1201,11 @@ async function uploadToOneDrive(filePath, blob, accessToken, contentType) {
 
 async function createInterview(request) {
   const user = await requireAdmin(request);
-  const { title, description, questions } = await request.json();
+  const { title, description, questions, placementType } = await request.json();
   if (!title || !questions?.length) return jsonRes({ error: 'title and questions required' }, 400);
 
   const id = uid();
-  const interview = { id, title, description: description || '', questions, createdAt: Date.now(), ownerId: user.id };
+  const interview = { id, title, description: description || '', questions, placementType: placementType || '', createdAt: Date.now(), ownerId: user.id };
   await kvPut(`interview:${id}`, interview);
 
   const list = (await kvGet('interview:list')) || [];
@@ -1354,10 +1354,11 @@ async function updateInterview(id, request) {
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
   if (!canAccess(existing, user)) return jsonRes({ error: 'Forbidden' }, 403);
 
-  const { title, description, questions } = await request.json();
+  const { title, description, questions, placementType } = await request.json();
   if (!title || !questions?.length) return jsonRes({ error: 'title and questions required' }, 400);
 
   const updated = { ...existing, title, description: description || '', questions };
+  if (placementType !== undefined) updated.placementType = placementType || '';
   await kvPut(`interview:${id}`, updated);
   return jsonRes(updated);
 }
@@ -3122,9 +3123,13 @@ async function sendOutcomeEmail(session, interview, decision) {
   if (decision !== 'move_forward' && decision !== 'not_moving_forward') return false;
 
   const settings = (await kvGet('recruiter:settings')) || {};
+  // Resolve the template: placement-type override → general custom → default.
+  const pt = interview?.placementType || '';
+  const byType = (pt && settings.outcomeByType && settings.outcomeByType[pt]) || {};
+  const pick = (typeKey, genKey) => (byType[typeKey] && byType[typeKey].trim()) ? byType[typeKey] : settings[genKey];
   const custom = decision === 'move_forward'
-    ? { subject: settings.outcomeFwdSubject, body: settings.outcomeFwdBody }
-    : { subject: settings.outcomeRejSubject, body: settings.outcomeRejBody };
+    ? { subject: pick('fwdSubject', 'outcomeFwdSubject'), body: pick('fwdBody', 'outcomeFwdBody') }
+    : { subject: pick('rejSubject', 'outcomeRejSubject'), body: pick('rejBody', 'outcomeRejBody') };
   const def = OUTCOME_DEFAULTS[decision];
 
   const fill = t => (t || '').replace(/\{name\}/g, session.candidateName).replace(/\{position\}/g, interview?.title || 'the position');

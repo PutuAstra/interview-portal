@@ -1085,6 +1085,14 @@ function renderOWCreatePage() {
             <label>Description (shown to candidate)</label>
             <textarea id="new-desc" placeholder="Brief instructions for the candidate..." style="min-height:52px;height:52px"></textarea>
           </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label>Placement Type</label>
+            <select id="new-placement" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px">
+              <option value="">General</option>
+              ${PREMIUM_CATEGORIES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+            </select>
+            <p style="font-size:11px;color:var(--muted);margin-top:4px">Decides which outcome-email template candidates receive (set per type in Employer Branding).</p>
+          </div>
           <hr class="divider" style="margin:10px 0" />
           <div class="flex justify-between items-center" style="margin-bottom:12px">
             <h3>Questions</h3>
@@ -1673,10 +1681,11 @@ function renderQuestions() {
 async function submitInterview() {
   const title = document.getElementById('new-title').value.trim();
   const description = document.getElementById('new-desc').value.trim();
+  const placementType = document.getElementById('new-placement')?.value || '';
   if (!title) return toast('Title is required', 'error');
   { const err = validateQuestions(questions); if (err) return toast(err, 'error'); }
   try {
-    await apiJSON('POST', '/api/interviews', { title, description, questions });
+    await apiJSON('POST', '/api/interviews', { title, description, questions, placementType });
     toast('Interview created!', 'success');
     gotoPage('ow-list');
   } catch (e) {
@@ -3925,6 +3934,7 @@ async function openEditInterview(id) {
     const interview = await apiJSON('GET', `/api/interview/${id}`);
     document.getElementById('edit-title').value = interview.title;
     document.getElementById('edit-desc').value = interview.description || '';
+    document.getElementById('edit-placement').value = interview.placementType || '';
     editQuestions = interview.questions.map(q => ({ ...q }));
     renderEditQuestions();
     openModal('modal-edit');
@@ -3959,10 +3969,11 @@ function renderEditQuestions() {
 async function submitEditInterview() {
   const title = document.getElementById('edit-title').value.trim();
   const description = document.getElementById('edit-desc').value.trim();
+  const placementType = document.getElementById('edit-placement')?.value || '';
   if (!title) return toast('Title is required', 'error');
   { const err = validateQuestions(editQuestions); if (err) return toast(err, 'error'); }
   try {
-    await apiJSON('PUT', `/api/interview/${editInterviewId}`, { title, description, questions: editQuestions });
+    await apiJSON('PUT', `/api/interview/${editInterviewId}`, { title, description, questions: editQuestions, placementType });
     toast('Interview updated!', 'success');
     closeModal('modal-edit');
     loadInterviews();
@@ -5575,6 +5586,8 @@ async function submitCreateBookingLink() {
 // ── Employer Branding ─────────────────────────────────────────
 
 let _brandingSettings = {};
+let _emCurrentType = '';   // '' = General; otherwise a placement type
+let _outcomeTpl = {};      // { '': {fwdSubject,fwdBody,rejSubject,rejBody}, 'Sea-Based': {...}, … }
 
 async function renderBrandingPage() {
   const main = document.getElementById('admin-main');
@@ -5616,6 +5629,15 @@ CTI Group Recruitment Team`,
 function renderBrandingContent() {
   const main = document.getElementById('admin-main');
   const s = _brandingSettings;
+  // Load outcome templates into memory: General (the legacy flat fields) + per-type.
+  _outcomeTpl = {
+    '': {
+      fwdSubject: s.outcomeFwdSubject || '', fwdBody: s.outcomeFwdBody || '',
+      rejSubject: s.outcomeRejSubject || '', rejBody: s.outcomeRejBody || '',
+    },
+    ...(s.outcomeByType || {}),
+  };
+  _emCurrentType = '';
 
   main.innerHTML = `
     <div style="max-width:680px">
@@ -5673,6 +5695,16 @@ function renderBrandingContent() {
 
       <div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;gap:16px">
         <div class="form-group" style="margin:0">
+          <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)">Placement type template</label>
+          <select id="em-type" onchange="emLoadType(this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;width:100%">
+            <option value="">General (default)</option>
+            <option value="Sea-Based">Sea-Based</option>
+            <option value="Land-Based">Land-Based</option>
+            <option value="J-1 Program">J-1 Program</option>
+          </select>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">Each placement type can have its own outcome emails. Leave a field blank to fall back to the General template. The interview's placement type decides which one a candidate gets.</p>
+        </div>
+        <div class="form-group" style="margin:0;border-top:1px solid var(--border);padding-top:16px">
           <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#16a34a">✓ Move Forward — Subject</label>
           <input type="text" id="em-fwd-subject" value="${esc(s.outcomeFwdSubject || OUTCOME_EMAIL_DEFAULTS.fwdSubject)}" style="width:100%" />
           <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#16a34a;margin-top:10px;display:block">✓ Move Forward — Message</label>
@@ -5744,19 +5776,59 @@ function updateBrandPreview() {
   `;
 }
 
+// Capture the 4 outcome-email fields into the in-memory template for the
+// currently-selected placement type.
+function emCaptureCurrent() {
+  _outcomeTpl[_emCurrentType] = {
+    fwdSubject: document.getElementById('em-fwd-subject')?.value.trim() || '',
+    fwdBody:    document.getElementById('em-fwd-body')?.value.trim()    || '',
+    rejSubject: document.getElementById('em-rej-subject')?.value.trim() || '',
+    rejBody:    document.getElementById('em-rej-body')?.value.trim()    || '',
+  };
+}
+
+// Switch the editor to a placement type: save the current edits, then load the
+// chosen type's values (General shows defaults; a type shows General as the
+// placeholder so blanks visibly inherit).
+function emLoadType(type) {
+  emCaptureCurrent();
+  _emCurrentType = type;
+  const t = _outcomeTpl[type] || {};
+  const gen = _outcomeTpl[''] || {};
+  const isGen = type === '';
+  const set = (id, key, def) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = t[key] || (isGen ? def : '');
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = isGen ? '' : (gen[key] || def);
+  };
+  set('em-fwd-subject', 'fwdSubject', OUTCOME_EMAIL_DEFAULTS.fwdSubject);
+  set('em-fwd-body',    'fwdBody',    OUTCOME_EMAIL_DEFAULTS.fwdBody);
+  set('em-rej-subject', 'rejSubject', OUTCOME_EMAIL_DEFAULTS.rejSubject);
+  set('em-rej-body',    'rejBody',    OUTCOME_EMAIL_DEFAULTS.rejBody);
+}
+
 async function saveBrandingSettings() {
   const brandName       = document.getElementById('brand-name')?.value.trim()       || '';
   const brandColor      = document.getElementById('brand-color')?.value              || '#B01A18';
   const brandWelcomeMsg = document.getElementById('brand-welcome')?.value.trim()     || '';
-  const outcomeFwdSubject = document.getElementById('em-fwd-subject')?.value.trim() || '';
-  const outcomeFwdBody    = document.getElementById('em-fwd-body')?.value.trim()    || '';
-  const outcomeRejSubject = document.getElementById('em-rej-subject')?.value.trim() || '';
-  const outcomeRejBody    = document.getElementById('em-rej-body')?.value.trim()    || '';
+  // Persist whatever's currently on screen into the active type, then split into
+  // the General (flat) fields + per-type map.
+  emCaptureCurrent();
+  const gen = _outcomeTpl[''] || {};
+  const outcomeFwdSubject = gen.fwdSubject || '';
+  const outcomeFwdBody    = gen.fwdBody    || '';
+  const outcomeRejSubject = gen.rejSubject || '';
+  const outcomeRejBody    = gen.rejBody    || '';
+  const outcomeByType = {};
+  Object.keys(_outcomeTpl).forEach(k => {
+    if (k !== '' && _outcomeTpl[k] && Object.values(_outcomeTpl[k]).some(v => v && v.trim())) outcomeByType[k] = _outcomeTpl[k];
+  });
   const retentionDays     = parseInt(document.getElementById('retention-days')?.value, 10) || 0;
   const requireCandidateIdentity = !!document.getElementById('require-identity')?.checked;
   const googleClientId    = (document.getElementById('google-client-id')?.value || '').trim();
   try {
-    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody, retentionDays, requireCandidateIdentity, googleClientId });
+    const updated = await apiJSON('PUT', '/api/recruiter/settings', { brandName, brandColor, brandWelcomeMsg, outcomeFwdSubject, outcomeFwdBody, outcomeRejSubject, outcomeRejBody, outcomeByType, retentionDays, requireCandidateIdentity, googleClientId });
     _brandingSettings = updated;
     toast('Branding saved!', 'success');
     renderBrandingContent();

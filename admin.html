@@ -139,6 +139,16 @@
         <label>Description (shown to candidate)</label>
         <textarea id="edit-desc" placeholder="Brief instructions for the candidate..." style="min-height:52px;height:52px"></textarea>
       </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Placement Type</label>
+        <select id="edit-placement" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px">
+          <option value="">General</option>
+          <option value="Sea-Based">Sea-Based</option>
+          <option value="Land-Based">Land-Based</option>
+          <option value="J-1 Program">J-1 Program</option>
+        </select>
+        <p style="font-size:11px;color:var(--muted);margin-top:4px">Decides which outcome-email template candidates receive (set per type in Employer Branding).</p>
+      </div>
       <hr class="divider" style="margin:10px 0" />
       <div class="flex justify-between items-center" style="margin-bottom:12px">
         <h3>Questions</h3>
@@ -589,6 +599,6 @@
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="admin.js?v=20250611o"></script>
+<script src="admin.js?v=20250611p"></script>
 </body>
 </html>
