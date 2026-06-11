@@ -237,6 +237,7 @@ async function route(request) {
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'POST')     return createClientLib(request);
   if (seg[0] === 'clientlib' && seg.length === 1 && m === 'GET')      return listClientLibs(request);
   if (seg[0] === 'clientlib' && seg.length === 2 && m === 'DELETE')   return deleteClientLib(seg[1], request);
+  if (seg[0] === 'clientlib' && seg.length === 2 && m === 'PATCH')    return updateClientLib(seg[1], request);
   if (seg[0] === 'clientlib' && seg[2] === 'video'    && m === 'GET') return getClientLibVideo(seg[1], seg[3], parseInt(seg[4]));
   if (seg[0] === 'clientlib' && seg[2] === 'photo'    && m === 'GET') return getClientLibPhoto(seg[1], seg[3]);
   if (seg[0] === 'clientlib' && seg[2] === 'resume'   && m === 'GET') return getClientLibResume(seg[1], seg[3]);
@@ -3847,6 +3848,21 @@ async function deleteClientLib(token, request) {
   await kvPut('clientlib:list', list.filter(t => t !== token));
   await logAudit(user, 'clientlib_revoke', meta?.label || token);
   return jsonRes({ ok: true });
+}
+
+// Edit an existing client link's label and/or placement-type scope.
+async function updateClientLib(token, request) {
+  const user = await requireAdmin(request);
+  const meta = await kvGet(`clientlib:${token}`);
+  if (!meta) return jsonRes({ error: 'Library link not found' }, 404);
+  const body = await request.json().catch(() => ({}));
+  if (typeof body.label === 'string' && body.label.trim()) meta.label = body.label.slice(0, 80);
+  if (Array.isArray(body.categories)) {
+    meta.categories = [...new Set(body.categories.map(c => String(c).slice(0, 40).trim()).filter(Boolean))];
+  }
+  await kvPut(`clientlib:${token}`, meta);
+  await logAudit(user, 'clientlib_update', `${meta.label}${(meta.categories || []).length ? ' [' + meta.categories.join(', ') + ']' : ''}`);
+  return jsonRes({ ok: true, label: meta.label, categories: meta.categories || [] });
 }
 
 // PUBLIC (client token). HARD ACL: only premium talent with status

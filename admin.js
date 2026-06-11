@@ -238,7 +238,7 @@ async function renderTeamPage() {
     invite_candidate: 'Invite candidate', revoke_candidate: 'Revoke candidate', delete_candidate: 'Delete candidate',
     review_decision: 'Review decision', run_ai_analysis: 'AI analysis',
     premium_add: 'Add to Premium', premium_remove: 'Remove from Premium', premium_taken: 'Mark Taken', premium_available: 'Mark Available',
-    clientlib_create: 'Create client link', clientlib_revoke: 'Revoke client link',
+    clientlib_create: 'Create client link', clientlib_revoke: 'Revoke client link', clientlib_update: 'Update client link',
   };
   const auditRows = auditEntries.length ? auditEntries.map(a => `
     <tr>
@@ -764,26 +764,61 @@ async function openClientLinksPanel() {
   await refreshClientLinks();
 }
 
+let _clientLinks = [];
 async function refreshClientLinks() {
   const el = document.getElementById('clientlinks-list');
   el.innerHTML = '<div class="spinner" style="margin:12px auto"></div>';
   try {
     const { links } = await apiJSON('GET', '/api/clientlib');
+    _clientLinks = links;
     el.innerHTML = links.length
-      ? links.map(l => {
-          const url = buildLibraryUrl(l.clientToken);
-          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:600">${esc(l.label)}${(l.categories && l.categories.length) ? ` <span style="font-size:10px;font-weight:600;color:var(--accent)">· ${l.categories.map(esc).join(', ')}</span>` : ` <span style="font-size:10px;color:var(--muted)">· All types</span>`}</div>
-              <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(url)}</div>
-            </div>
-            <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
-            <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
-            <button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Revoke this link" onclick="revokeClientLink('${l.clientToken}','${jsStr(l.label)}')">🗑</button>
-          </div>`;
-        }).join('')
+      ? links.map(clientLinkRowHTML).join('')
       : '<div class="empty-state" style="padding:16px">No client links yet.</div>';
   } catch (e) { el.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}</div>`; }
+}
+
+function clientLinkRowHTML(l) {
+  const url = buildLibraryUrl(l.clientToken);
+  const catTxt = (l.categories && l.categories.length)
+    ? `<span style="font-size:10px;font-weight:600;color:var(--accent)">· ${l.categories.map(esc).join(', ')}</span>`
+    : `<span style="font-size:10px;color:var(--muted)">· All types</span>`;
+  return `<div id="cl-row-${l.clientToken}" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:600">${esc(l.label)} ${catTxt}</div>
+      <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(url)}</div>
+    </div>
+    <button class="btn btn-ghost" style="padding:4px 8px;font-size:14px;line-height:1" title="Edit name & placement type" onclick="editClientLink('${l.clientToken}')">✏</button>
+    <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
+    <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
+    <button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Revoke this link" onclick="revokeClientLink('${l.clientToken}','${jsStr(l.label)}')">🗑</button>
+  </div>`;
+}
+
+function editClientLink(token) {
+  const l = _clientLinks.find(x => x.clientToken === token);
+  const row = document.getElementById('cl-row-' + token);
+  if (!l || !row) return;
+  const cats = new Set(l.categories || []);
+  row.innerHTML = `
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+      <input id="cle-label-${token}" value="${esc(l.label)}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px" />
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        ${PREMIUM_CATEGORIES.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="cle-cat-${token}" value="${esc(c)}" ${cats.has(c) ? 'checked' : ''} style="accent-color:var(--accent);width:14px;height:14px" /> ${esc(c)}</label>`).join('')}
+      </div>
+    </div>
+    <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="saveClientLinkEdit('${token}')">💾 Save</button>
+    <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="refreshClientLinks()">Cancel</button>`;
+}
+
+async function saveClientLinkEdit(token) {
+  const label = (document.getElementById('cle-label-' + token)?.value || '').trim();
+  const categories = [...document.querySelectorAll('.cle-cat-' + token + ':checked')].map(c => c.value);
+  if (!label) return toast('Enter a client name/label', 'error');
+  try {
+    await apiJSON('PATCH', `/api/clientlib/${token}`, { label, categories });
+    toast('Client link updated', 'success');
+    refreshClientLinks();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function revokeClientLink(token, label) {
