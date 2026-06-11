@@ -199,24 +199,29 @@ function formatOverview(text) {
 
   let html = '';
   let inList = false;
+  let pendingHeader = null; // hold a section header until we see content under it
   const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
   const openList  = () => { if (!inList) { html += '<ul style="margin:0 0 8px;padding-left:18px;display:flex;flex-direction:column;gap:5px">'; inList = true; } };
+  const flushHeader = () => { if (pendingHeader) { html += `<p style="margin:10px 0 4px;font-weight:700;color:var(--text)">${esc(pendingHeader)}</p>`; pendingHeader = null; } };
 
   for (const line of lines) {
     if (line.startsWith('• ')) {
+      flushHeader();        // header earns its place only when a bullet follows
       openList();
       html += `<li>${esc(line.slice(2).trim())}</li>`;
     } else if (/:$/.test(line) && line.length <= 40) {
-      // Section header (e.g. "Experience:", "Skills & Education:").
+      // Section header — defer; a new header drops the previous empty one.
       closeList();
-      html += `<p style="margin:10px 0 4px;font-weight:700;color:var(--text)">${esc(line)}</p>`;
+      pendingHeader = line;
     } else {
       // Intro / free paragraph.
       closeList();
+      flushHeader();
       html += `<p style="margin:0 0 8px">${esc(line)}</p>`;
     }
   }
   closeList();
+  // A trailing header with no content is intentionally dropped (not flushed).
   return html || `<p style="margin:0">${esc(raw)}</p>`;
 }
 
