@@ -4032,7 +4032,7 @@ ${sourceLabel.toUpperCase()}:
 ${sourceText}
 
 Output EXACTLY this structure (plain text, no markdown headings):
-- A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area). If the source states the candidate's age or date of birth, begin with their age, e.g. "Angelicia, 28, is a …". When only a date of birth is given, compute the age from today's date. If no age or date of birth appears in the source, do NOT mention age and do NOT guess.
+- A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area). If the source states the candidate's age or date of birth, state it as a clear, natural sentence, e.g. "Angelicia is currently 28 years old." (place it as its own short sentence, NOT as an inline aside like "Angelicia, 28, is …"). When only a date of birth is given, compute the age from today's date. If no age or date of birth appears in the source, do NOT mention age and do NOT guess.
 - Then a blank line.
 - Then 3–6 short bullet points, each on its OWN line starting with "• ". Keep each bullet under ~18 words.
   IMPORTANT: include the NAMES of past employers / properties / companies / ships / hotels / restaurants where they worked, with the role and (if stated) duration — e.g. "• Pastry Chef at Carnival Cruise Line (2 yrs)". Then add bullets for key skills and education.
