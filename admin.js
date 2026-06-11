@@ -235,19 +235,28 @@ function auditRowsHTML(entries) {
     </tr>`).join('');
 }
 
-// Filter the audit table by action type + person (by) + free-text — all combine.
+// Filter the audit table by date range (When) + person (By) + action — all combine.
 function filterAuditLog() {
   const act = document.getElementById('audit-f-action')?.value || 'all';
   const by  = document.getElementById('audit-f-by')?.value || 'all';
-  const q   = (document.getElementById('audit-f-search')?.value || '').trim().toLowerCase();
+  const fromStr = document.getElementById('audit-f-from')?.value || '';
+  const toStr   = document.getElementById('audit-f-to')?.value || '';
+  const from = fromStr ? new Date(fromStr + 'T00:00:00').getTime() : -Infinity;
+  const to   = toStr ? new Date(toStr + 'T23:59:59.999').getTime() : Infinity;
   const filtered = _auditAll.filter(a =>
     (act === 'all' || a.action === act) &&
     (by === 'all' || a.by === by) &&
-    (!q || (a.by || '').toLowerCase().includes(q) || (a.detail || '').toLowerCase().includes(q) || (AUDIT_LABELS[a.action] || a.action).toLowerCase().includes(q)));
+    (a.ts >= from && a.ts <= to));
   const body = document.getElementById('audit-tbody');
   const count = document.getElementById('audit-count');
   if (body) body.innerHTML = auditRowsHTML(filtered);
   if (count) count.textContent = filtered.length === _auditAll.length ? _auditAll.length : `${filtered.length} of ${_auditAll.length}`;
+}
+
+function clearAuditFilters() {
+  ['audit-f-from', 'audit-f-to'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['audit-f-by', 'audit-f-action'].forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
+  filterAuditLog();
 }
 
 async function renderTeamPage() {
@@ -267,12 +276,17 @@ async function renderTeamPage() {
 
   // Audit log (best-effort — endpoint may not be deployed yet on older workers).
   try { _auditAll = (await apiJSON('GET', '/api/audit')).entries || []; } catch (e) { _auditAll = []; }
-  const auditActions = [...new Set(_auditAll.map(a => a.action))].sort();
+  // Action dropdown — the full catalogue of action types.
   const auditActionOpts = '<option value="all">All actions</option>' +
-    auditActions.map(a => `<option value="${esc(a)}">${esc(AUDIT_LABELS[a] || a)}</option>`).join('');
-  const auditActors = [...new Set(_auditAll.map(a => a.by).filter(Boolean))].sort();
+    Object.keys(AUDIT_LABELS).sort((a, b) => AUDIT_LABELS[a].localeCompare(AUDIT_LABELS[b]))
+      .map(a => `<option value="${esc(a)}">${esc(AUDIT_LABELS[a])}</option>`).join('');
+  // By dropdown — every team member, plus any actor seen in the log (e.g. removed users).
+  const byMap = new Map();
+  (users || []).forEach(u => { if (u.email) byMap.set(u.email, u.name || u.email); });
+  [...new Set(_auditAll.map(a => a.by).filter(Boolean))].forEach(b => { if (!byMap.has(b)) byMap.set(b, b); });
   const auditByOpts = '<option value="all">Anyone</option>' +
-    auditActors.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+    [...byMap.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
   const auditRows = _auditAll.length
     ? auditRowsHTML(_auditAll)
     : `<tr><td colspan="4" class="text-muted text-sm" style="padding:14px">No activity recorded yet.</td></tr>`;
@@ -392,10 +406,12 @@ async function renderTeamPage() {
     <details style="margin-top:12px">
       <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">Activity log (<span id="audit-count">${_auditAll.length}</span>)</summary>
       <p class="text-muted text-sm" style="margin:4px 0 8px">Audit trail of access &amp; ownership changes (most recent first).</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <input id="audit-f-search" type="text" placeholder="Search detail…" oninput="filterAuditLog()" style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px" />
-        <select id="audit-f-action" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">${auditActionOpts}</select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px">From <input id="audit-f-from" type="date" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px" /></label>
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px">To <input id="audit-f-to" type="date" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px" /></label>
         <select id="audit-f-by" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">${auditByOpts}</select>
+        <select id="audit-f-action" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">${auditActionOpts}</select>
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="clearAuditFilters()">Clear</button>
       </div>
       <div class="table-wrap card" style="padding:0">
         <table>
