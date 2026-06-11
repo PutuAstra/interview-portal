@@ -169,7 +169,6 @@ function cardHTML(c) {
       <div class="cand-info">
         <div class="cand-name">${esc(c.candidateName)}</div>
         <div class="cand-tags">
-          <span class="cand-tag">${esc(c.category)}</span>
           <span class="cand-tag">${esc(c.department)}</span>
           <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
         </div>
@@ -232,7 +231,6 @@ function openCandidate(token) {
   _cmToken = token;
   document.getElementById('cm-name').textContent = c.candidateName;
   document.getElementById('cm-tags').innerHTML = `
-    <span class="cand-tag">${esc(c.category)}</span>
     <span class="cand-tag">${esc(c.department)}</span>
     <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>`;
 
