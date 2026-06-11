@@ -123,13 +123,11 @@ function applyBranding(b) {
 }
 
 function renderFilters() {
-  const cats = [...new Set(_candidates.map(c => c.category))].sort();
   const deps = [...new Set(_candidates.map(c => c.department))].sort();
   const roles = [...new Set(_candidates.map(c => c.role))].sort();
   const opt = (arr, label) => `<option value="all">${label}</option>` + arr.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   document.getElementById('lib-body').innerHTML = `
     <div class="lib-filters">
-      <select id="f-cat" onchange="renderGrid()">${opt(cats,'All categories')}</select>
       <select id="f-dep" onchange="renderGrid()">${opt(deps,'All departments')}</select>
       <select id="f-role" onchange="renderGrid()">${opt(roles,'All roles')}</select>
     </div>
@@ -172,7 +170,7 @@ function cardHTML(c) {
           <span class="cand-tag">${esc(c.department)}</span>
           <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
         </div>
-        <button class="btn btn-primary" id="card-btn-${c.token}" style="align-self:flex-start;font-size:13px;padding:8px 24px" onclick="openCandidate('${c.token}')">
+        <button class="btn btn-primary" id="card-btn-${c.token}" style="align-self:center;font-size:13px;padding:8px 24px" onclick="openCandidate('${c.token}')">
           ${cardLabel(c)}
         </button>
       </div>
