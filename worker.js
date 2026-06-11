@@ -598,10 +598,10 @@ async function listUsers(request) {
   return jsonRes({ users, invites });
 }
 
-// Lightweight active-user list (id/name/email) for any admin — powers the
-// owner/share pickers. Not sensitive (internal teammates), unlike listUsers.
+// Lightweight active-user list (id/name/email) — powers the owner/share
+// pickers. Super Admin only (sharing/transfer is a Super-Admin action).
 async function listUsersBasic(request) {
-  await requireAdmin(request);
+  await requireSuperAdmin(request);
   const ids = (await kvGet('user:list')) || [];
   const users = (await Promise.all(ids.map(id => kvGet(`user:${id}`)))).filter(Boolean)
     .filter(u => u.active !== false)
@@ -1302,12 +1302,16 @@ async function getAnalytics(request) {
 async function listInterviews(request) {
   const user = await requireAdmin(request);
   const ids = (await kvGet('interview:list')) || [];
-  // id → display name map, for showing owner + shared recruiters on each card.
-  const uids = (await kvGet('user:list')) || [];
-  const nameMap = {};
-  (await Promise.all(uids.map(uid => kvGet(`user:${uid}`)))).filter(Boolean)
-    .forEach(u => { nameMap[u.id] = u.name || u.email; });
-  const nameOf = oid => !oid ? 'Unassigned' : (nameMap[oid] || (oid === 'admin' ? 'Admin' : 'Unknown'));
+  // Owner/sharing info is Super-Admin-only — build the id→name map just for them.
+  const isSuper = user.role === 'super_admin' || !!user.breakGlass;
+  let nameOf = () => '';
+  if (isSuper) {
+    const uids = (await kvGet('user:list')) || [];
+    const nameMap = {};
+    (await Promise.all(uids.map(uid => kvGet(`user:${uid}`)))).filter(Boolean)
+      .forEach(u => { nameMap[u.id] = u.name || u.email; });
+    nameOf = oid => !oid ? 'Unassigned' : (nameMap[oid] || (oid === 'admin' ? 'Admin' : 'Unknown'));
+  }
   const items = await Promise.all(ids.map(async id => {
     const interview = await kvGet(`interview:${id}`);
     if (!interview) return null;
@@ -1321,11 +1325,14 @@ async function listInterviews(request) {
       inProgress: valid.filter(s => s.status === 'in_progress').length,
       completed: valid.filter(s => s.status === 'completed').length,
     };
-    interview.sharedWith  = interview.sharedWith || [];
-    interview.ownerName   = nameOf(interview.ownerId);
-    interview.sharedNames = interview.sharedWith.map(nameOf);
-    interview._canManage  = canAccess(interview, user, 'manage');
-    interview._isMine     = interview.ownerId === user.id;
+    if (isSuper) {
+      interview.sharedWith  = interview.sharedWith || [];
+      interview.ownerName   = nameOf(interview.ownerId);
+      interview.sharedNames = interview.sharedWith.map(nameOf);
+      interview._isMine     = interview.ownerId === user.id;
+    } else {
+      delete interview.sharedWith; // don't leak the sharing list to non-super-admins
+    }
     return interview;
   }));
   return jsonRes(items.filter(Boolean));
@@ -1354,12 +1361,11 @@ async function updateInterview(id, request) {
 }
 
 // Transfer ownership and/or set the shared-with list for an interview.
-// Anyone with manage access (owner, Admin, or Super Admin) may do this.
+// Super Admin only.
 async function setInterviewAccess(id, request) {
-  const user = await requireAdmin(request);
+  const user = await requireSuperAdmin(request);
   const iv = await kvGet(`interview:${id}`);
   if (!iv) return jsonRes({ error: 'Not found' }, 404);
-  if (!canAccess(iv, user, 'manage')) return jsonRes({ error: 'Forbidden' }, 403);
 
   const body = await request.json().catch(() => ({}));
   const changes = [];

@@ -1044,13 +1044,13 @@ function renderInterviewCard(interview) {
       <div class="flex justify-between items-center">
         <div>
           <h3>${esc(interview.title)}</h3>
-          <p class="text-muted text-sm" style="margin-top:4px">${qCount} question${qCount !== 1 ? 's' : ''} &nbsp;·&nbsp; Created ${created} &nbsp;·&nbsp; 👤 ${esc(interview.ownerName || 'Unassigned')}${interview._isMine ? ' <span style="opacity:0.7">(you)</span>' : ''}${(interview.sharedNames && interview.sharedNames.length) ? ` &nbsp;·&nbsp; 🔗 Shared with ${interview.sharedNames.map(esc).join(', ')}` : ''}</p>
+          <p class="text-muted text-sm" style="margin-top:4px">${qCount} question${qCount !== 1 ? 's' : ''} &nbsp;·&nbsp; Created ${created}${_isSuperAdmin ? ` &nbsp;·&nbsp; 👤 ${esc(interview.ownerName || 'Unassigned')}${interview._isMine ? ' <span style="opacity:0.7">(you)</span>' : ''}${(interview.sharedNames && interview.sharedNames.length) ? ` &nbsp;·&nbsp; 🔗 Shared with ${interview.sharedNames.map(esc).join(', ')}` : ''}` : ''}</p>
           <p class="text-sm" style="margin-top:6px">${candidateLine}</p>
         </div>
         <div class="flex gap-8 items-center">
           <button class="btn btn-primary" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'candidates')">Candidates</button>
           <button class="btn btn-outline" onclick="openSessions('${interview.id}', '${jsStr(interview.title)}', 'invite')">Invite</button>
-          ${interview._canManage ? `<button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Owner &amp; sharing" onclick="openAccessModal('${interview.id}')">👥</button>` : ''}
+          ${_isSuperAdmin ? `<button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Owner &amp; sharing" onclick="openAccessModal('${interview.id}')">👥</button>` : ''}
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:15px" title="Edit" onclick="openEditInterview('${interview.id}')"><span style="display:inline-block;transform:scaleX(-1) rotate(45deg)">✏</span></button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:14px" title="Duplicate" onclick="cloneInterview('${interview.id}')">⧉</button>
           <button class="btn btn-ghost" style="padding:6px 10px;font-size:16px" title="Delete" onclick="deleteInterview('${interview.id}')">🗑</button>
