@@ -232,11 +232,19 @@ async function renderTeamPage() {
   // Audit log (best-effort — endpoint may not be deployed yet on older workers).
   let auditEntries = [];
   try { auditEntries = (await apiJSON('GET', '/api/audit')).entries || []; } catch (e) {}
+  const AUDIT_LABELS = {
+    invite_user: 'Invite teammate', revoke_invite: 'Revoke invite', update_user: 'Update teammate', delete_user: 'Delete teammate',
+    reassign_all_records: 'Reassign all records', assign_unowned_records: 'Assign unowned records',
+    invite_candidate: 'Invite candidate', revoke_candidate: 'Revoke candidate', delete_candidate: 'Delete candidate',
+    review_decision: 'Review decision', run_ai_analysis: 'AI analysis',
+    premium_add: 'Add to Premium', premium_remove: 'Remove from Premium', premium_taken: 'Mark Taken', premium_available: 'Mark Available',
+    clientlib_create: 'Create client link', clientlib_revoke: 'Revoke client link',
+  };
   const auditRows = auditEntries.length ? auditEntries.map(a => `
     <tr>
       <td class="text-muted text-sm" style="white-space:nowrap">${new Date(a.ts).toLocaleString()}</td>
       <td class="text-sm">${esc(a.by)}</td>
-      <td class="text-sm"><span class="badge badge-in_progress">${esc(a.action)}</span></td>
+      <td class="text-sm"><span class="badge badge-in_progress">${esc(AUDIT_LABELS[a.action] || a.action)}</span></td>
       <td class="text-sm">${esc(a.detail || '')}</td>
     </tr>`).join('') : `<tr><td colspan="4" class="text-muted text-sm" style="padding:14px">No activity recorded yet.</td></tr>`;
 

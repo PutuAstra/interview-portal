@@ -1367,6 +1367,8 @@ async function createSession(interviewId, request) {
   sessions.unshift(token);
   await kvPut(`interview:${interviewId}:sessions`, sessions);
 
+  await logAudit(user, 'invite_candidate', `${candidateName}${candidateEmail ? ` <${candidateEmail}>` : ''} · "${interview.title || interviewId}"`);
+
   return jsonRes({ token, session }, 201);
 }
 
@@ -1768,7 +1770,7 @@ async function submitWrittenAnswer(token, qIndex, request) {
 }
 
 async function deleteSession(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   // "Revoke" (pending) is blocked on completed; explicit ?force=1 (admin Delete) allows it.
@@ -1785,6 +1787,7 @@ async function deleteSession(token, request) {
     const plist = ((await kvGet('premium:list')) || []).filter(t => t !== token);
     await kvPut('premium:list', plist);
   }
+  await logAudit(user, force ? 'delete_candidate' : 'revoke_candidate', `${session.candidateName || token}${session.candidateEmail ? ` <${session.candidateEmail}>` : ''}`);
   return jsonRes({ ok: true });
 }
 
@@ -2683,7 +2686,7 @@ async function createTeamsMeeting(session, organizerEmail) {
 // Required Worker secrets: GROQ_API_KEY (transcription + rating)
 
 async function analyzeSession(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
 
   if (typeof GROQ_API_KEY === 'undefined' || !GROQ_API_KEY) {
     return jsonRes({ error: 'GROQ_API_KEY is not configured in Worker secrets.' }, 500);
@@ -2851,6 +2854,8 @@ For "recommendation", output exactly one of: "strong" (clear move-forward), "con
     session.aiAnalyzedAt     = analysis.analyzedAt;
     await kvPut(`session:${token}`, session);
   } catch (e) {}
+
+  await logAudit(user, 'run_ai_analysis', `${session.candidateName || token}${analysis.overall?.stars != null ? ` → ${analysis.overall.stars}★ ${analysis.overall.level || ''}`.trimEnd() : ''}`);
 
   return jsonRes(analysis);
 }
@@ -3073,7 +3078,7 @@ async function sendOutcomeEmail(session, interview, decision) {
 }
 
 async function saveSessionReview(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { notes, decision, stars, questionScores, notify } = await request.json();
   const prev = (await kvGet(`session:${token}:review`)) || {};
   await kvPut(`session:${token}:review`, {
@@ -3104,6 +3109,11 @@ async function saveSessionReview(token, request) {
         await kvPut(`session:${token}:review`, r);
       }
     } catch (e) { console.error('[outcome email]', e.message); }
+  }
+
+  // Log only when the decision changed (skip plain note/score edits).
+  if (decision && decision !== prev.decision) {
+    await logAudit(user, 'review_decision', `${session?.candidateName || token}: ${decision}${stars ? ` (${stars}★)` : ''}`);
   }
   return jsonRes({ ok: true, emailed });
 }
@@ -3645,7 +3655,7 @@ async function driveDownloadUrl(itemId) {
 // Recruiter adds a candidate to the Premium Talent. AUTHORITATIVE 4★ gate:
 // re-reads the saved review so the UI can't be bypassed.
 async function addToPremium(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   const review = await kvGet(`session:${token}:review`);
@@ -3669,40 +3679,44 @@ async function addToPremium(token, request) {
   await kvPut(`session:${token}`, session);
   const list = (await kvGet('premium:list')) || [];
   if (!list.includes(token)) { list.push(token); await kvPut('premium:list', list); }
+  await logAudit(user, 'premium_add', `${session.candidateName || token} · ${category} / ${department} / ${role} (${stars}★)`);
   return jsonRes({ ok: true, premium: session.premium });
 }
 
 async function removeFromPremium(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session) return jsonRes({ error: 'Session not found' }, 404);
   delete session.premium;
   await kvPut(`session:${token}`, session);
   const list = ((await kvGet('premium:list')) || []).filter(t => t !== token);
   await kvPut('premium:list', list);
+  await logAudit(user, 'premium_remove', session.candidateName || token);
   return jsonRes({ ok: true });
 }
 
 // Admin marks a premium talent as Taken (hired) — removes them from the
 // client-facing library. Only the recruiter does this, after an actual hire.
 async function markPremiumTaken(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
   session.premium.status = 'Taken';
   session.premium.takenAt = Date.now();
   await kvPut(`session:${token}`, session);
+  await logAudit(user, 'premium_taken', session.candidateName || token);
   return jsonRes({ ok: true });
 }
 
 // Admin reverts a Taken candidate back to Available (e.g. hire fell through).
 async function markPremiumAvailable(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const session = await kvGet(`session:${token}`);
   if (!session?.premium) return jsonRes({ error: 'Not a premium talent' }, 404);
   session.premium.status = 'Available';
   session.premium.takenAt = null;
   await kvPut(`session:${token}`, session);
+  await logAudit(user, 'premium_available', session.candidateName || token);
   return jsonRes({ ok: true });
 }
 
@@ -3725,12 +3739,13 @@ async function listPremium(request) {
 
 // ── Client library access (tokenized, no login) ──
 async function createClientLib(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { label } = await request.json().catch(() => ({}));
   const clientToken = uid();
   await kvPut(`clientlib:${clientToken}`, { label: (label || 'Client').slice(0, 80), createdAt: Date.now() });
   const list = (await kvGet('clientlib:list')) || [];
   list.push(clientToken); await kvPut('clientlib:list', list);
+  await logAudit(user, 'clientlib_create', label || 'Client');
   return jsonRes({ clientToken, label: label || 'Client' });
 }
 
@@ -3746,10 +3761,12 @@ async function listClientLibs(request) {
 
 // Revoke a client library link — the URL stops working immediately.
 async function deleteClientLib(token, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
+  const meta = await kvGet(`clientlib:${token}`);
   await INTERVIEW_DATA.delete(`clientlib:${token}`);
   const list = (await kvGet('clientlib:list')) || [];
   await kvPut('clientlib:list', list.filter(t => t !== token));
+  await logAudit(user, 'clientlib_revoke', meta?.label || token);
   return jsonRes({ ok: true });
 }
 
