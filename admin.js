@@ -235,12 +235,14 @@ function auditRowsHTML(entries) {
     </tr>`).join('');
 }
 
-// Filter the audit table by action type + free-text (matches actor or detail).
+// Filter the audit table by action type + person (by) + free-text — all combine.
 function filterAuditLog() {
   const act = document.getElementById('audit-f-action')?.value || 'all';
+  const by  = document.getElementById('audit-f-by')?.value || 'all';
   const q   = (document.getElementById('audit-f-search')?.value || '').trim().toLowerCase();
   const filtered = _auditAll.filter(a =>
     (act === 'all' || a.action === act) &&
+    (by === 'all' || a.by === by) &&
     (!q || (a.by || '').toLowerCase().includes(q) || (a.detail || '').toLowerCase().includes(q) || (AUDIT_LABELS[a.action] || a.action).toLowerCase().includes(q)));
   const body = document.getElementById('audit-tbody');
   const count = document.getElementById('audit-count');
@@ -268,6 +270,9 @@ async function renderTeamPage() {
   const auditActions = [...new Set(_auditAll.map(a => a.action))].sort();
   const auditActionOpts = '<option value="all">All actions</option>' +
     auditActions.map(a => `<option value="${esc(a)}">${esc(AUDIT_LABELS[a] || a)}</option>`).join('');
+  const auditActors = [...new Set(_auditAll.map(a => a.by).filter(Boolean))].sort();
+  const auditByOpts = '<option value="all">Anyone</option>' +
+    auditActors.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
   const auditRows = _auditAll.length
     ? auditRowsHTML(_auditAll)
     : `<tr><td colspan="4" class="text-muted text-sm" style="padding:14px">No activity recorded yet.</td></tr>`;
@@ -388,8 +393,9 @@ async function renderTeamPage() {
       <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">Activity log (<span id="audit-count">${_auditAll.length}</span>)</summary>
       <p class="text-muted text-sm" style="margin:4px 0 8px">Audit trail of access &amp; ownership changes (most recent first).</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <input id="audit-f-search" type="text" placeholder="Search by person or detail…" oninput="filterAuditLog()" style="flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px" />
+        <input id="audit-f-search" type="text" placeholder="Search detail…" oninput="filterAuditLog()" style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px" />
         <select id="audit-f-action" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">${auditActionOpts}</select>
+        <select id="audit-f-by" onchange="filterAuditLog()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px">${auditByOpts}</select>
       </div>
       <div class="table-wrap card" style="padding:0">
         <table>
