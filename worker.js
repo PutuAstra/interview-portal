@@ -4035,10 +4035,11 @@ Output EXACTLY this structure (plain text, no markdown headings):
 - A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area). If the source states the candidate's age or date of birth, state it as a clear, natural sentence, e.g. "Angelicia is currently 28 years old." (place it as its own short sentence, NOT as an inline aside like "Angelicia, 28, is …"). When only a date of birth is given, compute the age from today's date. If no age or date of birth appears in the source, do NOT mention age and do NOT guess.
 - Then a blank line.
 - Then a section header line that is EXACTLY "Experience:" on its own line, followed by 2–4 bullets, each on its OWN line starting with "• ", naming the employer / property / company / ship / hotel / restaurant with the role and (if stated) duration — e.g. "• Pastry Chef at Carnival Cruise Line (2 yrs)".
-- Then a section header line that is EXACTLY "Skills & Education:" on its own line, followed by 2–3 bullets of key skills, qualifications, certifications, or languages.
+- Then a section header line that is EXACTLY "Skills & Certification:" on its own line, followed by 2–3 bullets of key skills, certifications, or languages.
+- Then a section header line that is EXACTLY "Education:" on its own line, followed by 1–2 bullets naming the school / university and field of study — e.g. "• Universitas Negeri Malang — Culinary Arts Education".
 
-Each bullet under ~18 words. Keep the whole thing under ~160 words. Write in third person, based ONLY on the source — do not invent facts; if a property/employer name isn't in the source, don't make one up.
-STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details (age and date of birth are allowed). Use ONLY the bullet character "• " for bullets (never ❖ or *), and write the two section headers exactly as "Experience:" and "Skills & Education:". Output only the overview.`;
+Each bullet under ~18 words. Keep the whole thing under ~170 words. Write in third person, based ONLY on the source — do not invent facts; if a property/employer name isn't in the source, don't make one up. Omit any section entirely if the source has nothing for it (do not output an empty header).
+STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details (age and date of birth are allowed). Use ONLY the bullet character "• " for bullets (never ❖ or *), and write the section headers exactly as "Experience:", "Skills & Certification:", and "Education:". Output only the overview.`;
 
   let text = '';
   try {
