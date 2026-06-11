@@ -12,16 +12,20 @@
     .lib-container { min-height:100vh; display:flex; flex-direction:column; background:var(--bg); }
     .lib-topbar { display:flex; align-items:center; justify-content:space-between; padding:0 24px; height:56px; background:var(--card); border-bottom:1px solid var(--border); flex-shrink:0; }
     .lib-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:15px; color:var(--text); }
-    .lib-body { flex:1; max-width:1600px; margin:0; padding:24px; width:100%; box-sizing:border-box; }
+    .lib-body { flex:1; max-width:none; margin:0; padding:24px; width:100%; box-sizing:border-box; }
     .lib-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .lib-filters select, .lib-filters input { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:8px 12px; color:var(--text); font-size:13px; }
-    .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+    /* 4 across on desktop; steps down on smaller screens. */
+    .lib-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+    @media (max-width:1400px) { .lib-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (max-width:1000px) { .lib-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:600px)  { .lib-grid { grid-template-columns:1fr; } }
     .cand-card { border:1px solid var(--border); border-radius:12px; background:var(--card); display:flex; align-items:stretch; overflow:hidden; min-height:140px; }
     .cand-photo { width:130px; flex-shrink:0; background:var(--bg); display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--text-2); font-size:26px; overflow:hidden; }
     .cand-photo img { width:100%; height:100%; object-fit:cover; }
     .cand-info { flex:1; min-width:0; padding:16px 18px; display:flex; flex-direction:column; gap:10px; justify-content:center; }
-    .cand-name { font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .cand-tags { display:flex; gap:5px; flex-wrap:wrap; }
+    .cand-name { font-size:16px; font-weight:700; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .cand-tags { display:flex; gap:5px; flex-wrap:nowrap; }
     .cand-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:10px; background:var(--bg); border:1px solid var(--border); color:var(--text-2); }
     .cand-card video { width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; display:block; }
     .badge-client { display:inline-flex; align-items:center; gap:5px; background:rgba(245,158,11,0.12); color:#f59e0b; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid rgba(245,158,11,0.3); }
