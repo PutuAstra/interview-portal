@@ -562,7 +562,7 @@ async function authLogout(request) {
 
 // ── Audit log ─────────────────────────────────────────────────
 // Best-effort append-only record of sensitive admin actions (access/ownership
-// changes). Capped to the most recent 500 entries. Never throws.
+// changes). Retains the most recent 5000 entries. Never throws.
 async function logAudit(actor, action, detail) {
   try {
     const entry = {
@@ -573,7 +573,7 @@ async function logAudit(actor, action, detail) {
     };
     const log = (await kvGet('audit:log')) || [];
     log.unshift(entry);
-    if (log.length > 500) log.length = 500;
+    if (log.length > 5000) log.length = 5000;
     await kvPut('audit:log', log);
   } catch (e) { console.error('[audit] failed:', e.message); }
 }
@@ -581,7 +581,7 @@ async function logAudit(actor, action, detail) {
 async function getAuditLog(request) {
   await requireSuperAdmin(request);
   const log = (await kvGet('audit:log')) || [];
-  return jsonRes({ entries: log.slice(0, 200) });
+  return jsonRes({ entries: log });
 }
 
 // ── Team management (super_admin only) ────────────────────────
