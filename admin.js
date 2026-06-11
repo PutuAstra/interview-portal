@@ -113,7 +113,7 @@ async function showApp() {
   } catch {}
   document.getElementById('login-gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const valid = ['dashboard', 'ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'branding', 'team'];
+  const valid = ['dashboard', 'ow-list', 'ow-create', 'premium', 'tw-list', 'tw-schedule', 'scripts', 'booking', 'booking-create', 'booking-edit', 'holidays', 'calendar-sync', 'my-emails', 'branding', 'team'];
   const hash  = window.location.hash.replace('#', '');
   gotoPage(valid.includes(hash) ? hash : 'ow-list');
 }
@@ -183,6 +183,7 @@ function gotoPage(page) {
                   : ['booking', 'booking-create', 'booking-edit'].includes(page) ? 'booking'
                   : page === 'holidays' ? 'holidays'
                   : page === 'calendar-sync' ? 'calendar-sync'
+                  : page === 'my-emails' ? 'my-emails'
                   : page === 'branding' ? 'branding'
                   : page === 'team' ? 'team'
                   : 'tw-list';
@@ -206,6 +207,7 @@ function gotoPage(page) {
   if (page === 'booking-edit')   renderEditBookingLinkPage(_editingBookingToken);
   if (page === 'holidays')       renderHolidaysPage();
   if (page === 'calendar-sync') renderCalendarSyncPage();
+  if (page === 'my-emails')     renderMyEmailsPage();
   if (page === 'branding')      renderBrandingPage();
   if (page === 'team')          renderTeamPage();
 }
@@ -5581,6 +5583,95 @@ async function submitCreateBookingLink() {
     toast(e.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'Create Booking Link'; }
   }
+}
+
+// ── My Outcome Emails (per-recruiter, per placement type) ─────
+let _myTpl = {};      // { '': {fwdSubject,…}, 'Sea-Based': {…}, … }
+let _myEmType = '';   // currently-edited type ('' = General)
+
+async function renderMyEmailsPage() {
+  const main = document.getElementById('admin-main');
+  main.innerHTML = '<div class="spinner" style="margin:80px auto"></div>';
+  let data;
+  try { data = await apiJSON('GET', '/api/me/outcome-templates'); }
+  catch (e) { main.innerHTML = `<div class="empty-state">Could not load your templates: ${esc(e.message)}</div>`; return; }
+  _myTpl = { '': data.general || {}, ...(data.byType || {}) };
+  _myEmType = '';
+  const g = _myTpl[''] || {};
+  const D = OUTCOME_EMAIL_DEFAULTS;
+  const lbl = (c, t) => `<label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:${c}">${t}</label>`;
+  const ta = 'width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;line-height:1.5';
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <h2 class="mb-16">✉️ My Outcome Emails</h2>
+      <p class="text-muted text-sm mb-16">Your own Move&nbsp;Forward / Not&nbsp;Moving&nbsp;Forward emails, sent to candidates on interviews <strong>you own</strong> when you save a decision with the email box ticked. <strong>Paste your own booking link</strong> into the Move&nbsp;Forward message. Each placement type can have its own; blank fields fall back to your General, then the org default. Placeholders: <code>{name}</code>, <code>{position}</code>.</p>
+      <div class="card" style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group" style="margin:0">
+          ${lbl('var(--muted)', 'Placement type template')}
+          <select id="my-em-type" onchange="myEmLoadType(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px">
+            <option value="">General (default)</option>
+            <option value="Sea-Based">Sea-Based</option>
+            <option value="Land-Based">Land-Based</option>
+            <option value="J-1 Program">J-1 Program</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;border-top:1px solid var(--border);padding-top:16px">
+          ${lbl('#16a34a', '✓ Move Forward — Subject')}
+          <input type="text" id="my-fwd-subject" value="${esc(g.fwdSubject || '')}" placeholder="${esc(D.fwdSubject)}" style="width:100%" />
+          ${lbl('#16a34a', '✓ Move Forward — Message (include your booking link)')}
+          <textarea id="my-fwd-body" rows="8" placeholder="${esc(D.fwdBody)}" style="${ta}">${esc(g.fwdBody || '')}</textarea>
+        </div>
+        <div class="form-group" style="margin:0;border-top:1px solid var(--border);padding-top:16px">
+          ${lbl('#dc2626', '✗ Not Moving Forward — Subject')}
+          <input type="text" id="my-rej-subject" value="${esc(g.rejSubject || '')}" placeholder="${esc(D.rejSubject)}" style="width:100%" />
+          ${lbl('#dc2626', '✗ Not Moving Forward — Message')}
+          <textarea id="my-rej-body" rows="7" placeholder="${esc(D.rejBody)}" style="${ta}">${esc(g.rejBody || '')}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" onclick="saveMyEmails()">💾 Save My Templates</button>
+      </div>
+    </div>`;
+}
+
+function myEmCapture() {
+  _myTpl[_myEmType] = {
+    fwdSubject: document.getElementById('my-fwd-subject')?.value.trim() || '',
+    fwdBody:    document.getElementById('my-fwd-body')?.value.trim()    || '',
+    rejSubject: document.getElementById('my-rej-subject')?.value.trim() || '',
+    rejBody:    document.getElementById('my-rej-body')?.value.trim()    || '',
+  };
+}
+
+function myEmLoadType(type) {
+  myEmCapture();
+  _myEmType = type;
+  const t = _myTpl[type] || {};
+  const gen = _myTpl[''] || {};
+  const isGen = type === '';
+  const set = (id, key, def) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = t[key] || '';
+    el.placeholder = isGen ? def : (gen[key] || def);
+  };
+  set('my-fwd-subject', 'fwdSubject', OUTCOME_EMAIL_DEFAULTS.fwdSubject);
+  set('my-fwd-body',    'fwdBody',    OUTCOME_EMAIL_DEFAULTS.fwdBody);
+  set('my-rej-subject', 'rejSubject', OUTCOME_EMAIL_DEFAULTS.rejSubject);
+  set('my-rej-body',    'rejBody',    OUTCOME_EMAIL_DEFAULTS.rejBody);
+}
+
+async function saveMyEmails() {
+  myEmCapture();
+  const general = _myTpl[''] || {};
+  const byType = {};
+  Object.keys(_myTpl).forEach(k => {
+    if (k !== '' && _myTpl[k] && Object.values(_myTpl[k]).some(v => v && v.trim())) byType[k] = _myTpl[k];
+  });
+  try {
+    await apiJSON('PUT', '/api/me/outcome-templates', { general, byType });
+    toast('Your templates saved', 'success');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ── Employer Branding ─────────────────────────────────────────

@@ -341,6 +341,11 @@ async function route(request) {
     if (m === 'GET') return getMyCalendars(request);
     if (m === 'PUT') return setMyCalendars(request);
   }
+  // Per-recruiter outcome-email templates (each recruiter's own, per placement type)
+  if (seg[0] === 'me' && seg[1] === 'outcome-templates' && seg.length === 2) {
+    if (m === 'GET') return getMyOutcomeTemplates(request);
+    if (m === 'PUT') return setMyOutcomeTemplates(request);
+  }
 
   // ── Holiday & Closure Settings ───────────────────────────────
   // /api/holidays/settings  (must be before /api/holidays length-1 catch-all)
@@ -3123,18 +3128,27 @@ async function sendOutcomeEmail(session, interview, decision) {
   if (decision !== 'move_forward' && decision !== 'not_moving_forward') return false;
 
   const settings = (await kvGet('recruiter:settings')) || {};
-  // Resolve the template: placement-type override → general custom → default.
   const pt = interview?.placementType || '';
-  const byType = (pt && settings.outcomeByType && settings.outcomeByType[pt]) || {};
-  const pick = (typeKey, genKey) => (byType[typeKey] && byType[typeKey].trim()) ? byType[typeKey] : settings[genKey];
-  const custom = decision === 'move_forward'
-    ? { subject: pick('fwdSubject', 'outcomeFwdSubject'), body: pick('fwdBody', 'outcomeFwdBody') }
-    : { subject: pick('rejSubject', 'outcomeRejSubject'), body: pick('rejBody', 'outcomeRejBody') };
+  // Per-recruiter templates (the interview owner's), so their own booking link goes out.
+  const ownerTpl = interview?.ownerId ? (await kvGet(`outcometpl:${interview.ownerId}`)) : null;
+  const ownerByType = (pt && ownerTpl?.byType && ownerTpl.byType[pt]) || {};
+  const ownerGen    = ownerTpl?.general || {};
+  const orgByType   = (pt && settings.outcomeByType && settings.outcomeByType[pt]) || {};
   const def = OUTCOME_DEFAULTS[decision];
 
+  const fwd = decision === 'move_forward';
+  const kSub = fwd ? 'fwdSubject' : 'rejSubject';
+  const kBody = fwd ? 'fwdBody' : 'rejBody';
+  const orgKSub = fwd ? 'outcomeFwdSubject' : 'outcomeRejSubject';
+  const orgKBody = fwd ? 'outcomeFwdBody' : 'outcomeRejBody';
+  const nz = v => (v && String(v).trim()) ? v : null;
+  // Resolution: owner per-type → owner general → org per-type → org general → built-in default.
+  const rawSubject = nz(ownerByType[kSub]) || nz(ownerGen[kSub]) || nz(orgByType[kSub]) || nz(settings[orgKSub]) || def.subject;
+  const rawBody    = nz(ownerByType[kBody]) || nz(ownerGen[kBody]) || nz(orgByType[kBody]) || nz(settings[orgKBody]) || def.body;
+
   const fill = t => (t || '').replace(/\{name\}/g, session.candidateName).replace(/\{position\}/g, interview?.title || 'the position');
-  const subject = fill((custom.subject && custom.subject.trim()) ? custom.subject : def.subject);
-  const bodyText = fill((custom.body && custom.body.trim()) ? custom.body : def.body);
+  const subject = fill(rawSubject);
+  const bodyText = fill(rawBody);
   // Plain-text body → safe HTML paragraphs (escape, blank line = paragraph, single newline = <br>).
   const inner = bodyText.split(/\n{2,}/).map(p =>
     `<p style="margin:0 0 16px;color:#374151;font-size:14px;font-family:Arial,sans-serif;line-height:22px">${htmlEsc(p).replace(/\n/g, '<br/>')}</p>`
@@ -4149,6 +4163,36 @@ async function setMyCalendars(request) {
   u.linkedCalendars = cals;
   await kvPut(`user:${user.id}`, u);
   return jsonRes({ linkedCalendars: cals });
+}
+
+// Each recruiter's own outcome-email templates, per placement type. Stored at
+// outcometpl:{userId}. Used (by interview owner) when a review decision emails
+// the candidate — lets each recruiter embed their own booking link.
+async function getMyOutcomeTemplates(request) {
+  const user = await requireAdmin(request);
+  const tpl = (await kvGet(`outcometpl:${user.id}`)) || { general: {}, byType: {} };
+  return jsonRes(tpl);
+}
+
+async function setMyOutcomeTemplates(request) {
+  const user = await requireAdmin(request);
+  const body = await request.json().catch(() => ({}));
+  const clean = o => ({
+    fwdSubject: String(o?.fwdSubject || '').slice(0, 300),
+    fwdBody:    String(o?.fwdBody || '').slice(0, 6000),
+    rejSubject: String(o?.rejSubject || '').slice(0, 300),
+    rejBody:    String(o?.rejBody || '').slice(0, 6000),
+  });
+  const general = clean(body.general);
+  const byType = {};
+  if (body.byType && typeof body.byType === 'object') {
+    for (const k of Object.keys(body.byType)) {
+      const c = clean(body.byType[k]);
+      if (Object.values(c).some(v => v && v.trim())) byType[k] = c;
+    }
+  }
+  await kvPut(`outcometpl:${user.id}`, { general, byType });
+  return jsonRes({ ok: true });
 }
 
 async function testLinkedCalendar(request) {
