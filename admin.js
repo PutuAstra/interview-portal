@@ -787,7 +787,7 @@ function clientLinkRowHTML(l) {
       <div style="font-size:13px;font-weight:600">${esc(l.label)} ${catTxt}</div>
       <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(url)}</div>
     </div>
-    <button class="btn btn-ghost" style="padding:4px 8px;font-size:14px;line-height:1" title="Edit name & placement type" onclick="editClientLink('${l.clientToken}')">✏</button>
+    <button class="btn btn-ghost" style="padding:4px 8px;font-size:15px;line-height:1" title="Edit name & placement type" onclick="editClientLink('${l.clientToken}')"><span style="display:inline-block;transform:scaleX(-1) rotate(45deg)">✏</span></button>
     <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="emailClientLink('${l.clientToken}')">✉ Email</button>
     <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="navigator.clipboard.writeText('${jsStr(url)}');toast('Link copied!','success')">📋 Copy</button>
     <button class="btn btn-ghost" style="padding:4px 8px;font-size:16px;line-height:1" title="Revoke this link" onclick="revokeClientLink('${l.clientToken}','${jsStr(l.label)}')">🗑</button>
