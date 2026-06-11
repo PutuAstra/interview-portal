@@ -3539,12 +3539,12 @@ async function openReview(token, candidateName) {
           ? `https://view.officeapps.live.com/op/embed.aspx?src=${enc}`
           : `https://docs.google.com/viewer?url=${enc}&embedded=true`);
       resumeSection = `
-        <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px">
+        <div style="flex-shrink:0;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <h3 style="margin:0;font-size:14px">Resume</h3>
             <a href="${resumeData.downloadUrl}" target="_blank" class="btn btn-ghost" style="font-size:11px;padding:2px 8px">Download ↗</a>
           </div>
-          <iframe id="resume-frame" src="${viewerSrc}" style="flex:1;min-height:400px;border:1px solid var(--border);border-radius:8px;width:100%" frameborder="0" allowfullscreen></iframe>
+          <iframe id="resume-frame" src="${viewerSrc}" style="height:68vh;border:1px solid var(--border);border-radius:8px;width:100%;display:block" frameborder="0" allowfullscreen></iframe>
         </div>`;
     } else {
       resumeSection = `<div class="empty-state" style="flex:none">No resume uploaded</div>`;
