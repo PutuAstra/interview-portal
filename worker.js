@@ -4023,19 +4023,22 @@ async function generatePremiumOverview(token, request) {
     sourceText  = qparts.join('\n\n').slice(0, 8000);
   }
 
+  const todayStr = new Date().toISOString().slice(0, 10);
   const prompt = `Below is a job candidate's ${sourceLabel}. Write a concise professional profile for a hiring client, in a clean, easy-to-scan format.
+
+Today's date is ${todayStr}.
 
 ${sourceLabel.toUpperCase()}:
 ${sourceText}
 
 Output EXACTLY this structure (plain text, no markdown headings):
-- A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area).
+- A 1–2 sentence summary paragraph (who they are, total/apparent experience, strongest area). If the source states the candidate's age or date of birth, begin with their age, e.g. "Angelicia, 28, is a …". When only a date of birth is given, compute the age from today's date. If no age or date of birth appears in the source, do NOT mention age and do NOT guess.
 - Then a blank line.
 - Then 3–6 short bullet points, each on its OWN line starting with "• ". Keep each bullet under ~18 words.
   IMPORTANT: include the NAMES of past employers / properties / companies / ships / hotels / restaurants where they worked, with the role and (if stated) duration — e.g. "• Pastry Chef at Carnival Cruise Line (2 yrs)". Then add bullets for key skills and education.
 
 Keep the whole thing under ~150 words. Write in third person, based ONLY on the source — do not invent facts; if a property/employer name isn't in the source, don't make one up.
-STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details. Use ONLY the bullet character "• " (never ❖ or *). Output only the overview.`;
+STRICT: do NOT include any email, phone/mobile/home number, address, links, or other personal contact details (age and date of birth are allowed). Use ONLY the bullet character "• " (never ❖ or *). Output only the overview.`;
 
   let text = '';
   try {
