@@ -16,11 +16,11 @@
     .lib-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .lib-filters select, .lib-filters input { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:8px 12px; color:var(--text); font-size:13px; }
     .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
-    .cand-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:16px; display:flex; flex-direction:column; gap:12px; }
-    .cand-head { display:flex; align-items:center; gap:12px; min-width:0; }
-    .cand-avatar { width:52px; height:52px; border-radius:50%; flex-shrink:0; object-fit:cover; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--text-2); font-size:16px; overflow:hidden; }
-    .cand-avatar img { width:100%; height:100%; object-fit:cover; }
-    .cand-name { font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cand-card { border:1px solid var(--border); border-radius:12px; background:var(--card); display:flex; align-items:stretch; overflow:hidden; min-height:140px; }
+    .cand-photo { width:130px; flex-shrink:0; background:var(--bg); display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--text-2); font-size:26px; overflow:hidden; }
+    .cand-photo img { width:100%; height:100%; object-fit:cover; }
+    .cand-info { flex:1; min-width:0; padding:16px 18px; display:flex; flex-direction:column; gap:10px; justify-content:center; }
+    .cand-name { font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .cand-tags { display:flex; gap:5px; flex-wrap:wrap; }
     .cand-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:10px; background:var(--bg); border:1px solid var(--border); color:var(--text-2); }
     .cand-card video { width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; display:block; }
@@ -161,20 +161,18 @@ function cardLabel(c) {
 function cardHTML(c) {
   return `
     <div class="cand-card">
-      <div class="cand-head">
-        <div class="cand-avatar" id="ph-${c.token}">${initials(c.candidateName)}</div>
-        <div style="min-width:0">
-          <div class="cand-name">${esc(c.candidateName)}</div>
-          <div class="cand-tags" style="margin-top:5px">
-            <span class="cand-tag">${esc(c.category)}</span>
-            <span class="cand-tag">${esc(c.department)}</span>
-            <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
-          </div>
+      <div class="cand-photo" id="ph-${c.token}">${initials(c.candidateName)}</div>
+      <div class="cand-info">
+        <div class="cand-name">${esc(c.candidateName)}</div>
+        <div class="cand-tags">
+          <span class="cand-tag">${esc(c.category)}</span>
+          <span class="cand-tag">${esc(c.department)}</span>
+          <span class="cand-tag" style="color:var(--accent);border-color:var(--accent)">${esc(c.role)}</span>
         </div>
+        <button class="btn btn-primary" id="card-btn-${c.token}" style="align-self:flex-start;font-size:13px;padding:8px 24px" onclick="openCandidate('${c.token}')">
+          ${cardLabel(c)}
+        </button>
       </div>
-      <button class="btn btn-primary" id="card-btn-${c.token}" style="align-self:center;font-size:13px;padding:8px 24px" onclick="openCandidate('${c.token}')">
-        ${cardLabel(c)}
-      </button>
     </div>`;
 }
 
