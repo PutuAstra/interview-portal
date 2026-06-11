@@ -3127,24 +3127,20 @@ async function sendOutcomeEmail(session, interview, decision) {
   if (!session.candidateEmail) return false;
   if (decision !== 'move_forward' && decision !== 'not_moving_forward') return false;
 
-  const settings = (await kvGet('recruiter:settings')) || {};
   const pt = interview?.placementType || '';
-  // Per-recruiter templates (the interview owner's), so their own booking link goes out.
+  // Templates are the interview owner's own (so their booking link goes out).
   const ownerTpl = interview?.ownerId ? (await kvGet(`outcometpl:${interview.ownerId}`)) : null;
   const ownerByType = (pt && ownerTpl?.byType && ownerTpl.byType[pt]) || {};
   const ownerGen    = ownerTpl?.general || {};
-  const orgByType   = (pt && settings.outcomeByType && settings.outcomeByType[pt]) || {};
   const def = OUTCOME_DEFAULTS[decision];
 
   const fwd = decision === 'move_forward';
   const kSub = fwd ? 'fwdSubject' : 'rejSubject';
   const kBody = fwd ? 'fwdBody' : 'rejBody';
-  const orgKSub = fwd ? 'outcomeFwdSubject' : 'outcomeRejSubject';
-  const orgKBody = fwd ? 'outcomeFwdBody' : 'outcomeRejBody';
   const nz = v => (v && String(v).trim()) ? v : null;
-  // Resolution: owner per-type → owner general → org per-type → org general → built-in default.
-  const rawSubject = nz(ownerByType[kSub]) || nz(ownerGen[kSub]) || nz(orgByType[kSub]) || nz(settings[orgKSub]) || def.subject;
-  const rawBody    = nz(ownerByType[kBody]) || nz(ownerGen[kBody]) || nz(orgByType[kBody]) || nz(settings[orgKBody]) || def.body;
+  // Resolution: owner per-type → owner general → built-in default.
+  const rawSubject = nz(ownerByType[kSub]) || nz(ownerGen[kSub]) || def.subject;
+  const rawBody    = nz(ownerByType[kBody]) || nz(ownerGen[kBody]) || def.body;
 
   const fill = t => (t || '').replace(/\{name\}/g, session.candidateName).replace(/\{position\}/g, interview?.title || 'the position');
   const subject = fill(rawSubject);
