@@ -261,7 +261,7 @@ function filterAuditLog() {
   ['ts', 'by', 'action'].forEach(k => {
     const el = document.getElementById('audit-arrow-' + k);
     if (!el) return;
-    if (key === k) { el.textContent = dir === 'asc' ? ' ▲' : ' ▼'; el.style.opacity = '0.9'; }
+    if (key === k) { el.textContent = dir === 'asc' ? ' ↑' : ' ↓'; el.style.opacity = '0.9'; }
     else { el.textContent = ' ⇅'; el.style.opacity = '0.35'; }
   });
 
@@ -440,7 +440,7 @@ async function renderTeamPage() {
       <div class="table-wrap card" style="padding:0">
         <table>
           <thead><tr>
-            <th onclick="setAuditSort('ts')" style="cursor:pointer;user-select:none">When<span id="audit-arrow-ts" style="opacity:0.9"> ▼</span></th>
+            <th onclick="setAuditSort('ts')" style="cursor:pointer;user-select:none">When<span id="audit-arrow-ts" style="opacity:0.9"> ↓</span></th>
             <th onclick="setAuditSort('by')" style="cursor:pointer;user-select:none">By<span id="audit-arrow-by" style="opacity:0.35"> ⇅</span></th>
             <th onclick="setAuditSort('action')" style="cursor:pointer;user-select:none">Action<span id="audit-arrow-action" style="opacity:0.35"> ⇅</span></th>
             <th>Detail</th>
