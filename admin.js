@@ -2729,10 +2729,16 @@ function integrityScore(pLog) {
   pLog.forEach(e => { penalty += (PROCTORING_WEIGHTS[e.type] ?? 5); });
   return Math.max(0, 100 - penalty);
 }
+// Compact chip: icon + value only. Colour conveys status; the word is in the
+// tooltip so rows stay short and the candidate name doesn't truncate.
+function chip(color, text, tip) {
+  return `<span title="${esc(tip)}" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;border:1px solid ${color}55;color:${color};background:${color}14;white-space:nowrap">${text}</span>`;
+}
+
 function integrityChip(score) {
   const color = score >= 85 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
   const label = score >= 85 ? 'Clean' : score >= 60 ? 'Review' : 'Flagged';
-  return `<span title="Proctoring integrity score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${color}55;color:${color};background:${color}14;white-space:nowrap">🛡 ${score} · ${label}</span>`;
+  return chip(color, `🛡 ${score}`, `Proctoring integrity ${score}/100 — ${label}`);
 }
 
 // AI fit-score chip — populated after English-proficiency analysis runs.
@@ -2741,8 +2747,8 @@ function aiChip(s) {
   if (s.aiScore == null) return '';
   const rec = s.aiRecommendation || '';
   const color = rec === 'strong' ? '#16a34a' : rec === 'weak' ? '#dc2626' : '#d97706';
-  const recTxt = AI_REC_LABEL[rec] ? ' · ' + AI_REC_LABEL[rec] : '';
-  return `<span title="AI fit score (English proficiency)" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${color}55;color:${color};background:${color}14;white-space:nowrap">🤖 ${s.aiScore}/5${recTxt}</span>`;
+  const recTxt = AI_REC_LABEL[rec] ? ' — ' + AI_REC_LABEL[rec] : '';
+  return chip(color, `🤖 ${s.aiScore}/5`, `AI English fit ${s.aiScore}/5${recTxt}`);
 }
 
 function renderSessionRow(s, num) {
@@ -2795,27 +2801,27 @@ function renderSessionRow(s, num) {
     const correct = mcqScorable.filter(r => r.correct === true).length;
     const p = correct / mcqScorable.length;
     const c = p >= 0.8 ? '#16a34a' : p >= 0.5 ? '#d97706' : '#dc2626';
-    mcqHTML = `<span title="Multiple-choice score" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ${c}55;color:${c};background:${c}14;white-space:nowrap">📝 ${correct}/${mcqScorable.length} · ${Math.round(p * 100)}%</span>`;
+    mcqHTML = chip(c, `📝 ${correct}/${mcqScorable.length}`, `Multiple-choice ${correct}/${mcqScorable.length} · ${Math.round(p * 100)}%`);
   }
 
   // Identity-verification chip (candidate Google sign-in).
   const idHTML = (s.identity && s.identity.verifiedAt)
     ? (s.identity.matched
-        ? `<span title="Identity verified as ${esc(s.identity.email)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(22,163,74,0.5);color:#16a34a;background:rgba(22,163,74,0.12);white-space:nowrap">🪪 Verified</span>`
-        : `<span title="Identity MISMATCH — signed in as ${esc(s.identity.email)}, differs from the invited email" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(220,38,38,0.5);color:#dc2626;background:rgba(220,38,38,0.12);white-space:nowrap">⚠ ID mismatch</span>`)
+        ? chip('#16a34a', '🪪', `Identity verified as ${s.identity.email}`)
+        : chip('#dc2626', '⚠', `Identity MISMATCH — signed in as ${s.identity.email}, differs from the invited email`))
     : '';
 
   // Premium Talent chip.
   const premHTML = s.premium
-    ? `<span title="In Premium Talent (${esc(s.premium.status)}) — ${esc(s.premium.category)} / ${esc(s.premium.department)} / ${esc(s.premium.role)}" style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(245,158,11,0.5);color:#f59e0b;background:rgba(245,158,11,0.12);white-space:nowrap">⭐ Premium${s.premium.status === 'Taken' ? ' · Taken' : ''}</span>`
+    ? chip('#f59e0b', s.premium.status === 'Taken' ? '⭐·T' : '⭐', `In Premium Talent (${s.premium.status}) — ${s.premium.category} / ${s.premium.department} / ${s.premium.role}`)
     : '';
 
   let fbHTML = '';
   if (fb.length) {
     const onclick = `onclick="event.stopPropagation();openReview('${s.token}','${jsStr(s.candidateName)}')"`;
     fbHTML = unseen
-      ? `<span ${onclick} title="${unseen} new reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 8px;border-radius:10px;border:1px solid #6264a7;color:#fff;background:#6264a7;white-space:nowrap">🔔 ${unseen} new feedback</span>`
-      : `<span ${onclick} title="${fb.length} reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid rgba(99,100,167,0.4);color:#a7a8d8;background:rgba(99,100,167,0.12);white-space:nowrap">💬 ${fb.length} feedback</span>`;
+      ? `<span ${onclick} title="${unseen} new reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;border:1px solid #6264a7;color:#fff;background:#6264a7;white-space:nowrap">🔔 ${unseen}</span>`
+      : `<span ${onclick} title="${fb.length} reviewer feedback — click to open" style="cursor:pointer;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;border:1px solid rgba(99,100,167,0.4);color:#a7a8d8;background:rgba(99,100,167,0.12);white-space:nowrap">💬 ${fb.length}</span>`;
   }
 
   return `
