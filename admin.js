@@ -5770,10 +5770,6 @@ function renderBrandingContent() {
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:16px;padding:14px 16px;background:rgba(148,163,184,0.06)">
-        <p class="text-muted text-sm" style="margin:0">✉️ <strong>Candidate outcome emails</strong> (Move Forward / Not Moving Forward) are now set per recruiter under <strong>Settings → My Outcome Emails</strong>, so each recruiter can use their own booking link and per-placement-type wording.</p>
-      </div>
-
       <div class="card" style="margin-top:16px;padding:16px">
         <h3 style="margin-top:0">🪪 Candidate Identity Verification</h3>
         <p class="text-muted text-sm" style="margin-top:0">Require candidates to sign in with <strong>Google</strong> before starting, to confirm they are who you invited. A mismatch with the invited email is allowed but flagged in the candidate list/review. Leave off for a frictionless link-only flow.</p>
