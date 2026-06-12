@@ -833,6 +833,8 @@ tr:hover td { background: var(--card-2); }
   box-shadow:   0 0 0 3px rgba(176, 26, 24, 0.10),
                 0 0 16px  rgba(176, 26, 24, 0.25);
 }
+/* Compact chips in the candidates toolbar so the whole row fits on one line */
+#session-pane-candidates .filter-chip { padding: 4px 8px; }
 
 /* ── Video review ── */
 .review-grid {

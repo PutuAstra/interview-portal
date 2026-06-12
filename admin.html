@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#B01A18" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20250609z" />
+  <link rel="stylesheet" href="style.css?v=20250611a" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
   <style>
     /* Circular crop box for logo */
@@ -248,30 +248,30 @@
      <div class="modal-list-sticky">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <h3 id="sessions-heading" style="white-space:nowrap;flex-shrink:0">Candidates</h3>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end">
           <input type="text" id="search-candidates" placeholder="Search candidates…"
             oninput="filterAndRenderSessions()"
-            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:12px;width:160px;flex-shrink:0" />
-          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:12px;width:130px;flex-shrink:0" />
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 1px"></span>
           <button class="filter-chip active" id="fc-all"       onclick="setSessionFilter('all')">All</button>
           <button class="filter-chip"        id="fc-pending"   onclick="setSessionFilter('pending')">Pending</button>
           <button class="filter-chip"        id="fc-completed" onclick="setSessionFilter('completed')">Completed</button>
-          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 1px"></span>
           <button class="filter-chip active" id="fd-all" onclick="setDecisionFilter('all')">All</button>
           <button class="filter-chip"        id="fd-fwd" onclick="setDecisionFilter('move_forward')">✓ Forward</button>
           <button class="filter-chip"        id="fd-rej" onclick="setDecisionFilter('not_moving_forward')">✗ Not Forward</button>
-          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
-          <button class="filter-chip active" id="fs-0" onclick="setStarFilter(0)">Any ★</button>
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 1px"></span>
+          <button class="filter-chip active" id="fs-0" onclick="setStarFilter(0)">Any</button>
           <button class="filter-chip"        id="fs-1" onclick="setStarFilter(1)">★</button>
           <button class="filter-chip"        id="fs-2" onclick="setStarFilter(2)">★★</button>
           <button class="filter-chip"        id="fs-3" onclick="setStarFilter(3)">★★★</button>
           <button class="filter-chip"        id="fs-4" onclick="setStarFilter(4)">★★★★</button>
           <button class="filter-chip"        id="fs-5" onclick="setStarFilter(5)">★★★★★</button>
-          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 2px"></span>
-          <button id="compare-mode-btn" class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="toggleCompareMode()">⚖ Compare</button>
-          <button id="compare-launch-btn" class="btn btn-primary" style="display:none;font-size:12px;padding:5px 12px" onclick="launchCompare()">⚖ Compare 0 Candidates</button>
-          <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="exportCandidatesCSV()" title="Download the current candidate list as CSV">⬇ CSV</button>
-          <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="remindAllPending()" title="Send a reminder email for all Pending">🔔 All</button>
+          <span style="display:inline-block;width:1px;height:16px;background:var(--border);margin:0 1px"></span>
+          <button id="compare-mode-btn" class="btn btn-ghost" style="font-size:12px;padding:4px 7px" onclick="toggleCompareMode()">⚖ Compare</button>
+          <button id="compare-launch-btn" class="btn btn-primary" style="display:none;font-size:12px;padding:4px 9px" onclick="launchCompare()">⚖ Compare 0 Candidates</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:4px 7px" onclick="exportCandidatesCSV()" title="Download the current candidate list as CSV">⬇ CSV</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:4px 7px" onclick="remindAllPending()" title="Send a reminder email for all Pending">🔔 All</button>
         </div>
       </div>
 
