@@ -2718,7 +2718,11 @@ function filterAndRenderSessions() {
 
   // Sort
   if (_sessionSortCol === 'review') {
+    // Sort by the decision (status), stars only as a tiebreaker.
+    const order = { move_forward: 2, not_moving_forward: 1 };
     list.sort((a, b) => {
+      const da = order[a.reviewDecision] ?? 0, db = order[b.reviewDecision] ?? 0;
+      if (da !== db) return _sessionSortDir === 'desc' ? db - da : da - db;
       const sa = a.reviewStars || 0, sb = b.reviewStars || 0;
       return _sessionSortDir === 'desc' ? sb - sa : sa - sb;
     });
