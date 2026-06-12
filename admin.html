@@ -179,7 +179,7 @@
       <h2 id="modal-interview-title">Interview</h2>
       <button class="btn btn-ghost" onclick="closeModal('modal-sessions')">✕</button>
     </div>
-    <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:auto;padding:0 24px 20px">
+    <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 24px 20px">
 
     <!-- Invite pane -->
     <div id="session-pane-invite" style="display:none;padding-top:20px">
@@ -246,9 +246,9 @@
     <!-- Candidates pane -->
     <div id="session-pane-candidates" style="display:none">
      <div class="modal-list-sticky">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:12px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <h3 id="sessions-heading" style="white-space:nowrap;flex-shrink:0">Candidates</h3>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <input type="text" id="search-candidates" placeholder="Search candidates…"
             oninput="filterAndRenderSessions()"
             style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:12px;width:160px;flex-shrink:0" />
