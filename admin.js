@@ -4782,7 +4782,8 @@ async function renderHolidaysPage() {
   const main = document.getElementById('admin-main');
   main.innerHTML = `
     <div style="max-width:860px">
-      <h2 class="mb-16">Holiday &amp; Closure Settings</h2>
+      <h2 style="margin-bottom:4px">Holiday &amp; Closure Settings</h2>
+      <p class="text-muted text-sm mb-16">These are <strong>your own</strong> holidays — they apply only to <strong>your</strong> booking links. Each recruiter sets their own country and closures.</p>
       <div id="holidays-page-content"><div class="spinner" style="margin:60px auto"></div></div>
     </div>
   `;
@@ -4817,7 +4818,7 @@ function renderHolidaysContent() {
 
     <!-- ── Global Settings ────────────────────────────────── -->
     <div class="card" style="margin-bottom:16px">
-      <h3 style="margin-bottom:16px">Global Settings</h3>
+      <h3 style="margin-bottom:16px">National Holidays</h3>
 
       <!-- Auto-block toggle -->
       <div style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;cursor:pointer"

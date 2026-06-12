@@ -4376,12 +4376,8 @@ async function getBookingSlots(token) {
   if (!link.active) return jsonRes({ error: 'This booking link is no longer active' }, 410);
 
   // ── Step 2: Holiday Protection Layer (hard-block entire days) ─
-  // Load settings + full holiday list in parallel for minimal latency
-  const [settings, holidayIds] = await Promise.all([
-    kvGet('holiday:settings'),
-    kvGet('holiday:list'),
-  ]);
-  const cfg = settings || {};
+  // Use the booking link OWNER's holidays (per-recruiter; different countries).
+  const { cfg, ids: holidayIds } = await loadOwnerHolidays(link.ownerId);
 
   const blockedDates = new Set(); // 'YYYY-MM-DD' strings in the link's local timezone
 
@@ -4623,33 +4619,66 @@ async function createBookingHandler(token, request) {
   }, 201);
 }
 
-// ── Holiday & Closure handlers ────────────────────────────────
+// ── Holiday & Closure handlers (PER-RECRUITER) ────────────────
 //
 // KV Schema:
-//   holiday:list               → string[]  (ordered list of IDs)
-//   holiday:{id}               → Holiday   (see createHoliday for shape)
-//   holiday:settings           → Settings  (autoBlockNational, country, syncedYears)
+//   holiday:list:{ownerId}     → string[]  (that recruiter's ordered IDs)
+//   holiday:settings:{ownerId} → Settings  (autoBlockNational, country, syncedYears)
+//   holiday:{id}               → Holiday   (carries ownerId; shape below)
+//   Legacy global keys holiday:list / holiday:settings remain only until the
+//   super-admin opens the page, at which point they migrate to that owner.
 //
 // Holiday shape:
-//   { id, name, nameEn?, date (YYYY-MM-DD), isRecurring, isActive,
+//   { id, ownerId, name, nameEn?, date (YYYY-MM-DD), isRecurring, isActive,
 //     type ('national'|'custom'), countryCode, createdAt }
 
+// Load a recruiter's holidays, falling back to the legacy global set when they
+// haven't configured their own yet (used by slot generation).
+async function loadOwnerHolidays(ownerId) {
+  let cfg = ownerId ? await kvGet(`holiday:settings:${ownerId}`) : null;
+  let ids = ownerId ? await kvGet(`holiday:list:${ownerId}`) : null;
+  if (!cfg && (!ids || !ids.length)) {
+    cfg = await kvGet('holiday:settings');
+    ids = await kvGet('holiday:list');
+  }
+  return { cfg: cfg || {}, ids: ids || [] };
+}
+
+// One-time: move the legacy org-wide holiday set to the super-admin's own keys
+// the first time they open the page, then delete the global keys.
+async function migrateLegacyHolidaysIfNeeded(user) {
+  if (user.role !== 'super_admin' && !user.breakGlass) return;
+  if (await kvGet(`holiday:list:${user.id}`)) return;        // already has own
+  const legacy = await kvGet('holiday:list');
+  if (!legacy || !legacy.length) return;
+  for (const id of legacy) {
+    const h = await kvGet(`holiday:${id}`);
+    if (h && !h.ownerId) { h.ownerId = user.id; await kvPut(`holiday:${id}`, h); }
+  }
+  await kvPut(`holiday:list:${user.id}`, legacy);
+  const ls = await kvGet('holiday:settings');
+  if (ls) await kvPut(`holiday:settings:${user.id}`, ls);
+  await INTERVIEW_DATA.delete('holiday:list');
+  await INTERVIEW_DATA.delete('holiday:settings');
+}
+
 async function listHolidays(request) {
-  await requireAdmin(request);
-  const ids      = (await kvGet('holiday:list')) || [];
+  const user = await requireAdmin(request);
+  await migrateLegacyHolidaysIfNeeded(user);
+  const ids      = (await kvGet(`holiday:list:${user.id}`)) || [];
   const holidays = await Promise.all(ids.map(id => kvGet(`holiday:${id}`)));
   return jsonRes(holidays.filter(Boolean));
 }
 
 async function createHoliday(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { name, date, isRecurring, type, countryCode } = await request.json();
   if (!name) return jsonRes({ error: 'name required' }, 400);
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return jsonRes({ error: 'date required (YYYY-MM-DD)' }, 400);
 
   const id      = uid();
   const holiday = {
-    id, name, date,
+    id, ownerId: user.id, name, date,
     isRecurring: !!isRecurring,
     isActive:    true,
     type:        type || 'custom',
@@ -4657,33 +4686,41 @@ async function createHoliday(request) {
     createdAt:   Date.now(),
   };
   await kvPut(`holiday:${id}`, holiday);
-  const list = (await kvGet('holiday:list')) || [];
+  const list = (await kvGet(`holiday:list:${user.id}`)) || [];
   list.unshift(id);
-  await kvPut('holiday:list', list);
+  await kvPut(`holiday:list:${user.id}`, list);
   return jsonRes(holiday, 201);
 }
 
 async function updateHoliday(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const existing = await kvGet(`holiday:${id}`);
   if (!existing) return jsonRes({ error: 'Not found' }, 404);
+  if (existing.ownerId && existing.ownerId !== user.id && user.role !== 'super_admin') {
+    return jsonRes({ error: 'Forbidden' }, 403);
+  }
   const updates = await request.json();
-  const updated = { ...existing, ...updates };
+  const updated = { ...existing, ...updates, id: existing.id, ownerId: existing.ownerId };
   await kvPut(`holiday:${id}`, updated);
   return jsonRes(updated);
 }
 
 async function deleteHoliday(id, request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
+  const existing = await kvGet(`holiday:${id}`);
+  if (existing && existing.ownerId && existing.ownerId !== user.id && user.role !== 'super_admin') {
+    return jsonRes({ error: 'Forbidden' }, 403);
+  }
   await INTERVIEW_DATA.delete(`holiday:${id}`);
-  const list = (await kvGet('holiday:list')) || [];
-  await kvPut('holiday:list', list.filter(i => i !== id));
+  const list = (await kvGet(`holiday:list:${user.id}`)) || [];
+  await kvPut(`holiday:list:${user.id}`, list.filter(i => i !== id));
   return jsonRes({ ok: true });
 }
 
 async function getHolidaySettings(request) {
-  await requireAdmin(request);
-  const settings = (await kvGet('holiday:settings')) || {
+  const user = await requireAdmin(request);
+  await migrateLegacyHolidaysIfNeeded(user);
+  const settings = (await kvGet(`holiday:settings:${user.id}`)) || {
     autoBlockNational: true,
     country:           'ID',
     syncedYears:       [],
@@ -4692,16 +4729,16 @@ async function getHolidaySettings(request) {
 }
 
 async function updateHolidaySettings(request) {
-  await requireAdmin(request);
-  const existing = (await kvGet('holiday:settings')) || {};
+  const user = await requireAdmin(request);
+  const existing = (await kvGet(`holiday:settings:${user.id}`)) || {};
   const updates  = await request.json();
   const updated  = { ...existing, ...updates };
-  await kvPut('holiday:settings', updated);
+  await kvPut(`holiday:settings:${user.id}`, updated);
   return jsonRes(updated);
 }
 
 async function syncNationalHolidays(request) {
-  await requireAdmin(request);
+  const user = await requireAdmin(request);
   const { year, country } = await request.json();
   const countryCode = (country || 'ID').toUpperCase();
   const yr          = parseInt(year) || new Date().getFullYear();
@@ -4725,8 +4762,9 @@ async function syncNationalHolidays(request) {
     return jsonRes({ error: `No holidays returned for ${countryCode} ${yr}. This country code may not be supported.` }, 404);
   }
 
-  // Load existing holidays to avoid duplicates
-  const existingIds      = (await kvGet('holiday:list')) || [];
+  // Load this recruiter's existing holidays to avoid duplicates
+  const listKey          = `holiday:list:${user.id}`;
+  const existingIds      = (await kvGet(listKey)) || [];
   const existingHolidays = (await Promise.all(existingIds.map(id => kvGet(`holiday:${id}`)))).filter(Boolean);
 
   let addedCount = 0, skippedCount = 0;
@@ -4741,7 +4779,7 @@ async function syncNationalHolidays(request) {
 
     const id = uid();
     const holiday = {
-      id,
+      id, ownerId: user.id,
       name:        h.localName || h.name,
       nameEn:      h.name,
       date:        h.date,          // YYYY-MM-DD — exact date for this year
@@ -4756,13 +4794,13 @@ async function syncNationalHolidays(request) {
     addedCount++;
   }
 
-  await kvPut('holiday:list', newIds);
+  await kvPut(listKey, newIds);
 
-  // Record which years have been synced
-  const cfg         = (await kvGet('holiday:settings')) || {};
+  // Record which years this recruiter has synced
+  const cfg         = (await kvGet(`holiday:settings:${user.id}`)) || {};
   const syncedYears = cfg.syncedYears || [];
   if (!syncedYears.includes(yr)) syncedYears.push(yr);
-  await kvPut('holiday:settings', { autoBlockNational: true, ...cfg, country: countryCode, syncedYears });
+  await kvPut(`holiday:settings:${user.id}`, { autoBlockNational: true, ...cfg, country: countryCode, syncedYears });
 
   return jsonRes({ ok: true, added: addedCount, skipped: skippedCount, total: fetched.length });
 }
